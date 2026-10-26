@@ -1,0 +1,6 @@
+{
+  "name": "Speed Meet Love",
+  "description": "Online speed-dating platform featuring live 5-minute video rounds every Friday, Saturday, and Sunday at 7:00 PM, up to 2-minute breaks, consent-based waiting room, mutual matching, and 3-tier membership.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

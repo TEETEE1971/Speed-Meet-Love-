@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --brand-pink: #ff2e93;
+    --brand-pink-hover: #ff147e;
+    --brand-red: #e11d48;
+    --brand-blush: #fff5f7;
+    --brand-blush-light: #fff8fa;
+    --charcoal-dark: #0f172a;
+    --charcoal-body: #1e293b;
+    --charcoal-muted: #64748b;
+  }
+
+  body {
+    font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #fff8fa;
+    color: #1e293b;
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-heading {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 700;
+    color: #0f172a;
+  }
+}
+
+/* Pink gradient button utility */
+.btn-pink-gradient {
+  background: linear-gradient(135deg, #ff2e93 0%, #ff147e 50%, #e11d48 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(255, 46, 147, 0.28);
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-pink-gradient:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 6px 20px rgba(255, 46, 147, 0.36);
+  transform: translateY(-1px);
+}
+
+.btn-pink-gradient:active {
+  transform: scale(0.98);
+}
+
+.glow-pink-subtle {
+  box-shadow: 0 10px 25px -5px rgba(255, 46, 147, 0.15), 0 8px 10px -6px rgba(255, 46, 147, 0.1);
+}
+
+/* Clean scrollbar for blush theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #fff0f3;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #fbcfe8;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #ff2e93;
+}
