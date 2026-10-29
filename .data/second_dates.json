@@ -1,0 +1,38 @@
+[
+  {
+    "sessionId": "sec_evt_live_now_usr_02_usr_me",
+    "eventId": "evt_live_now",
+    "userA": "usr_02",
+    "userB": "usr_me",
+    "userAName": "Sarah",
+    "userBName": "Alex",
+    "requestedBy": "usr_me",
+    "userAConsent": true,
+    "userBConsent": true,
+    "status": "completed",
+    "startedAt": 1793271837028,
+    "expiresAt": 1793272437028,
+    "durationSeconds": 600,
+    "createdAt": 1793271823389,
+    "lastUpdated": 1793271856732,
+    "mode": "demonstration"
+  },
+  {
+    "sessionId": "sec_evt_live_now_usr_03_usr_me",
+    "eventId": "evt_live_now",
+    "userA": "usr_03",
+    "userB": "usr_me",
+    "userAName": "Elena",
+    "userBName": "Alex",
+    "requestedBy": "usr_me",
+    "userAConsent": true,
+    "userBConsent": true,
+    "status": "active",
+    "startedAt": 1793271887424,
+    "expiresAt": 1793272487424,
+    "durationSeconds": 600,
+    "createdAt": 1793271879123,
+    "lastUpdated": 1793271887424,
+    "mode": "demonstration"
+  }
+]

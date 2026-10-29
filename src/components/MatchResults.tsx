@@ -71,8 +71,15 @@ export const MatchResults: React.FC = () => {
             {userMatches.length} Mutual Matches
           </div>
           <button
+            onClick={() => setCurrentView('results')}
+            className="px-4 py-1.5 rounded-full btn-glossy-red-pink text-xs font-bold text-white flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 fill-white" />
+            <span>The Match Reveal 💘</span>
+          </button>
+          <button
             onClick={() => setCurrentView('browse')}
-            className="px-4 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors"
+            className="px-4 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Compass className="w-3.5 h-3.5 text-[#FF2E93]" />
             <span>Browse More Singles</span>

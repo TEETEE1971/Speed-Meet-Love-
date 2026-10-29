@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { ICEBREAKER_QUESTIONS } from '../data/initialData';
 import {
@@ -33,6 +33,7 @@ import {
   Play
 } from 'lucide-react';
 import { Avatar } from './Avatar';
+import { LiveKitVideoStage } from './LiveKitVideoStage';
 import confetti from 'canvas-confetti';
 
 type RoundStage = 'call' | 'break' | 'waiting_room';
@@ -67,21 +68,40 @@ export const LiveRoundScreen: React.FC = () => {
   const isEligible = canAccessLiveSpeedDating(currentUser);
 
   const activeEvent = events.find(e => e.EventID === selectedEventId) || events[0];
-  const eventRounds = rounds.filter(r => r.EventID === activeEvent.EventID);
+  const isStaging = activeEvent.EventID === 'evt_staging_dev';
+
+  // Find rounds for active event that involve the current user
+  const userEventRounds = rounds.filter(
+    r => r.EventID === activeEvent.EventID && (r.UserA === currentUser.UserID || r.UserB === currentUser.UserID)
+  );
+  const eventRounds = userEventRounds.length > 0 ? userEventRounds : rounds.filter(r => r.EventID === activeEvent.EventID);
   const currentRound = eventRounds[activeRoundIndex] || eventRounds[0];
 
   const isUserA = currentRound ? currentRound.UserA === currentUser.UserID : true;
-  const partnerId = currentRound ? (isUserA ? currentRound.UserB : currentRound.UserA) : 'usr_02';
-  const partner = users.find(u => u.UserID === partnerId) || users[1];
+  const defaultStagingPartnerId = currentUser.UserID === 'usr_kristy' ? 'usr_me' : 'usr_kristy';
+  const partnerId = currentRound
+    ? (isUserA ? currentRound.UserB : currentRound.UserA)
+    : (isStaging ? defaultStagingPartnerId : 'usr_02');
+  const partner = users.find(u => u.UserID === partnerId) || users.find(u => u.UserID === defaultStagingPartnerId) || users[1];
 
   // 5-minute round (300 seconds)
   const defaultDuration = activeEvent.RoundDurationSeconds || 300;
   // 2-minute break (120 seconds)
   const defaultBreak = activeEvent.BreakDurationSeconds || 120;
 
+  const isSessionForCurrentModeAndEvent = Boolean(
+    liveSession &&
+    (!liveSession.mode || liveSession.mode === appMode) &&
+    liveSession.eventId === activeEvent.EventID
+  );
+
   // Initialize stage from active persistent live session or default to 'call'
   const [stage, setStage] = useState<RoundStage>(() => {
-    if (liveSession && liveSession.eventId === activeEvent.EventID && liveSession.roundIndex === activeRoundIndex) {
+    if (isSessionForCurrentModeAndEvent && liveSession?.roundIndex === activeRoundIndex) {
+      if (liveSession.stage === 'call') {
+        const isExpired = Date.now() >= liveSession.roundStartedAt + defaultDuration * 1000;
+        if (isExpired) return 'break';
+      }
       return liveSession.stage;
     }
     return 'call';
@@ -89,7 +109,7 @@ export const LiveRoundScreen: React.FC = () => {
 
   // Calculate actual elapsed wall-clock time
   const [timeLeft, setTimeLeft] = useState<number>(() => {
-    if (liveSession && liveSession.eventId === activeEvent.EventID && liveSession.roundIndex === activeRoundIndex) {
+    if (isSessionForCurrentModeAndEvent && liveSession?.roundIndex === activeRoundIndex) {
       if (liveSession.stage === 'call') {
         const elapsed = Math.floor((Date.now() - liveSession.roundStartedAt) / 1000);
         return Math.max(0, defaultDuration - elapsed);
@@ -101,7 +121,7 @@ export const LiveRoundScreen: React.FC = () => {
   const [isPaused, setIsPaused] = useState(false);
 
   const [breakTimeLeft, setBreakTimeLeft] = useState<number>(() => {
-    if (liveSession && liveSession.eventId === activeEvent.EventID && liveSession.roundIndex === activeRoundIndex) {
+    if (isSessionForCurrentModeAndEvent && liveSession?.roundIndex === activeRoundIndex) {
       if (liveSession.stage === 'break') {
         const breakStart = liveSession.breakStartedAt || Date.now();
         const elapsed = Math.floor((Date.now() - breakStart) / 1000);
@@ -141,6 +161,137 @@ export const LiveRoundScreen: React.FC = () => {
 
   const [replayRequested, setReplayRequested] = useState(false);
 
+  // LiveKit Server Gateway Status & Token State
+  const [liveKitStatus, setLiveKitStatus] = useState<{
+    configured: boolean;
+    liveKitUrl: string | null;
+    tokenGatewayReady: boolean;
+  } | null>(null);
+
+  const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
+  const [liveKitServerUrl, setLiveKitServerUrl] = useState<string | null>(null);
+  const [liveKitError, setLiveKitError] = useState<string | null>(null);
+  const [isRequestingToken, setIsRequestingToken] = useState<boolean>(false);
+
+  // Real-time floating hearts state (non-verbal expressions of interest)
+  const [floatingHearts, setFloatingHearts] = useState<Array<{ id: string; x: number; emoji: string }>>([]);
+  const [isSendingHeart, setIsSendingHeart] = useState(false);
+  const lastHeartIdRef = useRef<string | null>(null);
+
+  // Server-authoritative round timer reference (shared, persisted, and tamper-proof)
+  const serverRoundRef = useRef<{
+    roundId: string;
+    roundStartedAt: number;
+    roundExpiresAt: number;
+    breakStartedAt: number | null;
+    breakExpiresAt: number | null;
+    status: 'call' | 'break' | 'completed';
+  } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/livekit/status')
+      .then(res => res.json())
+      .then(data => setLiveKitStatus(data))
+      .catch(() => {});
+  }, []);
+
+  // In Production Mode, acquire secure LiveKit room token when entering call stage
+  const fetchLiveKitRoomToken = useCallback(async () => {
+    if (appMode !== 'production' || stage !== 'call' || !liveKitStatus?.configured) {
+      return;
+    }
+
+    setIsRequestingToken(true);
+    setLiveKitError(null);
+
+    try {
+      const isRegistered =
+        activeEvent.ParticipantsList.includes(currentUser.UserID) ||
+        activeEvent.EventID === 'evt_staging_dev';
+
+      const res = await fetch('/api/livekit/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.UserID,
+          userName: currentUser.FirstName,
+          userAge: currentUser.Age,
+          tier: currentUser.SubscriptionTier,
+          isRegistered,
+          partnerId: partner.UserID,
+          partnerName: partner.FirstName,
+          partnerAge: partner.Age,
+          eventId: activeEvent.EventID,
+          eventDate: activeEvent.EventDate,
+          eventStartTime: activeEvent.EventStartTime,
+          eventEndTime: activeEvent.EventEndTime,
+          eventType: activeEvent.EventType,
+          roundIndex: activeRoundIndex,
+          userConsent: true,
+          partnerConsent: true,
+          mode: appMode,
+          isStagingTest: activeEvent.EventID === 'evt_staging_dev',
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.token) {
+        setLiveKitToken(data.token);
+        setLiveKitServerUrl(data.liveKitUrl);
+        setLiveKitError(null);
+      } else {
+        if (data.code === 'ROUND_EXPIRED' || data.status === 'break') {
+          // Server authoritative check: round expired, transition immediately to confidential ballot
+          setStage('break');
+          setTimeLeft(0);
+          setLiveKitToken(null);
+        } else {
+          setLiveKitError(data.error || 'Waiting for mutual consent from partner...');
+        }
+      }
+    } catch (err: any) {
+      setLiveKitError('LiveKit connection service error.');
+    } finally {
+      setIsRequestingToken(false);
+    }
+  }, [
+    appMode,
+    stage,
+    liveKitStatus?.configured,
+    activeEvent,
+    currentUser,
+    partner,
+    activeRoundIndex,
+  ]);
+
+  useEffect(() => {
+    fetchLiveKitRoomToken();
+  }, [fetchLiveKitRoomToken]);
+
+  const handleLiveKitDisconnect = useCallback((reason?: any) => {
+    console.warn('LiveKit room disconnected in LiveRoundScreen, reason:', reason);
+    if (stage !== 'call' || timeLeft <= 0) {
+      setLiveKitToken(null);
+      return;
+    }
+    // If the 5-minute round is still actively running, reconnect automatically
+    showNotification('Video signal reconnecting...', 'pink');
+    setTimeout(() => {
+      if (stage === 'call' && timeLeft > 0) {
+        fetchLiveKitRoomToken();
+      }
+    }, 1500);
+  }, [stage, timeLeft, fetchLiveKitRoomToken, showNotification]);
+
+  const handleLiveKitError = useCallback((err: Error) => {
+    console.warn('LiveKit signal stream error caught in LiveRoundScreen:', err);
+    if (stage === 'call' && timeLeft > 0) {
+      setTimeout(() => {
+        fetchLiveKitRoomToken();
+      }, 2000);
+    }
+  }, [stage, timeLeft, fetchLiveKitRoomToken]);
+
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -150,16 +301,38 @@ export const LiveRoundScreen: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
     async function setupCamera() {
+      // In production mode with LiveKit, release any active stream immediately so LiveKit WebRTC has exclusive hardware camera access on Android/iOS
+      if (appMode === 'production' && (liveKitToken || isRequestingToken)) {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+        return;
+      }
+
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && cameraOn) {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-          if (isMounted && localVideoRef.current) {
-            localVideoRef.current.srcObject = stream;
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user', width: { ideal: 1280 } },
+            audio: false,
+          });
+          if (isMounted) {
             streamRef.current = stream;
+            if (localVideoRef.current) {
+              localVideoRef.current.srcObject = stream;
+              localVideoRef.current.playsInline = true;
+              localVideoRef.current.muted = true;
+              localVideoRef.current.play().catch(e => console.warn('Local video play warning:', e));
+            }
+          } else {
+            stream.getTracks().forEach(t => t.stop());
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('LiveRoundScreen preview error:', e);
+      }
     }
+
     if (isEligible) {
       setupCamera();
     }
@@ -168,159 +341,173 @@ export const LiveRoundScreen: React.FC = () => {
       isMounted = false;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
       }
     };
-  }, [cameraOn, isEligible]);
+  }, [cameraOn, isEligible, appMode, liveKitToken, isRequestingToken]);
 
-  // Synchronize with persistent session state and actual wall-clock elapsed time
+  // Ensure local video element attaches preview stream when mounted
   useEffect(() => {
-    if (liveSession && liveSession.eventId === activeEvent.EventID && liveSession.roundIndex === activeRoundIndex) {
-      const now = Date.now();
-      if (liveSession.stage === 'call') {
-        const elapsed = Math.floor((now - liveSession.roundStartedAt) / 1000);
-        if (elapsed >= liveSession.roundDurationSeconds) {
-          // 5-minute round completed while away! Transition to break automatically
-          const breakStart = liveSession.breakStartedAt || (liveSession.roundStartedAt + liveSession.roundDurationSeconds * 1000);
-          const breakElapsed = Math.floor((now - breakStart) / 1000);
-          const remainingBreak = Math.max(0, liveSession.breakDurationSeconds - breakElapsed);
-
-          setStage('break');
-          setTimeLeft(0);
-          setBreakTimeLeft(remainingBreak);
-
-          saveLiveSession({
-            stage: 'break',
-            breakStartedAt: breakStart,
-            lastActive: now,
-          });
-
-          showNotification('Welcome back! Round call ended while away. Cast your vote & take your break.', 'pink');
-        } else {
-          setStage('call');
-          setTimeLeft(liveSession.roundDurationSeconds - elapsed);
-        }
-      } else if (liveSession.stage === 'break') {
-        setStage('break');
-        setTimeLeft(0);
-        const breakStart = liveSession.breakStartedAt || now;
-        const breakElapsed = Math.floor((now - breakStart) / 1000);
-        setBreakTimeLeft(Math.max(0, liveSession.breakDurationSeconds - breakElapsed));
-      } else if (liveSession.stage === 'waiting_room') {
-        setStage('waiting_room');
-      }
-
-      if (liveSession.vote !== undefined) {
-        setSelectedDecision(liveSession.vote);
-      }
-      if (liveSession.notes !== undefined) {
-        setPrivateNotes(liveSession.notes);
-      }
-    } else {
-      // Establish new persistent session for this round
-      const now = Date.now();
-      const initialNotes = isUserA ? currentRound?.UserA_Notes || '' : currentRound?.UserB_Notes || '';
-      const initialVote = isUserA
-        ? currentRound?.UserA_Like !== null ? (currentRound?.UserA_Like ? 'like' : 'pass') : null
-        : currentRound?.UserB_Like !== null ? (currentRound?.UserB_Like ? 'like' : 'pass') : null;
-
-      saveLiveSession({
-        userId: currentUser.UserID,
-        eventId: activeEvent.EventID,
-        roundIndex: activeRoundIndex,
-        stage: 'call',
-        roundStartedAt: now,
-        breakStartedAt: null,
-        roundDurationSeconds: defaultDuration,
-        breakDurationSeconds: defaultBreak,
-        vote: initialVote,
-        notes: initialNotes,
-        partnerId: partner.UserID,
-        currentView: 'live',
-        lastActive: now,
-      });
-
-      setStage('call');
-      setTimeLeft(defaultDuration);
-      setBreakTimeLeft(defaultBreak);
-      setPrivateNotes(initialNotes);
-      setSelectedDecision(initialVote);
-      setWaitingCountdown(null);
-      setFoundPartnerName(null);
+    if (localVideoRef.current && streamRef.current && cameraOn) {
+      localVideoRef.current.srcObject = streamRef.current;
+      localVideoRef.current.playsInline = true;
+      localVideoRef.current.muted = true;
+      localVideoRef.current.play().catch(e => console.warn('Local video play warning:', e));
     }
-  }, [activeRoundIndex, activeEvent.EventID]);
+  }, [cameraOn]);
 
-  // Real-Time Wall-Clock Interval for accurate countdown
+  // Synchronize server-authoritative shared round timer
+  const syncServerRoundTimer = useCallback(async (createIfMissing = false) => {
+    try {
+      const partnerIdParam = partner?.UserID || '';
+      const url = `/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/timer?userId=${currentUser.UserID}&partnerId=${partnerIdParam}`;
+      let res = await fetch(url);
+
+      if (!res.ok && createIfMissing) {
+        res = await fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/timer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.UserID,
+            partnerId: partnerIdParam,
+            roundDurationSeconds: defaultDuration,
+            breakDurationSeconds: defaultBreak,
+            mode: appMode,
+          }),
+        });
+      }
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.round) {
+          const round = data.round;
+          serverRoundRef.current = {
+            roundId: round.roundId,
+            roundStartedAt: round.roundStartedAt,
+            roundExpiresAt: round.roundExpiresAt,
+            breakStartedAt: round.breakStartedAt,
+            breakExpiresAt: round.breakExpiresAt,
+            status: round.status,
+          };
+
+          const now = Date.now();
+          if (round.status === 'break' || round.isExpired) {
+            // Automatic round completion! Disconnect LiveKit video and transition to confidential voting
+            setStage('break');
+            setTimeLeft(0);
+            setLiveKitToken(null);
+            setBreakTimeLeft(round.remainingBreakSeconds);
+
+            saveLiveSession({
+              stage: 'break',
+              roundStartedAt: round.roundStartedAt,
+              breakStartedAt: round.breakStartedAt || now,
+              roundDurationSeconds: round.roundDurationSeconds,
+              breakDurationSeconds: round.breakDurationSeconds,
+              lastActive: now,
+              mode: appMode,
+            });
+          } else if (round.status === 'call') {
+            setStage('call');
+            setTimeLeft(round.remainingSeconds);
+            saveLiveSession({
+              stage: 'call',
+              roundStartedAt: round.roundStartedAt,
+              breakStartedAt: null,
+              roundDurationSeconds: round.roundDurationSeconds,
+              breakDurationSeconds: round.breakDurationSeconds,
+              lastActive: now,
+              mode: appMode,
+            });
+          }
+          return data.round;
+        }
+      }
+    } catch (err) {
+      console.warn('Server round timer sync failed:', err);
+    }
+    return null;
+  }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession]);
+
+  // Initial synchronization upon entering round or changing index
+  useEffect(() => {
+    syncServerRoundTimer(true);
+  }, [activeRoundIndex, activeEvent.EventID, syncServerRoundTimer]);
+
+  // Real-Time 1-Second Wall-Clock Interval bound to server expiration timestamp
   useEffect(() => {
     if (!isEligible) return;
 
     const timer = setInterval(() => {
       const now = Date.now();
-      if (!liveSession) return;
+      const serverRound = serverRoundRef.current;
 
       if (stage === 'call' && !isPaused) {
-        const elapsed = Math.floor((now - liveSession.roundStartedAt) / 1000);
-        const remaining = Math.max(0, liveSession.roundDurationSeconds - elapsed);
+        const expiresAt = serverRound?.roundExpiresAt || (liveSession?.roundStartedAt ? liveSession.roundStartedAt + defaultDuration * 1000 : now + defaultDuration * 1000);
+        const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
         setTimeLeft(remaining);
 
         if (remaining <= 0) {
-          const breakStart = Date.now();
+          // Exactly 5 minutes have elapsed!
+          // Server and client automatically end video round, disconnect LiveKit, and show voting screen
           setStage('break');
-          setBreakTimeLeft(liveSession.breakDurationSeconds);
+          setTimeLeft(0);
+          setLiveKitToken(null);
+          setBreakTimeLeft(defaultBreak);
+
+          if (serverRound) {
+            serverRound.status = 'break';
+            serverRound.breakStartedAt = expiresAt;
+            serverRound.breakExpiresAt = expiresAt + defaultBreak * 1000;
+          }
+
           saveLiveSession({
             stage: 'break',
-            breakStartedAt: breakStart,
+            breakStartedAt: expiresAt,
             lastActive: now,
+            mode: appMode,
           });
-          showNotification('5-minute round finished! Cast your secret vote & take a 2-minute break.', 'pink');
+
+          // Enforce server-side round status transition to break
+          fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/timer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: currentUser.UserID,
+              partnerId: partner?.UserID || '',
+              action: 'end_round',
+              mode: appMode,
+            }),
+          }).catch(() => {});
+
+          showNotification('5-minute round concluded! Video date ended. Please cast your confidential vote.', 'pink');
         }
       } else if (stage === 'break' && !breakPaused) {
-        const breakStart = liveSession.breakStartedAt || now;
-        const elapsed = Math.floor((now - breakStart) / 1000);
-        const remaining = Math.max(0, liveSession.breakDurationSeconds - elapsed);
-        setBreakTimeLeft(remaining);
-        // Do NOT automatically start another video date without user clicking Next Date
+        const breakExpiresAt = serverRound?.breakExpiresAt || (liveSession?.breakStartedAt ? liveSession.breakStartedAt + defaultBreak * 1000 : now + defaultBreak * 1000);
+        const remainingBreak = Math.max(0, Math.floor((breakExpiresAt - now) / 1000));
+        setBreakTimeLeft(remainingBreak);
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [stage, isPaused, breakPaused, liveSession, isEligible]);
+  }, [stage, isPaused, breakPaused, liveSession, isEligible, activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession, showNotification]);
+
+  // Periodic server timer resync every 3 seconds to guarantee zero client drift across iOS & Android
+  useEffect(() => {
+    if (!isEligible || stage === 'waiting_room') return;
+
+    const syncInterval = setInterval(() => {
+      syncServerRoundTimer(false);
+    }, 3000);
+
+    return () => clearInterval(syncInterval);
+  }, [isEligible, stage, syncServerRoundTimer]);
 
   // Tab switching, browser backgrounding, and phone sleep recovery listener
   useEffect(() => {
     const handleVisibilityOrResume = () => {
       if (document.visibilityState === 'visible') {
-        syncLiveSessionFromServer().then(session => {
-          const activeSess = session || liveSession;
-          if (activeSess) {
-            const now = Date.now();
-            if (activeSess.stage === 'call') {
-              const elapsed = Math.floor((now - activeSess.roundStartedAt) / 1000);
-              if (elapsed >= activeSess.roundDurationSeconds) {
-                const breakStart = activeSess.breakStartedAt || (activeSess.roundStartedAt + activeSess.roundDurationSeconds * 1000);
-                const breakElapsed = Math.floor((now - breakStart) / 1000);
-                const remainingBreak = Math.max(0, activeSess.breakDurationSeconds - breakElapsed);
-
-                setStage('break');
-                setTimeLeft(0);
-                setBreakTimeLeft(remainingBreak);
-
-                saveLiveSession({
-                  stage: 'break',
-                  breakStartedAt: breakStart,
-                  lastActive: now,
-                });
-
-                showNotification('Welcome back! 5-minute round ended while away. Cast your vote & take your break.', 'pink');
-              } else {
-                setTimeLeft(Math.max(0, activeSess.roundDurationSeconds - elapsed));
-              }
-            } else if (activeSess.stage === 'break') {
-              const breakStart = activeSess.breakStartedAt || now;
-              const breakElapsed = Math.floor((now - breakStart) / 1000);
-              setBreakTimeLeft(Math.max(0, activeSess.breakDurationSeconds - breakElapsed));
-            }
-          }
-        });
+        syncServerRoundTimer(true);
       }
     };
 
@@ -333,7 +520,85 @@ export const LiveRoundScreen: React.FC = () => {
       window.removeEventListener('focus', handleVisibilityOrResume);
       window.removeEventListener('pageshow', handleVisibilityOrResume);
     };
-  }, [liveSession]);
+  }, [syncServerRoundTimer]);
+
+  // Send real-time heart reaction to speed dating partner
+  const sendHeartReaction = async () => {
+    if (isSendingHeart) return;
+    setIsSendingHeart(true);
+
+    const heartId = `rx_${Date.now()}`;
+    const emojis = ['❤️', '💖', '💕', '💓', '💗'];
+    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+    const randomX = Math.floor(Math.random() * 60) + 20;
+
+    setFloatingHearts(prev => [...prev, { id: heartId, x: randomX, emoji: randomEmoji }]);
+    setTimeout(() => {
+      setFloatingHearts(prev => prev.filter(h => h.id !== heartId));
+    }, 2400);
+
+    try {
+      confetti({
+        particleCount: 25,
+        spread: 55,
+        origin: { y: 0.8 },
+        colors: ['#FF2E93', '#FF147E', '#E11D48'],
+      });
+    } catch (e) {}
+
+    showNotification(`You sent a heart to ${partner.FirstName}! 💕`, 'pink');
+
+    try {
+      await fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/reaction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.UserID,
+          userName: currentUser.FirstName,
+          partnerId: partner.UserID,
+        }),
+      });
+    } catch (e) {
+      console.warn('Failed to send heart reaction:', e);
+    } finally {
+      setTimeout(() => setIsSendingHeart(false), 800);
+    }
+  };
+
+  // Poll for partner's heart reactions every 2.5 seconds during live video call
+  useEffect(() => {
+    if (stage !== 'call' || !isEligible) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/reactions?userId=${currentUser.UserID}&partnerId=${partner.UserID}&since=${Date.now() - 4000}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.reactions)) {
+            for (const rx of data.reactions) {
+              if (rx.senderId !== currentUser.UserID && rx.id !== lastHeartIdRef.current) {
+                lastHeartIdRef.current = rx.id;
+                const emojis = ['❤️', '💖', '💕', '💓', '💗'];
+                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                const randomX = Math.floor(Math.random() * 60) + 20;
+
+                setFloatingHearts(prev => [...prev, { id: rx.id, x: randomX, emoji: randomEmoji }]);
+                setTimeout(() => {
+                  setFloatingHearts(prev => prev.filter(h => h.id !== rx.id));
+                }, 2400);
+
+                showNotification(`${partner.FirstName} sent you a heart! 💕`, 'pink');
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }, 2500);
+
+    return () => clearInterval(pollInterval);
+  }, [stage, isEligible, activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner.UserID, partner.FirstName, showNotification]);
 
   // Waiting room matchmaking pulse
   useEffect(() => {
@@ -406,14 +671,36 @@ export const LiveRoundScreen: React.FC = () => {
 
   const enterBreakStage = () => {
     const breakStart = Date.now();
+    setLiveKitToken(null);
     setStage('break');
+    setTimeLeft(0);
     setBreakTimeLeft(defaultBreak);
+
+    if (serverRoundRef.current) {
+      serverRoundRef.current.status = 'break';
+      serverRoundRef.current.breakStartedAt = breakStart;
+      serverRoundRef.current.breakExpiresAt = breakStart + defaultBreak * 1000;
+    }
+
     saveLiveSession({
       stage: 'break',
       breakStartedAt: breakStart,
       lastActive: breakStart,
+      mode: appMode,
     });
-    showNotification('5-minute round finished! Cast your secret vote & take a 2-minute break.', 'pink');
+
+    fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/timer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: currentUser.UserID,
+        partnerId: partner?.UserID || '',
+        action: 'end_round',
+        mode: appMode,
+      }),
+    }).catch(() => {});
+
+    showNotification('5-minute round concluded! Video date ended. Please cast your confidential vote.', 'pink');
   };
 
   const handleDecision = (decision: 'like' | 'pass') => {
@@ -541,11 +828,23 @@ export const LiveRoundScreen: React.FC = () => {
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
       {/* Top Banner Notice */}
-      <div className="px-4 py-2.5 rounded-2xl bg-[#FFF0F3] border border-pink-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-700">
+      <div className={`px-4 py-2.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
+        appMode === 'demonstration'
+          ? 'bg-purple-50/80 border-purple-200 text-purple-900'
+          : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+      }`}>
         <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-[#FF2E93] shrink-0" />
+          <ShieldCheck className={`w-4 h-4 shrink-0 ${appMode === 'demonstration' ? 'text-purple-600' : 'text-emerald-600'}`} />
           <span>
-            <strong>Working Demonstration Sandbox:</strong> Real video signaling is in simulation mode. 5-min rounds, private secret ballots, 2-min breaks, and consent-based Next Date operate in real time.
+            {appMode === 'demonstration' ? (
+              <>
+                <strong>Simulated Demonstration Sandbox:</strong> Real video signaling is in simulation mode. 5-min rounds, private secret ballots, 2-min breaks, and consent-based Next Date operate in real time with simulated partner audio.
+              </>
+            ) : (
+              <>
+                <strong>Live Production Speed Dating:</strong> Real consenting members connected via LiveKit WebRTC SFU. End-to-end encrypted video, 5-min speed date rounds, and mutual consent Next Date matching.
+              </>
+            )}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -599,22 +898,35 @@ export const LiveRoundScreen: React.FC = () => {
               </div>
             </div>
 
-            {/* Countdown Clock */}
-            <div className="flex items-center gap-3">
+            {/* Countdown Clock & Live Reaction Controls */}
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <div
-                className={`flex items-center gap-2 px-4 py-2 rounded-2xl border font-mono font-bold text-base sm:text-lg transition-colors ${
+                className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl border font-mono font-black text-base sm:text-lg transition-colors shadow-2xs ${
                   timeLeft < 60
                     ? 'bg-rose-50 border-rose-300 text-rose-600 animate-pulse'
                     : 'bg-pink-50 border-pink-200 text-[#FF2E93]'
                 }`}
+                title="Shared server-authoritative 5-minute round timer"
               >
-                <Clock className="w-4 h-4" />
-                <span>{formatMinutes(timeLeft)}</span>
+                <Clock className="w-4 h-4 text-[#FF2E93]" />
+                <span className="tracking-tight">{formatMinutes(timeLeft)}</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Server Synced Timer" />
               </div>
+
+              {/* Real-time Heart Reaction Button */}
+              <button
+                onClick={sendHeartReaction}
+                disabled={isSendingHeart}
+                className="px-3 sm:px-4 py-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-pink-500/25 active:scale-95 transition-all cursor-pointer"
+                title="Send a real-time heart reaction to express interest non-verbally"
+              >
+                <Heart className="w-4 h-4 fill-white" />
+                <span className="hidden sm:inline">Send Heart</span>
+              </button>
 
               <button
                 onClick={enterBreakStage}
-                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-pink-50 border border-slate-200 hover:border-pink-200 text-xs font-bold text-slate-700 hover:text-[#FF2E93] transition-colors cursor-pointer"
+                className="px-3 sm:px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-pink-50 border border-slate-200 hover:border-pink-200 text-xs font-bold text-slate-700 hover:text-[#FF2E93] transition-colors cursor-pointer"
                 title="Conclude 5-min round early to cast your ballot and take your break"
               >
                 End Round & Vote
@@ -625,148 +937,244 @@ export const LiveRoundScreen: React.FC = () => {
           {/* Main 2-Up Video Room */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             {/* Left 8 Cols: Video Stage */}
-            <div className="lg:col-span-8 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                
-                {/* Partner Screen (Simulated WebRTC) */}
-                <div className="relative aspect-4/3 rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-lg flex flex-col justify-between p-4 group">
-                  {/* Subtle video background gradient animation */}
-                  <div className="absolute inset-0 bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-800 opacity-90" />
-                  <div
-                    className="absolute inset-0 opacity-20 bg-cover bg-center blur-sm"
-                    style={{ backgroundColor: partner.AvatarColor }}
-                  />
+            <div className="lg:col-span-8 space-y-4 relative">
+              {/* Real-time floating hearts overlay */}
+              {floatingHearts.length > 0 && (
+                <div className="pointer-events-none absolute inset-0 overflow-hidden z-50">
+                  {floatingHearts.map(h => (
+                    <div
+                      key={h.id}
+                      className="absolute bottom-16 animate-float-heart select-none text-4xl drop-shadow-lg"
+                      style={{ left: `${h.x}%` }}
+                    >
+                      {h.emoji}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {appMode === 'production' && liveKitToken && liveKitServerUrl ? (
+                <LiveKitVideoStage
+                  token={liveKitToken}
+                  serverUrl={liveKitServerUrl}
+                  partner={partner}
+                  currentUser={currentUser}
+                  cameraOn={cameraOn}
+                  micOn={micOn}
+                  onDisconnect={handleLiveKitDisconnect}
+                  onError={handleLiveKitError}
+                  onReconnectRequest={fetchLiveKitRoomToken}
+                  onToggleMic={() => setMicOn(prev => !prev)}
+                  onToggleCamera={() => setCameraOn(prev => !prev)}
+                  onReportPartner={() => setReportModalTarget(partner)}
+                  appMode={appMode}
+                />
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Partner Screen (Simulated WebRTC or Connection Standby) */}
+                  <div className="relative aspect-4/3 rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-lg flex flex-col justify-between p-4 group">
+                    <div className="absolute inset-0 bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-800 opacity-90" />
+                    <div
+                      className="absolute inset-0 opacity-20 bg-cover bg-center blur-sm"
+                      style={{ backgroundColor: partner.AvatarColor }}
+                    />
 
-                  {/* Top dater tag */}
-                  <div className="relative z-10 flex items-center justify-between">
-                    <div className="flex items-center gap-2 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs border border-white/10">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                      <span className="font-bold">
-                        {appMode === 'demonstration' ? 'Simulated Partner: ' : 'Consenting Member: '}
-                        {partner.FirstName}, {partner.Age}
-                      </span>
-                      <span className="text-slate-400 text-[10px]">· {partner.Location.split(',')[0]}</span>
+                    {/* Top dater tag */}
+                    <div className="relative z-10 flex items-center justify-between">
+                      <div className="flex items-center gap-2 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs border border-white/10">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                        <span className="font-bold">
+                          {appMode === 'demonstration' ? 'Simulated Partner: ' : 'Consenting Member: '}
+                          {partner.FirstName}, {partner.Age}
+                        </span>
+                        <span className="text-slate-400 text-[10px]">· {partner.Location.split(',')[0]}</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {appMode === 'demonstration' && (
+                          <button
+                            onClick={handleSimulatePartnerUnavailable}
+                            className="text-[10px] bg-slate-800/80 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full border border-white/10 cursor-pointer"
+                            title="Simulate partner dropped / unavailable to test graceful recovery"
+                          >
+                            Simulate Drop
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setReportModalTarget(partner)}
+                          className="p-1.5 rounded-full bg-slate-900/80 hover:bg-rose-900/60 text-slate-300 hover:text-rose-300 transition-colors"
+                          title="Report partner"
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      {appMode === 'demonstration' && (
-                        <button
-                          onClick={handleSimulatePartnerUnavailable}
-                          className="text-[10px] bg-slate-800/80 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full border border-white/10 cursor-pointer"
-                          title="Simulate partner dropped / unavailable to test graceful recovery"
-                        >
-                          Simulate Drop
-                        </button>
+                    {/* Center Avatar & Status */}
+                    <div className="relative z-10 flex flex-col items-center justify-center space-y-3 my-auto">
+                      <Avatar user={partner} size="xl" showBadge />
+                      <div className="text-center">
+                        <p className="text-white font-bold text-sm">{partner.FirstName}, {partner.Age}</p>
+                        <p className="text-pink-300 text-xs italic">{partner.Occupation}</p>
+                      </div>
+
+                      {appMode === 'production' ? (
+                        <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-pink-500/30 text-white text-xs max-w-xs text-center space-y-2">
+                          <div className="font-bold flex items-center justify-center gap-1.5 text-pink-400 text-[11px]">
+                            <Radio className="w-3.5 h-3.5 animate-pulse text-[#FF2E93]" />
+                            <span>
+                              {isRequestingToken
+                                ? 'Connecting to LiveKit SFU...'
+                                : liveKitError
+                                ? 'LiveKit Token Standby'
+                                : 'Ready to Connect LiveKit'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-300 space-y-1 text-left bg-slate-900/80 p-2 rounded-xl border border-white/10">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Endpoint:</span>
+                              <span className="font-mono text-pink-300">/api/livekit/token</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Mutual Consent:</span>
+                              <span className="text-emerald-400 font-bold">Enforced (Next Date)</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Status:</span>
+                              <span className="text-amber-400 font-bold">
+                                {liveKitError || 'Acquiring token...'}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setIsRequestingToken(true);
+                              setLiveKitError(null);
+                              fetch('/api/livekit/token', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  userId: currentUser.UserID,
+                                  userName: currentUser.FirstName,
+                                  userAge: currentUser.Age,
+                                  tier: currentUser.SubscriptionTier,
+                                  isRegistered: true,
+                                  partnerId: partner.UserID,
+                                  partnerName: partner.FirstName,
+                                  partnerAge: partner.Age,
+                                  eventId: activeEvent.EventID,
+                                  eventDate: activeEvent.EventDate,
+                                  eventStartTime: activeEvent.EventStartTime,
+                                  eventEndTime: activeEvent.EventEndTime,
+                                  eventType: activeEvent.EventType,
+                                  roundIndex: activeRoundIndex,
+                                  userConsent: true,
+                                  partnerConsent: true,
+                                  mode: appMode,
+                                  isStagingTest: activeEvent.EventID === 'evt_staging_dev',
+                                }),
+                              })
+                                .then(r => r.json())
+                                .then(d => {
+                                  if (d.success && d.token) {
+                                    setLiveKitToken(d.token);
+                                    setLiveKitServerUrl(d.liveKitUrl);
+                                  } else {
+                                    setLiveKitError(d.error || 'Waiting for mutual consent from partner.');
+                                  }
+                                })
+                                .catch(() => setLiveKitError('Connection check failed.'))
+                                .finally(() => setIsRequestingToken(false));
+                            }}
+                            className="w-full py-1.5 rounded-lg btn-pink-gradient font-bold text-[10px] cursor-pointer"
+                          >
+                            Connect / Retry LiveKit Video
+                          </button>
+                        </div>
+                      ) : (
+                        /* Simulated Voice Waveform */
+                        <div className="flex items-center gap-1 pt-1">
+                          <span className="w-1 h-3 bg-pink-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                          <span className="w-1 h-5 bg-[#FF2E93] rounded-full animate-bounce [animation-delay:-0.15s]" />
+                          <span className="w-1 h-2 bg-pink-400 rounded-full animate-bounce [animation-delay:-0.4s]" />
+                          <span className="w-1 h-4 bg-[#FF2E93] rounded-full animate-bounce" />
+                        </div>
                       )}
-                      <button
-                        onClick={() => setReportModalTarget(partner)}
-                        className="p-1.5 rounded-full bg-slate-900/80 hover:bg-rose-900/60 text-slate-300 hover:text-rose-300 transition-colors"
-                        title="Report partner"
-                      >
-                        <ShieldAlert className="w-3.5 h-3.5" />
-                      </button>
+                    </div>
+
+                    {/* Bottom bar */}
+                    <div className="relative z-10 flex items-center justify-between text-xs text-slate-300">
+                      <span className="bg-black/50 px-2.5 py-1 rounded-xl backdrop-blur-xs text-[11px]">
+                        {appMode === 'production'
+                          ? liveKitToken
+                            ? 'LiveKit SFU: Streaming Active'
+                            : 'LiveKit SFU: Ready (Standby)'
+                          : 'Partner Audio: Simulated Active'}
+                      </span>
+                      <span className={`text-[10px] font-mono ${appMode === 'production' ? 'text-pink-400' : 'text-emerald-400'}`}>
+                        {appMode === 'production' ? 'LiveKit Gateway' : 'HD Simulation · 60fps'}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Center Avatar & Status */}
-                  <div className="relative z-10 flex flex-col items-center justify-center space-y-3 my-auto">
-                    <Avatar user={partner} size="xl" showBadge />
-                    <div className="text-center">
-                      <p className="text-white font-bold text-sm">{partner.Occupation}</p>
-                      <p className="text-pink-300 text-xs italic">Looking for: {partner.Preferences.intent}</p>
-                    </div>
-
-                    {appMode === 'production' ? (
-                      <div className="p-3 rounded-2xl bg-amber-950/80 border border-amber-500/30 text-amber-200 text-xs max-w-xs text-center space-y-1">
-                        <div className="font-bold flex items-center justify-center gap-1 text-amber-300 text-[11px]">
-                          <AlertCircle className="w-3.5 h-3.5" />
-                          Live Video Infrastructure Offline
-                        </div>
-                        <p className="text-[10px] text-amber-200/80 leading-relaxed">
-                          Requires a certified WebRTC SFU streaming provider (LiveKit Cloud, Twilio Video, or Agora RTC). Live peer video stream will become operational once credentials are connected.
-                        </p>
-                      </div>
+                  {/* Self Screen (Live Camera Mirror or Avatar) */}
+                  <div className="relative aspect-4/3 rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-lg flex flex-col justify-between p-4">
+                    {cameraOn ? (
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="absolute inset-0 w-full h-full object-cover transform -scale-x-100"
+                      />
                     ) : (
-                      /* Simulated Voice Waveform */
-                      <div className="flex items-center gap-1 pt-1">
-                        <span className="w-1 h-3 bg-pink-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                        <span className="w-1 h-5 bg-[#FF2E93] rounded-full animate-bounce [animation-delay:-0.15s]" />
-                        <span className="w-1 h-2 bg-pink-400 rounded-full animate-bounce [animation-delay:-0.4s]" />
-                        <span className="w-1 h-4 bg-[#FF2E93] rounded-full animate-bounce" />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
+                        <Avatar user={currentUser} size="xl" />
+                        <p className="text-slate-400 text-xs mt-3">Camera is turned off</p>
                       </div>
                     )}
-                  </div>
 
-                  {/* Bottom bar */}
-                  <div className="relative z-10 flex items-center justify-between text-xs text-slate-300">
-                    <span className="bg-black/50 px-2.5 py-1 rounded-xl backdrop-blur-xs text-[11px]">
-                      {appMode === 'production' ? 'Audio Stream: Awaiting SFU' : 'Partner Audio: Simulated Active'}
-                    </span>
-                    <span className={`text-[10px] font-mono ${appMode === 'production' ? 'text-amber-400' : 'text-emerald-400'}`}>
-                      {appMode === 'production' ? 'Production Mode' : 'HD Simulation · 60fps'}
-                    </span>
+                    {/* Self header overlay */}
+                    <div className="relative z-10 flex items-center justify-between">
+                      <div className="flex items-center gap-2 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs border border-white/10">
+                        <span className="font-bold">You ({currentUser.FirstName})</span>
+                        <span className="text-[10px] text-pink-300">Local Camera Preview</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setMicOn(prev => !prev)}
+                          className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                            micOn ? 'bg-slate-900/80 text-white hover:bg-slate-800' : 'bg-rose-600 text-white'
+                          }`}
+                          title={micOn ? 'Mute Microphone' : 'Unmute Microphone'}
+                        >
+                          {micOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+                        </button>
+
+                        <button
+                          onClick={() => setCameraOn(prev => !prev)}
+                          className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                            cameraOn ? 'bg-slate-900/80 text-white hover:bg-slate-800' : 'bg-rose-600 text-white'
+                          }`}
+                          title={cameraOn ? 'Turn Camera Off' : 'Turn Camera On'}
+                        >
+                          {cameraOn ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Self bottom info */}
+                    <div className="relative z-10 flex items-center justify-between text-[11px] text-slate-300">
+                      <span className="bg-black/50 px-2.5 py-1 rounded-xl backdrop-blur-xs">
+                        Self Mirror View
+                      </span>
+                      <span className="bg-black/50 px-2.5 py-1 rounded-xl backdrop-blur-xs font-mono text-[#FF2E93]">
+                        Tier: {currentUser.SubscriptionTier}
+                      </span>
+                    </div>
                   </div>
                 </div>
-
-                {/* Self Screen (Live Camera Mirror or Avatar) */}
-                <div className="relative aspect-4/3 rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-lg flex flex-col justify-between p-4">
-                  {cameraOn ? (
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="absolute inset-0 w-full h-full object-cover transform -scale-x-100"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
-                      <Avatar user={currentUser} size="xl" />
-                      <p className="text-slate-400 text-xs mt-3">Camera is turned off</p>
-                    </div>
-                  )}
-
-                  {/* Self header overlay */}
-                  <div className="relative z-10 flex items-center justify-between">
-                    <div className="flex items-center gap-2 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs border border-white/10">
-                      <span className="font-bold">You ({currentUser.FirstName})</span>
-                      <span className="text-[10px] text-pink-300">You are live</span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => setMicOn(prev => !prev)}
-                        className={`p-1.5 rounded-full transition-colors ${
-                          micOn ? 'bg-slate-900/80 text-white hover:bg-slate-800' : 'bg-rose-600 text-white'
-                        }`}
-                        title={micOn ? 'Mute Microphone' : 'Unmute Microphone'}
-                      >
-                        {micOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
-                      </button>
-
-                      <button
-                        onClick={() => setCameraOn(prev => !prev)}
-                        className={`p-1.5 rounded-full transition-colors ${
-                          cameraOn ? 'bg-slate-900/80 text-white hover:bg-slate-800' : 'bg-rose-600 text-white'
-                        }`}
-                        title={cameraOn ? 'Turn Camera Off' : 'Turn Camera On'}
-                      >
-                        {cameraOn ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Self bottom info */}
-                  <div className="relative z-10 flex items-center justify-between text-[11px] text-slate-300">
-                    <span className="bg-black/50 px-2.5 py-1 rounded-xl backdrop-blur-xs">
-                      Self Mirror View
-                    </span>
-                    <span className="bg-black/50 px-2.5 py-1 rounded-xl backdrop-blur-xs font-mono text-[#FF2E93]">
-                      Tier: {currentUser.SubscriptionTier}
-                    </span>
-                  </div>
-                </div>
-
-              </div>
+              )}
 
               {/* In-Call Chemistry Spark / Icebreaker prompt */}
               <div className="p-4 rounded-3xl bg-white border border-pink-100 shadow-xs flex items-center justify-between gap-4">

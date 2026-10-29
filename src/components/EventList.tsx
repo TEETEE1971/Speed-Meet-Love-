@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { EventsTableInspector } from './EventsTableInspector';
+import { RainbowHeart } from './RainbowHeart';
 
 export const EventList: React.FC = () => {
   const {
@@ -45,6 +46,8 @@ export const EventList: React.FC = () => {
     toggleSimulateLiveEvent,
     simulatedLiveEvents,
     serverTimeFormattedET,
+    setAppMode,
+    clearLiveSession,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'cards' | 'table'>('cards');
@@ -189,7 +192,9 @@ export const EventList: React.FC = () => {
             {isEligibleForSpeedDating ? (
               <button
                 onClick={() => {
-                  const regLive = events.find(e => e.ParticipantsList.includes(currentUser.UserID) && e.EventStatus === 'Live');
+                  const regLive = events.find(
+                    e => e.ParticipantsList.includes(currentUser.UserID) && e.EventStatus === 'Live'
+                  );
                   const regUpcoming = events.find(e => e.ParticipantsList.includes(currentUser.UserID));
                   if (regLive) {
                     setSelectedEventId(regLive.EventID);
@@ -198,7 +203,14 @@ export const EventList: React.FC = () => {
                     setSelectedEventId(regUpcoming.EventID);
                     setCurrentView('lobby');
                   } else {
-                    showNotification('Please register for Friday, Saturday, or Sunday below to join a live session!', 'info');
+                    // Navigate directly to the next session waiting room so they can register and participate
+                    const targetEvent =
+                      events.find(e => e.EventID === 'evt_staging_dev') ||
+                      events.find(e => e.DayOfWeek === 'Friday') ||
+                      events[0];
+                    setSelectedEventId(targetEvent.EventID);
+                    setCurrentView('lobby');
+                    showNotification(`Welcome to ${targetEvent.EventName}! Tap Register to enter the Waiting Room.`, 'info');
                   }
                 }}
                 className="px-6 py-3 rounded-2xl btn-pink-gradient font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-pink-500/20 cursor-pointer"
@@ -263,6 +275,48 @@ export const EventList: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* DEVELOPER 2-PERSON LIVEKIT STAGING TEST (Restricted to Authorized Accounts) */}
+      {['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(currentUser.UserID) && (
+        <div className="p-5 rounded-3xl bg-slate-900 border border-pink-500/30 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-pink-500/20 border border-pink-500/30 flex items-center justify-center text-[#FF2E93] shrink-0">
+              <Radio className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-sm sm:text-base font-heading text-white">
+                  Developer 2-Person LiveKit Staging Test
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
+                  Authorized Accounts Only
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
+                Server-authenticated staging room. Connect two real devices (e.g. Kristy on phone 1 and Marcus on phone 2) to test two-way LiveKit WebRTC video and audio now without waiting until Friday at 7:00 PM.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+            <button
+              onClick={() => {
+                if (appMode !== 'production') {
+                  setAppMode('production');
+                }
+                clearLiveSession();
+                registerForEvent('evt_staging_dev');
+                setSelectedEventId('evt_staging_dev');
+                setCurrentView('lobby');
+                showNotification('Developer Staging Test initialized! Waiting Room open. Tap "Begin Matchmaking (I\'m Ready)" to connect.', 'pink');
+              }}
+              className="px-5 py-2.5 rounded-xl btn-pink-gradient font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
+            >
+              <Radio className="w-3.5 h-3.5" />
+              <span>Launch 2-Person Test</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MULTI-NIGHT REGISTRATION SELECTOR */}
       <div className="p-6 rounded-3xl bg-white border border-pink-100 shadow-xs space-y-4">
@@ -409,14 +463,17 @@ export const EventList: React.FC = () => {
             const isFull = evt.ParticipantsList.length >= evt.MaxParticipants;
             const isLive = isEventLive(evt);
             const isSimulated = simulatedLiveEvents.includes(evt.EventID);
+            const isLGBTQ = evt.EventType === 'LGBTQ+';
 
             return (
               <div
                 key={evt.EventID}
-                className={`rounded-3xl bg-white border flex flex-col justify-between overflow-hidden shadow-xs transition-all hover:shadow-md ${
+                className={`rounded-3xl bg-white border-2 flex flex-col justify-between overflow-hidden shadow-md transition-all hover:shadow-xl ${
                   isLive
-                    ? 'border-pink-300 ring-2 ring-pink-400/20'
-                    : 'border-pink-100'
+                    ? 'border-red-500 ring-2 ring-red-400/30'
+                    : isLGBTQ
+                    ? 'border-purple-200 hover:border-purple-400'
+                    : 'border-rose-100 hover:border-red-300'
                 }`}
               >
                 <div className="p-6 space-y-4">
@@ -424,30 +481,31 @@ export const EventList: React.FC = () => {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span
-                        className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                        className={`text-[11px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                           isLive
-                            ? 'bg-pink-100 text-[#FF2E93] animate-pulse'
-                            : 'bg-slate-100 text-slate-700'
+                            ? 'bg-red-600 text-white animate-pulse'
+                            : 'bg-slate-100 text-slate-800'
                         }`}
                       >
                         {isLive ? (isSimulated ? '● Live (Demo Simulated)' : '● Live Now') : 'Upcoming'}
                       </span>
-                      <span className="text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-pink-50 text-[#FF2E93] border border-pink-100 font-heading">
+                      <span className="text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-rose-50 text-red-600 border border-rose-200 font-heading">
                         {evt.DayOfWeek}
                       </span>
-                      {evt.EventType === '30 & Older' && (
-                        <span className="text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-heading">
-                          30 & Older
+                      {evt.EventType === 'LGBTQ+' ? (
+                        <span className="text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-gradient-to-r from-red-500/10 via-emerald-500/10 to-purple-500/10 text-purple-900 border border-purple-200 font-heading flex items-center gap-1">
+                          <RainbowHeart size={14} />
+                          <span>LGBTQ+</span>
                         </span>
-                      )}
-                      {evt.EventType === 'LGBTQ+' && (
-                        <span className="text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200 font-heading">
-                          LGBTQ+
+                      ) : (
+                        <span className="text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-rose-50 text-red-600 border border-rose-200 font-heading flex items-center gap-1">
+                          <Heart className="w-3 h-3 fill-red-600 text-red-600" />
+                          <span>{evt.EventType}</span>
                         </span>
                       )}
                     </div>
 
-                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1 font-bold">
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-1 font-black">
                       <Crown className="w-3 h-3 text-amber-600" />
                       Premium Plus
                     </span>
@@ -572,17 +630,33 @@ export const EventList: React.FC = () => {
                     </div>
                   ) : (
                     <div className="w-full space-y-1.5">
-                      <button
-                        disabled={isFull}
-                        onClick={() => handleRegisterSingle(evt)}
-                        className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                          isFull
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            : 'btn-pink-gradient text-white shadow-xs'
-                        }`}
-                      >
-                        {isFull ? 'Event Full' : `Register for ${evt.DayOfWeek} 7 PM`}
-                      </button>
+                      {isLGBTQ ? (
+                        <button
+                          disabled={isFull}
+                          onClick={() => handleRegisterSingle(evt)}
+                          className={`w-full py-3 rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                            isFull
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                              : 'btn-glossy-rainbow text-white shadow-md'
+                          }`}
+                        >
+                          <RainbowHeart size={16} />
+                          <span>{isFull ? 'Event Full' : 'RSVP for LGBTQ+ Mixer'}</span>
+                        </button>
+                      ) : (
+                        <button
+                          disabled={isFull}
+                          onClick={() => handleRegisterSingle(evt)}
+                          className={`w-full py-3 rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                            isFull
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                              : 'btn-glossy-red-pink text-white shadow-xs'
+                          }`}
+                        >
+                          <Heart className="w-4 h-4 fill-white text-white" />
+                          <span>{isFull ? 'Event Full' : `Register for ${evt.DayOfWeek} 7 PM`}</span>
+                        </button>
+                      )}
                       {(evt.EventType === '30 & Older' || evt.MinAge >= 30) && (!currentUser.Age || currentUser.Age < 30) && (
                         <p className="text-[10px] text-amber-700 text-center font-medium">
                           Requires Age 30+ (Your profile: age {currentUser.Age || 'Not set'})

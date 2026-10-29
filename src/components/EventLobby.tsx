@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Camera,
@@ -40,16 +40,22 @@ export const EventLobby: React.FC = () => {
     toggleSimulateLiveEvent,
     simulatedLiveEvents,
     serverTimeFormattedET,
+    registerForEvent,
+    showNotification,
   } = useApp();
 
   const isEligible = canAccessLiveSpeedDating(currentUser);
   const activeEvent = events.find(e => e.EventID === selectedEventId) || events[0];
   const isRegistered = activeEvent.ParticipantsList.includes(currentUser.UserID);
+  const isStagingEvent = activeEvent.EventID === 'evt_staging_dev';
+  const isAuthorizedStagingUser = ['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(currentUser.UserID);
 
   const hasActiveSession = Boolean(
     liveSession &&
+    (!liveSession.mode || liveSession.mode === appMode) &&
     liveSession.eventId === activeEvent.EventID &&
-    liveSession.userId === currentUser.UserID
+    liveSession.userId === currentUser.UserID &&
+    !isStagingEvent // Developer staging always displays Begin Matchmaking to initiate fresh LiveKit test
   );
 
   const isLive = isEventLive(activeEvent);
@@ -79,32 +85,68 @@ export const EventLobby: React.FC = () => {
   const [hasCamera, setHasCamera] = useState(false);
   const [cameraActive, setCameraActive] = useState(true);
   const [micActive, setMicActive] = useState(true);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isRequestingCamera, setIsRequestingCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  useEffect(() => {
-    let active = true;
-
-    async function initCamera() {
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 640, height: 480 },
-            audio: false,
-          });
-          if (active && videoRef.current) {
-            videoRef.current.srcObject = stream;
-            streamRef.current = stream;
-            setHasCamera(true);
-          }
-        }
-      } catch (err: any) {
-        setHasCamera(false);
-      }
+  const startLocalPreview = useCallback(async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraError('Camera is not supported on this browser or requires a secure HTTPS connection.');
+      setHasCamera(false);
+      return;
     }
 
+    setIsRequestingCamera(true);
+    setCameraError(null);
+
+    // Stop existing stream if any
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+
+    try {
+      let stream: MediaStream;
+      try {
+        // Preferred selfie camera
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+      } catch (err1) {
+        // Fallback to basic video constraint
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+
+      streamRef.current = stream;
+      setHasCamera(true);
+      setCameraError(null);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.playsInline = true;
+        videoRef.current.muted = true;
+        videoRef.current.play().catch(e => console.warn('Preview play warning:', e));
+      }
+    } catch (err: any) {
+      console.warn('Lobby camera preview error:', err);
+      setHasCamera(false);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraError('Camera permission was blocked. Please tap the lock/settings icon in your browser address bar to allow camera access.');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setCameraError('Camera is currently in use by another app. Please close other camera tabs and retry.');
+      } else {
+        setCameraError(err.message || 'Unable to access your camera. Please check your camera settings.');
+      }
+    } finally {
+      setIsRequestingCamera(false);
+    }
+  }, []);
+
+  useEffect(() => {
     if (cameraActive) {
-      initCamera();
+      startLocalPreview();
     } else {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
@@ -114,12 +156,22 @@ export const EventLobby: React.FC = () => {
     }
 
     return () => {
-      active = false;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
       }
     };
-  }, [cameraActive]);
+  }, [cameraActive, startLocalPreview]);
+
+  // Synchronize stream directly to video element whenever camera becomes ready
+  useEffect(() => {
+    if (videoRef.current && streamRef.current && hasCamera && cameraActive) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.playsInline = true;
+      videoRef.current.muted = true;
+      videoRef.current.play().catch(e => console.warn('Lobby preview play warning:', e));
+    }
+  }, [hasCamera, cameraActive]);
 
   // In production mode, show only real registered daters; in demo, show category-curated participants
   const attendees = appMode === 'production'
@@ -135,7 +187,19 @@ export const EventLobby: React.FC = () => {
       setCurrentView('pricing');
       return;
     }
-    if (!activeEvent.RoundsGenerated) {
+    if (isStagingEvent && !isAuthorizedStagingUser) {
+      showNotification('Access denied: Developer Staging Test is strictly restricted to authorized test accounts.', 'info');
+      return;
+    }
+    // Release preview stream so Android/iOS hardware camera is completely free for the call
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (!isRegistered) {
+      registerForEvent(activeEvent.EventID);
+    }
+    if (isStagingEvent || !activeEvent.RoundsGenerated) {
       generateRoundsForEvent(activeEvent.EventID);
     }
     startEventLive(activeEvent.EventID);
@@ -215,6 +279,16 @@ export const EventLobby: React.FC = () => {
                 <Crown className="w-4 h-4 fill-white" />
                 <span>Upgrade to Premium Plus ($14.99/mo)</span>
               </button>
+            ) : isStagingEvent && !isAuthorizedStagingUser ? (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-right">
+                <span className="text-xs font-bold text-amber-800 flex items-center gap-1.5 justify-end">
+                  <Lock className="w-3.5 h-3.5 text-amber-600" />
+                  Authorized Test Accounts Only
+                </span>
+                <p className="text-[10px] text-amber-700 mt-0.5">
+                  Restricted to Kristy, Marcus, and verified developer staging accounts.
+                </p>
+              </div>
             ) : hasActiveSession ? (
               <button
                 onClick={() => setCurrentView('live')}
@@ -223,6 +297,22 @@ export const EventLobby: React.FC = () => {
                 <Play className="w-4 h-4 fill-white" />
                 <span>Resume Active Date (Round {(liveSession?.roundIndex ?? 0) + 1})</span>
               </button>
+            ) : !isRegistered && !isLive ? (
+              <div className="space-y-1 text-right">
+                <button
+                  onClick={() => {
+                    const res = registerForEvent(activeEvent.EventID);
+                    showNotification(res.message, res.success ? 'success' : 'info');
+                  }}
+                  className="px-6 py-3 rounded-2xl btn-pink-gradient font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-pink-500/25 cursor-pointer hover:scale-[1.01] transition-transform"
+                >
+                  <Sparkles className="w-4 h-4 fill-white" />
+                  <span>Register for Event (Free with Plus)</span>
+                </button>
+                <p className="text-[10px] text-slate-400 text-center">
+                  Included with your Premium Plus membership
+                </p>
+              </div>
             ) : isLive ? (
               <div className="space-y-1 text-right">
                 <button
@@ -233,7 +323,9 @@ export const EventLobby: React.FC = () => {
                   <span>Begin Matchmaking (I'm Ready)</span>
                 </button>
                 <p className="text-[10px] text-slate-400 text-center">
-                  Explicit consent required · Calls never launch automatically
+                  {isStagingEvent
+                    ? '2-Person LiveKit WebRTC Test · Connects directly to test partner'
+                    : 'Explicit consent required · Calls never launch automatically'}
                 </p>
               </div>
             ) : (
@@ -243,7 +335,7 @@ export const EventLobby: React.FC = () => {
                   className="px-6 py-3 rounded-2xl bg-slate-100 text-slate-400 border border-slate-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-not-allowed"
                 >
                   <Lock className="w-4 h-4" />
-                  <span>Waiting for 7:00 PM ET Start</span>
+                  <span>Registered · Waiting for 7:00 PM ET Start</span>
                 </button>
                 {appMode === 'demonstration' && (
                   <button
@@ -316,41 +408,85 @@ export const EventLobby: React.FC = () => {
 
             {/* Video Box */}
             <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center">
-              {hasCamera && cameraActive ? (
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover scale-x-[-1]"
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center text-center p-6 space-y-3">
-                  <div
-                    className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold shadow-lg text-white"
-                    style={{
-                      background: `linear-gradient(135deg, ${currentUser.AvatarColor || '#FF2E93'}, #E11D48)`,
-                    }}
-                  >
-                    {currentUser.FirstName[0]}
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-white">
-                      {currentUser.FirstName} {currentUser.LastName}
+              {/* Permanently mounted video element so videoRef.current is never null on mobile */}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${
+                  hasCamera && cameraActive ? 'opacity-100 block' : 'opacity-0 hidden'
+                }`}
+              />
+
+              {/* Status and Avatar Overlay when camera is off, loading, or has error */}
+              {(!hasCamera || !cameraActive) && (
+                <div className="flex flex-col items-center justify-center text-center p-6 space-y-3 z-10 w-full max-w-sm">
+                  {cameraError ? (
+                    <div className="space-y-3 px-4">
+                      <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
+                        <CameraOff className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-white">Camera Check</div>
+                        <p className="text-xs text-rose-300 mt-1 leading-relaxed">{cameraError}</p>
+                      </div>
+                      <button
+                        onClick={startLocalPreview}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white text-xs font-bold shadow-md cursor-pointer transition-transform active:scale-95"
+                      >
+                        Grant / Retry Camera
+                      </button>
                     </div>
-                    <div className="text-xs text-slate-400">
-                      {cameraActive ? 'Camera Connected' : 'Camera Muted'}
+                  ) : isRequestingCamera ? (
+                    <div className="space-y-3">
+                      <div className="w-8 h-8 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                      <p className="text-xs text-slate-300 font-medium">Starting local camera preview...</p>
                     </div>
-                  </div>
-                  <div className="text-[11px] text-slate-400 max-w-xs">
-                    Each speed date lasts 5 minutes with optional icebreakers and a comfortable 2-minute break between dates.
-                  </div>
+                  ) : (
+                    <>
+                      <div
+                        className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold shadow-lg text-white"
+                        style={{
+                          background: `linear-gradient(135deg, ${currentUser.AvatarColor || '#FF2E93'}, #E11D48)`,
+                        }}
+                      >
+                        {currentUser.FirstName[0]}
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-white">
+                          {currentUser.FirstName} {currentUser.LastName}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {cameraActive ? 'Camera Connected' : 'Camera Muted'}
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-slate-400 max-w-xs">
+                        Each speed date lasts 5 minutes with optional icebreakers and a comfortable 2-minute break between dates.
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
-              <div className="absolute bottom-3 inset-x-0 flex items-center justify-center gap-3">
+              {/* Active Camera Live Badge */}
+              {hasCamera && cameraActive && (
+                <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur-md text-emerald-400 text-[11px] border border-emerald-500/30 z-10">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Self Camera Active</span>
+                </div>
+              )}
+
+              <div className="absolute bottom-3 inset-x-0 flex items-center justify-center gap-3 z-20">
                 <button
-                  onClick={() => setCameraActive(prev => !prev)}
+                  onClick={() => {
+                    if (!cameraActive) {
+                      setCameraActive(true);
+                      startLocalPreview();
+                    } else {
+                      setCameraActive(false);
+                    }
+                  }}
                   className={`p-3 rounded-full backdrop-blur-md border transition-all cursor-pointer ${
                     cameraActive
                       ? 'bg-white/90 border-slate-200 text-slate-800 hover:bg-white'
@@ -380,10 +516,10 @@ export const EventLobby: React.FC = () => {
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-1.5 text-xs text-amber-900">
                 <div className="font-bold flex items-center gap-1.5 text-amber-950">
                   <AlertCircle className="w-4 h-4 text-amber-600" />
-                  Live Video Infrastructure Status: Setup Required
+                  LiveKit Video Infrastructure: Token Gateway Prepared
                 </div>
                 <p className="text-[11px] text-amber-800 leading-relaxed">
-                  Real peer-to-peer video streaming requires an authenticated WebRTC SFU infrastructure provider (e.g. LiveKit Cloud, Twilio Video, or Agora RTC). In production mode, live video calls will remain disabled until server video credentials are connected.
+                  The server-side LiveKit token endpoint is active with 6 security verifications (adult age, event registration, category isolation, mutual consent, 7:00 PM ET start, and 420s short-lived tokens). Live video calls remain held in safe standby until environment credentials are provided.
                 </p>
               </div>
             ) : (

@@ -1,42 +1,46 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, SpeedEvent, Round, Match, Message, SubscriptionTier, EventType, UserReport, AppView, LiveSessionState, AppMode } from '../types';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { User, SpeedEvent, Round, Match, Message, SubscriptionTier, EventType, UserReport, AppView, LiveSessionState, AppMode, UserPreferences, SecondDateSession } from '../types';
 import { INITIAL_USERS, INITIAL_EVENTS, INITIAL_ROUNDS, INITIAL_MATCHES, INITIAL_MESSAGES } from '../data/initialData';
 
-export type { AppView, LiveSessionState, AppMode };
+export type { AppView, LiveSessionState, AppMode, SecondDateSession };
 
 // Calculate exact epoch ms in America/New_York (handles DST automatically)
 export function getEpochMsInEasternTime(dateStr: string, timeStr = '19:00'): number {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  let epoch = Date.UTC(year, month - 1, day, hours + 5, minutes, 0, 0);
+  try {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    let epoch = Date.UTC(year, month - 1, day, hours + 5, minutes, 0, 0);
 
-  for (let iter = 0; iter < 4; iter++) {
-    const d = new Date(epoch);
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric',
-      second: 'numeric',
-      hour12: false,
-    });
-    const parts = formatter.formatToParts(d);
-    const pMap: Record<string, number> = {};
-    for (const p of parts) {
-      if (p.type !== 'literal') pMap[p.type] = Number(p.value);
+    for (let iter = 0; iter < 4; iter++) {
+      const d = new Date(epoch);
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        hour12: false,
+      });
+      const parts = formatter.formatToParts(d);
+      const pMap: Record<string, number> = {};
+      for (const p of parts) {
+        if (p.type !== 'literal') pMap[p.type] = Number(p.value);
+      }
+      const diffMinutes =
+        (pMap.year - year) * 525600 +
+        (pMap.month - month) * 43200 +
+        (pMap.day - day) * 1440 +
+        (pMap.hour - hours) * 60 +
+        (pMap.minute - minutes);
+      if (diffMinutes === 0) break;
+      epoch -= diffMinutes * 60 * 1000;
     }
-    const diffMinutes =
-      (pMap.year - year) * 525600 +
-      (pMap.month - month) * 43200 +
-      (pMap.day - day) * 1440 +
-      (pMap.hour - hours) * 60 +
-      (pMap.minute - minutes);
-    if (diffMinutes === 0) break;
-    epoch -= diffMinutes * 60 * 1000;
+    return epoch;
+  } catch (err) {
+    return Date.parse(`${dateStr}T${timeStr}:00-04:00`) || Date.now();
   }
-  return epoch;
 }
 
 interface AppContextType {
@@ -103,14 +107,68 @@ interface AppContextType {
   canAccessLiveSpeedDating: (user?: User) => boolean;
   canAccessMessaging: (match: Match) => { allowed: boolean; reason?: string };
   upgradeOtherUser: (userId: string, tier: SubscriptionTier) => void;
+  updateUserPreferences: (userId: string, prefs: Partial<UserPreferences>) => void;
   saveLiveSession: (session: Partial<LiveSessionState>) => void;
   clearLiveSession: () => void;
   syncLiveSessionFromServer: () => Promise<LiveSessionState | null>;
+  activeSecondDateSession: SecondDateSession | null;
+  setActiveSecondDateSession: (session: SecondDateSession | null) => void;
+  secondDateSessions: SecondDateSession[];
+  requestSecondDate: (
+    partnerId: string,
+    matchId?: string,
+    simulatePartnerConsent?: boolean
+  ) => Promise<{ success: boolean; session?: SecondDateSession; error?: string }>;
+  respondToSecondDate: (
+    sessionId: string,
+    action: 'accept' | 'decline' | 'save_and_chat'
+  ) => Promise<{ success: boolean; session?: SecondDateSession }>;
+  startSecondDate: (
+    sessionId: string
+  ) => Promise<{ success: boolean; session?: SecondDateSession; error?: string }>;
+  endSecondDate: (sessionId: string) => Promise<{ success: boolean }>;
+  refreshSecondDateSessions: () => Promise<SecondDateSession[]>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_KEY_PREFIX = 'sml_brand_v6_';
+
+const memoryStore: Record<string, string> = {};
+
+export const safeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem(key);
+      }
+    } catch (e) {
+      // Safari private browsing or storage access blocked
+    }
+    return memoryStore[key] ?? null;
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, value);
+      }
+    } catch (e) {
+      // Safari quota exceeded or private browsing
+    }
+    memoryStore[key] = value;
+  },
+  removeItem: (key: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(key);
+      }
+    } catch (e) {}
+    delete memoryStore[key];
+  },
+};
+
+// Module-level safe storage wrapper that prevents Safari crashes
+const localStorage = safeStorage;
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<User[]>(() => {
@@ -118,15 +176,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((u: User) => u.UserID === 'usr_kristy')) {
-          return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const updated = parsed.map((u: User) => {
+            const initialMatch = INITIAL_USERS.find(iu => iu.UserID === u.UserID);
+            return {
+              ...(initialMatch || {}),
+              ...u,
+              Age: u.UserID === 'usr_kristy' ? (u.Age && u.Age >= 18 ? u.Age : 28) : u.Age,
+              SubscriptionTier: u.UserID === 'usr_kristy' ? ('Premium Plus' as SubscriptionTier) : u.SubscriptionTier,
+              Preferences: {
+                ...(initialMatch?.Preferences || {}),
+                ...(u.Preferences || {}),
+              },
+              PrivacySettings: {
+                ...(initialMatch?.PrivacySettings || {
+                  showHeight: true,
+                  showSmoking: true,
+                  showDrinking: true,
+                  showChildren: true,
+                  shareLocation: true,
+                }),
+                ...(u.PrivacySettings || {}),
+              },
+            };
+          });
+          const existingIds = new Set(updated.map((u: User) => u.UserID));
+          const missingUsers = INITIAL_USERS.filter(iu => !existingIds.has(iu.UserID));
+          return [...updated, ...missingUsers];
         }
       } catch (e) {}
     }
     return INITIAL_USERS;
   });
 
-  const [currentUserId, setCurrentUserId] = useState<string>('usr_me');
+  const [currentUserId, setCurrentUserId] = useState<string>(() => {
+    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`);
+    if (saved) return saved;
+    return 'usr_kristy';
+  });
 
   const [events, setEvents] = useState<SpeedEvent[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}events`);
@@ -134,6 +221,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].DayOfWeek) {
+          // Always ensure new INITIAL_EVENTS (such as evt_staging_dev) are merged into cached events
+          const existingIds = new Set(parsed.map((e: SpeedEvent) => e.EventID));
+          const missing = INITIAL_EVENTS.filter(e => !existingIds.has(e.EventID));
+          if (missing.length > 0) {
+            const merged = [...parsed, ...missing];
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}events`, JSON.stringify(merged));
+            return merged;
+          }
           return parsed;
         }
       } catch (e) {}
@@ -181,56 +276,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
   });
 
-  const [currentView, setCurrentViewState] = useState<AppView>(() => {
-    const savedSession = localStorage.getItem(`${STORAGE_KEY_PREFIX}active_live_session`);
-    if (savedSession) {
-      try {
-        const parsed: LiveSessionState = JSON.parse(savedSession);
-        if (parsed.currentView === 'live') return 'live';
-      } catch (e) {}
-    }
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}currentView`);
-    return (saved as AppView) || 'browse';
-  });
-
-  const [selectedEventId, setSelectedEventIdState] = useState<string>(() => {
-    const savedSession = localStorage.getItem(`${STORAGE_KEY_PREFIX}active_live_session`);
-    if (savedSession) {
-      try {
-        const parsed: LiveSessionState = JSON.parse(savedSession);
-        if (parsed.eventId) return parsed.eventId;
-      } catch (e) {}
-    }
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}selectedEventId`);
-    return saved || 'evt_live_now';
-  });
-
-  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
-
-  const [activeRoundIndex, setActiveRoundIndexState] = useState<number>(() => {
-    const savedSession = localStorage.getItem(`${STORAGE_KEY_PREFIX}active_live_session`);
-    if (savedSession) {
-      try {
-        const parsed: LiveSessionState = JSON.parse(savedSession);
-        if (typeof parsed.roundIndex === 'number') return parsed.roundIndex;
-      } catch (e) {}
-    }
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}activeRoundIndex`);
-    return saved ? parseInt(saved, 10) : 0;
-  });
-
-  const [liveSession, setLiveSessionState] = useState<LiveSessionState | null>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}active_live_session`);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {}
-    }
-    return null;
-  });
-
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'pink' } | null>(null);
-  const [reportModalTarget, setReportModalTarget] = useState<User | null>(null);
+  // Helper: mode-scoped session key so demo sandbox and production never interfere
+  const getSessionStorageKey = (mode: AppMode, userId: string) =>
+    `${STORAGE_KEY_PREFIX}session_${mode}_${userId}`;
 
   // Application Mode: Demonstration Mode (Testing sandbox) vs Production Mode (Real consenting members)
   const [appMode, setAppModeState] = useState<AppMode>(() => {
@@ -238,9 +286,112 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return (saved as AppMode) || 'demonstration';
   });
 
+  const [currentView, setCurrentViewState] = useState<AppView>(() => {
+    const initialMode = (localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) as AppMode) || 'demonstration';
+    const initialUserId = localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`) || 'usr_kristy';
+    const savedSession = localStorage.getItem(`${STORAGE_KEY_PREFIX}session_${initialMode}_${initialUserId}`);
+    if (savedSession) {
+      try {
+        const parsed: LiveSessionState = JSON.parse(savedSession);
+        if (parsed.mode === initialMode && parsed.currentView === 'live') return 'live';
+      } catch (e) {}
+    }
+    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}currentView_${initialMode}`);
+    return (saved as AppView) || 'home';
+  });
+
+  const [selectedEventId, setSelectedEventIdState] = useState<string>(() => {
+    const initialMode = (localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) as AppMode) || 'demonstration';
+    const initialUserId = localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`) || 'usr_kristy';
+    const savedSession = localStorage.getItem(`${STORAGE_KEY_PREFIX}session_${initialMode}_${initialUserId}`);
+    if (savedSession) {
+      try {
+        const parsed: LiveSessionState = JSON.parse(savedSession);
+        if (parsed.mode === initialMode && parsed.eventId) return parsed.eventId;
+      } catch (e) {}
+    }
+    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}selectedEventId_${initialMode}`);
+    if (saved) return saved;
+    return initialMode === 'production' ? 'evt_staging_dev' : 'evt_live_now';
+  });
+
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+
+  const [activeRoundIndex, setActiveRoundIndexState] = useState<number>(() => {
+    const initialMode = (localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) as AppMode) || 'demonstration';
+    const initialUserId = localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`) || 'usr_kristy';
+    const savedSession = localStorage.getItem(`${STORAGE_KEY_PREFIX}session_${initialMode}_${initialUserId}`);
+    if (savedSession) {
+      try {
+        const parsed: LiveSessionState = JSON.parse(savedSession);
+        if (parsed.mode === initialMode && typeof parsed.roundIndex === 'number') return parsed.roundIndex;
+      } catch (e) {}
+    }
+    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}activeRoundIndex_${initialMode}`);
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  const [liveSession, setLiveSessionState] = useState<LiveSessionState | null>(() => {
+    const initialMode = (localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) as AppMode) || 'demonstration';
+    const initialUserId = localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`) || 'usr_kristy';
+    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}session_${initialMode}_${initialUserId}`);
+    if (saved) {
+      try {
+        const parsed: LiveSessionState = JSON.parse(saved);
+        if (parsed.mode === initialMode) return parsed;
+      } catch (e) {}
+    }
+    return null;
+  });
+
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'pink' } | null>(null);
+  const [reportModalTarget, setReportModalTarget] = useState<User | null>(null);
+  const [activeSecondDateSession, setActiveSecondDateSession] = useState<SecondDateSession | null>(null);
+  const [secondDateSessions, setSecondDateSessions] = useState<SecondDateSession[]>([]);
+
   const setAppMode = (mode: AppMode) => {
+    const prevMode = appMode;
     setAppModeState(mode);
     localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, mode);
+
+    // Save current liveSession to previous mode's storage
+    if (liveSession) {
+      localStorage.setItem(
+        getSessionStorageKey(prevMode, currentUserId),
+        JSON.stringify({ ...liveSession, mode: prevMode })
+      );
+    }
+
+    // Retrieve the target mode's session
+    const targetSessionRaw = localStorage.getItem(getSessionStorageKey(mode, currentUserId));
+    let targetSession: LiveSessionState | null = null;
+    if (targetSessionRaw) {
+      try {
+        const parsed = JSON.parse(targetSessionRaw);
+        if (parsed.mode === mode) {
+          targetSession = parsed;
+        }
+      } catch (e) {}
+    }
+
+    setLiveSessionState(targetSession);
+
+    // If switching to production mode, ensure we are not in an old demo date with Sarah
+    if (mode === 'production') {
+      if (selectedEventId === 'evt_live_now') {
+        setSelectedEventIdState('evt_staging_dev');
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}selectedEventId_production`, 'evt_staging_dev');
+      }
+      if (currentView === 'live' && (!targetSession || targetSession.eventId === 'evt_live_now')) {
+        setCurrentViewState('lobby');
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}currentView_production`, 'lobby');
+      }
+    } else {
+      if (selectedEventId === 'evt_staging_dev') {
+        setSelectedEventIdState('evt_live_now');
+      }
+    }
+
     showNotification(
       mode === 'demonstration'
         ? 'Switched to Demonstration Mode (Sandbox Testing).'
@@ -319,6 +470,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const isEventLive = (event: SpeedEvent): boolean => {
+    // Authorized developer staging test is available on-demand for verified test accounts
+    if (event.EventID === 'evt_staging_dev') {
+      return ['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(currentUser.UserID);
+    }
+
     const serverNow = Date.now() + serverTimeOffset;
     const startMs = getEpochMsInEasternTime(event.EventDate, event.EventStartTime || '19:00');
     const endMs = getEpochMsInEasternTime(event.EventDate, event.EventEndTime || '20:15');
@@ -394,24 +550,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setCurrentView = (view: AppView) => {
     setCurrentViewState(view);
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}currentView`, view);
-    if (liveSession) {
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}currentView_${appMode}`, view);
+    if (liveSession && liveSession.mode === appMode) {
       saveLiveSession({ currentView: view });
     }
   };
 
   const setSelectedEventId = (id: string) => {
     setSelectedEventIdState(id);
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}selectedEventId`, id);
-    if (liveSession) {
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}selectedEventId_${appMode}`, id);
+    if (liveSession && liveSession.mode === appMode) {
       saveLiveSession({ eventId: id });
     }
   };
 
   const setActiveRoundIndex = (index: number) => {
     setActiveRoundIndexState(index);
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}activeRoundIndex`, index.toString());
-    if (liveSession) {
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}activeRoundIndex_${appMode}`, index.toString());
+    if (liveSession && liveSession.mode === appMode) {
       saveLiveSession({ roundIndex: index });
     }
   };
@@ -432,6 +588,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         partnerId: '',
         currentView: 'live',
         lastActive: Date.now(),
+        mode: appMode,
       };
 
       const updated: LiveSessionState = {
@@ -439,12 +596,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...partial,
         userId: currentUser.UserID,
         lastActive: Date.now(),
+        mode: appMode,
       };
 
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}active_live_session`, JSON.stringify(updated));
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}session_${currentUser.UserID}`, JSON.stringify(updated));
+      localStorage.setItem(getSessionStorageKey(appMode, currentUser.UserID), JSON.stringify(updated));
 
-      fetch(`/api/session/${currentUser.UserID}`, {
+      fetch(`/api/session/${currentUser.UserID}?mode=${appMode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),
@@ -458,24 +615,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const clearLiveSession = () => {
     setLiveSessionState(null);
+    localStorage.removeItem(getSessionStorageKey(appMode, currentUser.UserID));
     localStorage.removeItem(`${STORAGE_KEY_PREFIX}active_live_session`);
     localStorage.removeItem(`${STORAGE_KEY_PREFIX}session_${currentUser.UserID}`);
-    fetch(`/api/session/${currentUser.UserID}`, {
+    fetch(`/api/session/${currentUser.UserID}?mode=${appMode}`, {
       method: 'DELETE',
     }).catch(() => {});
   };
 
   const syncLiveSessionFromServer = async (): Promise<LiveSessionState | null> => {
     try {
-      const res = await fetch(`/api/session/${currentUser.UserID}`);
+      const res = await fetch(`/api/session/${currentUser.UserID}?mode=${appMode}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.session) {
           const session = data.session as LiveSessionState;
-          setLiveSessionState(session);
-          localStorage.setItem(`${STORAGE_KEY_PREFIX}active_live_session`, JSON.stringify(session));
-          localStorage.setItem(`${STORAGE_KEY_PREFIX}session_${currentUser.UserID}`, JSON.stringify(session));
-          return session;
+          if (session.mode === appMode) {
+            setLiveSessionState(session);
+            localStorage.setItem(getSessionStorageKey(appMode, currentUser.UserID), JSON.stringify(session));
+            return session;
+          }
         }
       }
     } catch (e) {
@@ -549,30 +708,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const switchUser = (userId: string) => {
     setCurrentUserId(userId);
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}current_user_id`, userId);
     const targetUser = users.find(u => u.UserID === userId);
     if (targetUser) {
-      showNotification(`Switched demo profile to ${targetUser.FirstName} (${targetUser.SubscriptionTier})`, 'pink');
+      showNotification(`Switched profile to ${targetUser.FirstName} (${targetUser.SubscriptionTier})`, 'pink');
     }
 
-    const savedUserSession = localStorage.getItem(`${STORAGE_KEY_PREFIX}session_${userId}`);
+    const savedUserSession = localStorage.getItem(getSessionStorageKey(appMode, userId));
     if (savedUserSession) {
       try {
         const parsed: LiveSessionState = JSON.parse(savedUserSession);
-        setLiveSessionState(parsed);
-        localStorage.setItem(`${STORAGE_KEY_PREFIX}active_live_session`, JSON.stringify(parsed));
-        if (parsed.currentView === 'live') {
-          setCurrentViewState('live');
-          setSelectedEventIdState(parsed.eventId);
-          setActiveRoundIndexState(parsed.roundIndex);
+        if (parsed.mode === appMode) {
+          setLiveSessionState(parsed);
+          if (parsed.currentView === 'live') {
+            setCurrentViewState('live');
+            setSelectedEventIdState(parsed.eventId);
+            setActiveRoundIndexState(parsed.roundIndex);
+          }
+          return;
         }
       } catch (e) {
         setLiveSessionState(null);
-        localStorage.removeItem(`${STORAGE_KEY_PREFIX}active_live_session`);
       }
-    } else {
-      setLiveSessionState(null);
-      localStorage.removeItem(`${STORAGE_KEY_PREFIX}active_live_session`);
     }
+    setLiveSessionState(null);
   };
 
   const updateUserProfile = (updated: Partial<User>) => {
@@ -587,6 +746,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map(u => (u.UserID === userId ? { ...u, ...updated } : u))
     );
     showNotification('Profile updated successfully!', 'success');
+  };
+
+  const updateUserPreferences = (userId: string, prefs: Partial<UserPreferences>) => {
+    setUsers(prev =>
+      prev.map(u => {
+        if (u.UserID === userId) {
+          const updatedPrefs: UserPreferences = {
+            ...u.Preferences,
+            ...prefs,
+          };
+          return {
+            ...u,
+            Preferences: updatedPrefs,
+          };
+        }
+        return u;
+      })
+    );
   };
 
   const upgradeOtherUser = (userId: string, tier: SubscriptionTier) => {
@@ -964,8 +1141,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let candidatePartners: User[] = [];
 
-    if (appMode === 'production') {
-      // Production mode: Connect ONLY real consenting registered members
+    if (eventId === 'evt_staging_dev') {
+      // Developer Staging: Dedicated two-person test pairing between verified test accounts
+      const preferredPartnerId =
+        currentUser.UserID === 'usr_kristy'
+          ? 'usr_01' // Marcus
+          : currentUser.UserID === 'usr_01'
+          ? 'usr_kristy' // Kristy
+          : currentUser.UserID === 'usr_me'
+          ? 'usr_kristy'
+          : 'usr_kristy';
+      const preferredPartner = users.find(u => u.UserID === preferredPartnerId);
+      const otherAuthorized = users.filter(
+        u =>
+          ['usr_kristy', 'usr_01', 'usr_me', 'usr_02', 'usr_03'].includes(u.UserID) &&
+          u.UserID !== currentUser.UserID &&
+          u.UserID !== preferredPartnerId
+      );
+      candidatePartners = preferredPartner ? [preferredPartner, ...otherAuthorized] : otherAuthorized;
+    } else if (appMode === 'production') {
+      // Production mode: Connect real consenting registered members
       candidatePartners = users.filter(
         u =>
           targetEvent.ParticipantsList.includes(u.UserID) &&
@@ -1061,11 +1256,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (!targetEvent.ParticipantsList.includes(currentUser.UserID)) {
-      showNotification(
-        `Please register for ${targetEvent.EventName} before entering rounds.`,
-        'info'
+      setEvents(prev =>
+        prev.map(e =>
+          e.EventID === eventId
+            ? { ...e, ParticipantsList: Array.from(new Set([...e.ParticipantsList, currentUser.UserID])) }
+            : e
+        )
       );
-      return false;
     }
 
     // Server-validated event scheduling check
@@ -1084,9 +1281,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map(e => (e.EventID === eventId ? { ...e, EventStatus: 'Live', RoundsGenerated: true } : e))
     );
 
-    const existing = rounds.filter(r => r.EventID === eventId);
-    let eventRounds = existing;
-    if (existing.length === 0) {
+    const myRounds = rounds.filter(
+      r => r.EventID === eventId && (r.UserA === currentUser.UserID || r.UserB === currentUser.UserID)
+    );
+    let eventRounds = myRounds;
+    if (eventId === 'evt_staging_dev' || myRounds.length === 0) {
       eventRounds = generateRoundsForEvent(eventId);
     }
 
@@ -1111,6 +1310,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       partnerId,
       currentView: 'live',
       lastActive: Date.now(),
+      mode: appMode,
     });
 
     showNotification(`${targetEvent.EventName} is LIVE! 5-minute video round 1 started.`, 'pink');
@@ -1318,6 +1518,171 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showNotification('Database reset to fresh Speed Meet Love seed', 'info');
   };
 
+  const refreshSecondDateSessions = useCallback(async (): Promise<SecondDateSession[]> => {
+    try {
+      const res = await fetch(`/api/second-date/status?userId=${currentUser.UserID}&eventId=${selectedEventId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.sessions)) {
+          setSecondDateSessions(data.sessions);
+          const active = data.sessions.find(
+            (s: SecondDateSession) =>
+              s.status === 'active' && s.expiresAt && s.expiresAt > Date.now()
+          );
+          if (active) {
+            setActiveSecondDateSession(active);
+          }
+          return data.sessions;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to refresh second date sessions:', err);
+    }
+    return [];
+  }, [currentUser.UserID, selectedEventId]);
+
+  useEffect(() => {
+    if (currentView !== 'results' && currentView !== 'second_date' && currentView !== 'matches') return;
+    refreshSecondDateSessions();
+    const interval = setInterval(refreshSecondDateSessions, 3000);
+    return () => clearInterval(interval);
+  }, [currentView, refreshSecondDateSessions]);
+
+  const requestSecondDate = async (
+    partnerId: string,
+    matchId?: string,
+    simulatePartnerConsent = false
+  ): Promise<{ success: boolean; session?: SecondDateSession; error?: string }> => {
+    if (currentUser.SubscriptionTier !== 'Premium Plus') {
+      showNotification('Second Chance live video dates are exclusive to Premium Plus members ($14.99/mo)!', 'pink');
+      return { success: false, error: 'Premium Plus membership ($14.99/mo) required.' };
+    }
+
+    const partner = users.find(u => u.UserID === partnerId);
+    try {
+      const res = await fetch('/api/second-date/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: selectedEventId,
+          userId: currentUser.UserID,
+          userName: currentUser.FirstName,
+          userAge: currentUser.Age,
+          tier: currentUser.SubscriptionTier,
+          partnerId,
+          partnerName: partner?.FirstName || 'Partner',
+          mode: appMode,
+          matchId,
+          simulatePartnerConsent,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.session) {
+        setSecondDateSessions(prev => {
+          const filtered = prev.filter(s => s.sessionId !== data.session.sessionId);
+          return [...filtered, data.session];
+        });
+
+        if (data.session.status === 'ready_to_start') {
+          showNotification(`Both of you agreed to Another Date! Ready to enter your 10-minute date.`, 'pink');
+        } else {
+          showNotification(`Invitation sent to ${partner?.FirstName || 'your match'}. Waiting for mutual confirmation...`, 'pink');
+        }
+        return { success: true, session: data.session };
+      } else {
+        const errMsg = data.error || 'Failed to request second date.';
+        showNotification(errMsg, 'info');
+        return { success: false, error: errMsg };
+      }
+    } catch (err: any) {
+      showNotification('Network connection error while requesting date.', 'info');
+      return { success: false, error: err.message };
+    }
+  };
+
+  const respondToSecondDate = async (
+    sessionId: string,
+    action: 'accept' | 'decline' | 'save_and_chat'
+  ): Promise<{ success: boolean; session?: SecondDateSession }> => {
+    try {
+      const res = await fetch('/api/second-date/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          userId: currentUser.UserID,
+          action,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.session) {
+        setSecondDateSessions(prev =>
+          prev.map(s => (s.sessionId === sessionId ? data.session : s))
+        );
+        if (action === 'accept') {
+          showNotification(`You agreed to Another Date! You can enter whenever you're ready.`, 'pink');
+        } else {
+          showNotification(`Saved match for chat! No second date started.`, 'info');
+        }
+        return { success: true, session: data.session };
+      }
+    } catch (err) {
+      console.warn('Error responding to second date:', err);
+    }
+    return { success: false };
+  };
+
+  const startSecondDate = async (
+    sessionId: string
+  ): Promise<{ success: boolean; session?: SecondDateSession; error?: string }> => {
+    if (currentUser.SubscriptionTier !== 'Premium Plus') {
+      showNotification('Second Chance live video dates require Premium Plus ($14.99/mo).', 'pink');
+      return { success: false, error: 'Premium Plus required.' };
+    }
+
+    try {
+      const res = await fetch('/api/second-date/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          userId: currentUser.UserID,
+          tier: currentUser.SubscriptionTier,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.session) {
+        setActiveSecondDateSession(data.session);
+        setSecondDateSessions(prev =>
+          prev.map(s => (s.sessionId === sessionId ? data.session : s))
+        );
+        setCurrentView('second_date');
+        showNotification('10-Minute Second Chance Date Started! ❤️ Enjoy your conversation.', 'pink');
+        return { success: true, session: data.session };
+      } else {
+        const errorMsg = data.error || 'Cannot start date: mutual consent required.';
+        showNotification(errorMsg, 'info');
+        return { success: false, error: errorMsg };
+      }
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const endSecondDate = async (sessionId: string): Promise<{ success: boolean }> => {
+    try {
+      await fetch(`/api/second-date/${sessionId}/end`, { method: 'POST' });
+    } catch (e) {}
+    setActiveSecondDateSession(null);
+    refreshSecondDateSessions();
+    setCurrentView('results');
+    showNotification('Second Chance Date concluded! Your mutual match remains safely in My Matches.', 'pink');
+    return { success: true };
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1377,9 +1742,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         canAccessLiveSpeedDating,
         canAccessMessaging,
         upgradeOtherUser,
+        updateUserPreferences,
         saveLiveSession,
         clearLiveSession,
         syncLiveSessionFromServer,
+        activeSecondDateSession,
+        setActiveSecondDateSession,
+        secondDateSessions,
+        requestSecondDate,
+        respondToSecondDate,
+        startSecondDate,
+        endSecondDate,
+        refreshSecondDateSessions,
       }}
     >
       {children}

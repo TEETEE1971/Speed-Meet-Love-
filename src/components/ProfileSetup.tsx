@@ -13,7 +13,14 @@ import {
   Crown,
   Palette,
   Ban,
-  Check
+  Check,
+  Smile,
+  Eye,
+  Ruler,
+  Cigarette,
+  Wine,
+  Baby,
+  Lock
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 
@@ -52,10 +59,26 @@ export const ProfileSetup: React.FC = () => {
     Interests: currentUser.Interests.join(', '),
     IcebreakerAnswer: currentUser.IcebreakerAnswer || '',
     AvatarColor: currentUser.AvatarColor || '#FF2E93',
-    ageMin: currentUser.Preferences.ageMin,
-    ageMax: currentUser.Preferences.ageMax,
-    maxDistanceKm: currentUser.Preferences.maxDistanceKm,
-    intent: currentUser.Preferences.intent,
+    // Physical & lifestyle traits
+    HairColor: currentUser.HairColor || 'Brown',
+    HeightFeet: Math.floor((currentUser.HeightInches || 68) / 12),
+    HeightInchesRem: (currentUser.HeightInches || 68) % 12,
+    EyeColor: currentUser.EyeColor || 'Brown',
+    RelationshipIntent: currentUser.RelationshipIntent || 'Serious Relationship',
+    Smoking: currentUser.Smoking || 'Non-smoker',
+    Drinking: currentUser.Drinking || 'Social drinker',
+    Children: currentUser.Children || 'Open to children',
+    // Privacy
+    showHeight: currentUser.PrivacySettings?.showHeight ?? true,
+    showSmoking: currentUser.PrivacySettings?.showSmoking ?? true,
+    showDrinking: currentUser.PrivacySettings?.showDrinking ?? true,
+    showChildren: currentUser.PrivacySettings?.showChildren ?? true,
+    shareLocation: currentUser.PrivacySettings?.shareLocation ?? true,
+    // Preferences
+    ageMin: currentUser.Preferences.ageMin || 30,
+    ageMax: currentUser.Preferences.ageMax || 55,
+    distanceMiles: currentUser.Preferences.distanceMiles ?? 50,
+    intent: currentUser.Preferences.intent || 'Any',
   });
 
   useEffect(() => {
@@ -72,10 +95,23 @@ export const ProfileSetup: React.FC = () => {
       Interests: currentUser.Interests.join(', '),
       IcebreakerAnswer: currentUser.IcebreakerAnswer || '',
       AvatarColor: currentUser.AvatarColor || '#FF2E93',
-      ageMin: currentUser.Preferences.ageMin,
-      ageMax: currentUser.Preferences.ageMax,
-      maxDistanceKm: currentUser.Preferences.maxDistanceKm,
-      intent: currentUser.Preferences.intent,
+      HairColor: currentUser.HairColor || 'Brown',
+      HeightFeet: Math.floor((currentUser.HeightInches || 68) / 12),
+      HeightInchesRem: (currentUser.HeightInches || 68) % 12,
+      EyeColor: currentUser.EyeColor || 'Brown',
+      RelationshipIntent: currentUser.RelationshipIntent || 'Serious Relationship',
+      Smoking: currentUser.Smoking || 'Non-smoker',
+      Drinking: currentUser.Drinking || 'Social drinker',
+      Children: currentUser.Children || 'Open to children',
+      showHeight: currentUser.PrivacySettings?.showHeight ?? true,
+      showSmoking: currentUser.PrivacySettings?.showSmoking ?? true,
+      showDrinking: currentUser.PrivacySettings?.showDrinking ?? true,
+      showChildren: currentUser.PrivacySettings?.showChildren ?? true,
+      shareLocation: currentUser.PrivacySettings?.shareLocation ?? true,
+      ageMin: currentUser.Preferences.ageMin || 30,
+      ageMax: currentUser.Preferences.ageMax || 55,
+      distanceMiles: currentUser.Preferences.distanceMiles ?? 50,
+      intent: currentUser.Preferences.intent || 'Any',
     });
   }, [currentUser]);
 
@@ -84,6 +120,8 @@ export const ProfileSetup: React.FC = () => {
     const interestsList = formData.Interests.split(',')
       .map(s => s.trim())
       .filter(Boolean);
+
+    const totalHeightInches = Number(formData.HeightFeet) * 12 + Number(formData.HeightInchesRem);
 
     updateUserProfile({
       FirstName: formData.FirstName,
@@ -98,10 +136,25 @@ export const ProfileSetup: React.FC = () => {
       Interests: interestsList,
       IcebreakerAnswer: formData.IcebreakerAnswer,
       AvatarColor: formData.AvatarColor,
+      HairColor: formData.HairColor as any,
+      HeightInches: totalHeightInches,
+      EyeColor: formData.EyeColor as any,
+      RelationshipIntent: formData.RelationshipIntent as any,
+      Smoking: formData.Smoking as any,
+      Drinking: formData.Drinking as any,
+      Children: formData.Children as any,
+      PrivacySettings: {
+        showHeight: formData.showHeight,
+        showSmoking: formData.showSmoking,
+        showDrinking: formData.showDrinking,
+        showChildren: formData.showChildren,
+        shareLocation: formData.shareLocation,
+      },
       Preferences: {
+        ...currentUser.Preferences,
         ageMin: Number(formData.ageMin),
         ageMax: Number(formData.ageMax),
-        maxDistanceKm: Number(formData.maxDistanceKm),
+        distanceMiles: Number(formData.distanceMiles),
         intent: formData.intent as any,
       },
     });
@@ -293,6 +346,146 @@ export const ProfileSetup: React.FC = () => {
           </div>
         </div>
 
+        {/* Physical Characteristics & Lifestyle Section */}
+        <div className="border-t border-pink-100 pt-6 space-y-4 text-xs">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 font-heading flex items-center gap-2">
+              <Smile className="w-4 h-4 text-[#FF2E93]" />
+              Physical Characteristics & Lifestyle
+            </h3>
+            <p className="text-slate-500">
+              Provide your details so matches searching by traits can discover your profile.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Hair Color</label>
+              <select
+                value={formData.HairColor}
+                onChange={e => setFormData(prev => ({ ...prev, HairColor: e.target.value as any }))}
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+              >
+                {['Blonde', 'Brown', 'Black', 'Red', 'Gray/Silver', 'Bald', 'Other'].map(hc => (
+                  <option key={hc} value={hc}>{hc}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Eye Color</label>
+              <select
+                value={formData.EyeColor}
+                onChange={e => setFormData(prev => ({ ...prev, EyeColor: e.target.value as any }))}
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+              >
+                {['Blue', 'Brown', 'Green', 'Hazel', 'Gray', 'Other'].map(ec => (
+                  <option key={ec} value={ec}>{ec}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Height (Feet & Inches)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={formData.HeightFeet}
+                  onChange={e => setFormData(prev => ({ ...prev, HeightFeet: Number(e.target.value) }))}
+                  className="w-full px-2 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 text-xs"
+                >
+                  {[4, 5, 6, 7].map(ft => (
+                    <option key={ft} value={ft}>{ft} ft</option>
+                  ))}
+                </select>
+                <select
+                  value={formData.HeightInchesRem}
+                  onChange={e => setFormData(prev => ({ ...prev, HeightInchesRem: Number(e.target.value) }))}
+                  className="w-full px-2 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 text-xs"
+                >
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(inc => (
+                    <option key={inc} value={inc}>{inc} in</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Smoking</label>
+              <select
+                value={formData.Smoking}
+                onChange={e => setFormData(prev => ({ ...prev, Smoking: e.target.value as any }))}
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+              >
+                {['Non-smoker', 'Social smoker', 'Regular smoker'].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Drinking</label>
+              <select
+                value={formData.Drinking}
+                onChange={e => setFormData(prev => ({ ...prev, Drinking: e.target.value as any }))}
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+              >
+                {['Non-drinker', 'Social drinker', 'Regular drinker'].map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Children & Family</label>
+              <select
+                value={formData.Children}
+                onChange={e => setFormData(prev => ({ ...prev, Children: e.target.value as any }))}
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+              >
+                {['Has children', 'Wants children', "Doesn't want children", 'Open to children'].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Privacy Controls Section */}
+        <div className="border-t border-pink-100 pt-6 space-y-4 text-xs">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 font-heading flex items-center gap-2">
+              <Lock className="w-4 h-4 text-[#FF2E93]" />
+              Profile Privacy Settings
+            </h3>
+            <p className="text-slate-500">
+              Control what personal information is visible to other members while browsing.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { id: 'showHeight', label: 'Show my height publicly on profile', checked: formData.showHeight },
+              { id: 'showSmoking', label: 'Show smoking preference publicly', checked: formData.showSmoking },
+              { id: 'showDrinking', label: 'Show drinking preference publicly', checked: formData.showDrinking },
+              { id: 'showChildren', label: 'Show children & family preference publicly', checked: formData.showChildren },
+              { id: 'shareLocation', label: 'Share approximate distance / location', checked: formData.shareLocation },
+            ].map(item => (
+              <label
+                key={item.id}
+                className="flex items-center gap-3 p-3 rounded-2xl bg-[#FFF8FA] border border-pink-100 hover:border-pink-200 transition-colors cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={item.checked}
+                  onChange={e => setFormData(prev => ({ ...prev, [item.id]: e.target.checked }))}
+                  className="w-4 h-4 text-red-600 rounded-sm focus:ring-red-500"
+                />
+                <span className="font-semibold text-slate-800 text-xs">{item.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         {/* Dating Preferences Section */}
         <div className="border-t border-pink-100 pt-6 space-y-4 text-xs">
           <div>
@@ -303,7 +496,7 @@ export const ProfileSetup: React.FC = () => {
             <p className="text-slate-500">Used for match filtering and Friday-night speed dating pairings</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div>
               <label className="block text-slate-700 font-semibold mb-1">Min Age</label>
               <input
@@ -311,7 +504,7 @@ export const ProfileSetup: React.FC = () => {
                 min={18}
                 value={formData.ageMin}
                 onChange={e => setFormData(prev => ({ ...prev, ageMin: Number(e.target.value) }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 font-bold"
               />
             </div>
 
@@ -322,8 +515,24 @@ export const ProfileSetup: React.FC = () => {
                 max={99}
                 value={formData.ageMax}
                 onChange={e => setFormData(prev => ({ ...prev, ageMax: Number(e.target.value) }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 font-bold"
               />
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Max Distance</label>
+              <select
+                value={formData.distanceMiles}
+                onChange={e => setFormData(prev => ({ ...prev, distanceMiles: Number(e.target.value) }))}
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 font-bold"
+              >
+                <option value={10}>10 miles</option>
+                <option value={25}>25 miles</option>
+                <option value={50}>50 miles (Demo Default)</option>
+                <option value={100}>100 miles</option>
+                <option value={250}>250 miles</option>
+                <option value={0}>Anywhere</option>
+              </select>
             </div>
 
             <div>
@@ -331,12 +540,13 @@ export const ProfileSetup: React.FC = () => {
               <select
                 value={formData.intent}
                 onChange={e => setFormData(prev => ({ ...prev, intent: e.target.value as any }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 font-bold"
               >
-                <option value="Long-term relationship">Long-term relationship</option>
-                <option value="Dating & chemistry">Dating & chemistry</option>
-                <option value="Marriage minded">Marriage minded</option>
-                <option value="Casual & fun">Casual & fun</option>
+                <option value="Any">Any Intention</option>
+                <option value="Serious Relationship">Serious Relationship</option>
+                <option value="Casual Dating">Casual Dating</option>
+                <option value="Friendship First">Friendship First</option>
+                <option value="Not Sure Yet">Not Sure Yet</option>
               </select>
             </div>
           </div>

@@ -1,0 +1,82 @@
+[
+  {
+    "roundId": "evt_staging_dev_r0_usr_01_usr_kristy",
+    "roomKey": "evt_staging_dev_r0",
+    "eventId": "evt_staging_dev",
+    "roundIndex": 0,
+    "participants": [
+      "usr_kristy",
+      "usr_01"
+    ],
+    "status": "break",
+    "roundStartedAt": 1793235412858,
+    "roundExpiresAt": 1793235712858,
+    "roundDurationSeconds": 300,
+    "breakStartedAt": 1793235423069,
+    "breakExpiresAt": 1793235543069,
+    "breakDurationSeconds": 120,
+    "completedAt": null,
+    "mode": "production",
+    "lastUpdated": 1793235482544
+  },
+  {
+    "roundId": "evt_staging_dev_r1_usr_01_usr_kristy",
+    "roomKey": "evt_staging_dev_r1",
+    "eventId": "evt_staging_dev",
+    "roundIndex": 1,
+    "participants": [
+      "usr_kristy",
+      "usr_01"
+    ],
+    "status": "call",
+    "roundStartedAt": 1793235491299,
+    "roundExpiresAt": 1793235791299,
+    "roundDurationSeconds": 300,
+    "breakStartedAt": null,
+    "breakExpiresAt": null,
+    "breakDurationSeconds": 120,
+    "completedAt": null,
+    "mode": "production",
+    "lastUpdated": 1793235491299
+  },
+  {
+    "roundId": "evt_staging_dev_r0_usr_kristy_usr_me",
+    "roomKey": "evt_staging_dev_r0",
+    "eventId": "evt_staging_dev",
+    "roundIndex": 0,
+    "participants": [
+      "usr_kristy",
+      "usr_me"
+    ],
+    "status": "completed",
+    "roundStartedAt": 1793235870435,
+    "roundExpiresAt": 1793236170435,
+    "roundDurationSeconds": 300,
+    "breakStartedAt": 1793236170435,
+    "breakExpiresAt": 1793236290435,
+    "breakDurationSeconds": 120,
+    "completedAt": 1793236290435,
+    "mode": "production",
+    "lastUpdated": 1793270702937
+  },
+  {
+    "roundId": "evt_staging_dev_r1_usr_kristy_usr_me",
+    "roomKey": "evt_staging_dev_r1",
+    "eventId": "evt_staging_dev",
+    "roundIndex": 1,
+    "participants": [
+      "usr_kristy",
+      "usr_me"
+    ],
+    "status": "call",
+    "roundStartedAt": 1793236339214,
+    "roundExpiresAt": 1793236639214,
+    "roundDurationSeconds": 300,
+    "breakStartedAt": null,
+    "breakExpiresAt": null,
+    "breakDurationSeconds": 120,
+    "completedAt": null,
+    "mode": "production",
+    "lastUpdated": 1793236339214
+  }
+]
