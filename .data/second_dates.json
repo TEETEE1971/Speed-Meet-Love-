@@ -34,5 +34,23 @@
     "createdAt": 1793271879123,
     "lastUpdated": 1793271887424,
     "mode": "demonstration"
+  },
+  {
+    "sessionId": "sec_evt_live_now_usr_01_usr_kristy",
+    "eventId": "evt_live_now",
+    "userA": "usr_01",
+    "userB": "usr_kristy",
+    "userAName": "Partner",
+    "userBName": "Dater",
+    "requestedBy": "usr_kristy",
+    "userAConsent": true,
+    "userBConsent": true,
+    "status": "completed",
+    "startedAt": 1793276328457,
+    "expiresAt": 1793276928457,
+    "durationSeconds": 600,
+    "createdAt": 1793276324399,
+    "lastUpdated": 1793276336136,
+    "mode": "production"
   }
 ]

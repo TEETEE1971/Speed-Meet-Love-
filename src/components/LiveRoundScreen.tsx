@@ -373,6 +373,7 @@ export const LiveRoundScreen: React.FC = () => {
             roundDurationSeconds: defaultDuration,
             breakDurationSeconds: defaultBreak,
             mode: appMode,
+            forceFresh: true,
           }),
         });
       }
@@ -381,18 +382,46 @@ export const LiveRoundScreen: React.FC = () => {
         const data = await res.json();
         if (data.success && data.round) {
           const round = data.round;
-          serverRoundRef.current = {
-            roundId: round.roundId,
-            roundStartedAt: round.roundStartedAt,
-            roundExpiresAt: round.roundExpiresAt,
-            breakStartedAt: round.breakStartedAt,
-            breakExpiresAt: round.breakExpiresAt,
-            status: round.status,
-          };
-
           const now = Date.now();
-          if (round.status === 'break' || round.isExpired) {
-            // Automatic round completion! Disconnect LiveKit video and transition to confidential voting
+
+          // Active 5-minute video call in progress
+          if (round.status === 'call' && !round.isExpired) {
+            serverRoundRef.current = {
+              roundId: round.roundId,
+              roundStartedAt: round.roundStartedAt,
+              roundExpiresAt: round.roundExpiresAt,
+              breakStartedAt: round.breakStartedAt,
+              breakExpiresAt: round.breakExpiresAt,
+              status: round.status,
+            };
+
+            if (stage !== 'waiting_room') {
+              setStage('call');
+            }
+            setTimeLeft(round.remainingSeconds);
+            saveLiveSession({
+              stage: 'call',
+              roundStartedAt: round.roundStartedAt,
+              breakStartedAt: null,
+              roundDurationSeconds: round.roundDurationSeconds,
+              breakDurationSeconds: round.breakDurationSeconds,
+              lastActive: now,
+              mode: appMode,
+            });
+            return round;
+          }
+
+          // Active 2-minute break & voting in progress
+          if (round.status === 'break' && round.remainingBreakSeconds > 0) {
+            serverRoundRef.current = {
+              roundId: round.roundId,
+              roundStartedAt: round.roundStartedAt,
+              roundExpiresAt: round.roundExpiresAt,
+              breakStartedAt: round.breakStartedAt,
+              breakExpiresAt: round.breakExpiresAt,
+              status: round.status,
+            };
+
             setStage('break');
             setTimeLeft(0);
             setLiveKitToken(null);
@@ -407,27 +436,49 @@ export const LiveRoundScreen: React.FC = () => {
               lastActive: now,
               mode: appMode,
             });
-          } else if (round.status === 'call') {
-            setStage('call');
-            setTimeLeft(round.remainingSeconds);
-            saveLiveSession({
-              stage: 'call',
-              roundStartedAt: round.roundStartedAt,
-              breakStartedAt: null,
-              roundDurationSeconds: round.roundDurationSeconds,
-              breakDurationSeconds: round.breakDurationSeconds,
-              lastActive: now,
-              mode: appMode,
-            });
+            return round;
           }
-          return data.round;
+
+          // If the round has completed/expired in the past, never reuse as a new date!
+          if (createIfMissing) {
+            const freshRes = await fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/timer`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: currentUser.UserID,
+                partnerId: partnerIdParam,
+                roundDurationSeconds: defaultDuration,
+                breakDurationSeconds: defaultBreak,
+                mode: appMode,
+                forceFresh: true,
+              }),
+            });
+            if (freshRes.ok) {
+              const freshData = await freshRes.json();
+              if (freshData.success && freshData.round) {
+                serverRoundRef.current = {
+                  roundId: freshData.round.roundId,
+                  roundStartedAt: freshData.round.roundStartedAt,
+                  roundExpiresAt: freshData.round.roundExpiresAt,
+                  breakStartedAt: freshData.round.breakStartedAt,
+                  breakExpiresAt: freshData.round.breakExpiresAt,
+                  status: freshData.round.status,
+                };
+                if (stage !== 'waiting_room') {
+                  setStage('call');
+                }
+                setTimeLeft(freshData.round.remainingSeconds);
+                return freshData.round;
+              }
+            }
+          }
         }
       }
     } catch (err) {
       console.warn('Server round timer sync failed:', err);
     }
     return null;
-  }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession]);
+  }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, stage, saveLiveSession]);
 
   // Initial synchronization upon entering round or changing index
   useEffect(() => {
@@ -649,6 +700,28 @@ export const LiveRoundScreen: React.FC = () => {
       const nextRound = eventRounds[nextIdx];
       const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
 
+      // Initialize fresh 5-minute round on server for this next date
+      fetch(`/api/events/${activeEvent.EventID}/rounds/${nextIdx}/timer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.UserID,
+          partnerId: nextPartnerId,
+          roundDurationSeconds: defaultDuration,
+          breakDurationSeconds: defaultBreak,
+          mode: appMode,
+          forceFresh: true,
+        }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success && data.round) {
+            serverRoundRef.current = data.round;
+            setTimeLeft(data.round.remainingSeconds);
+          }
+        })
+        .catch(err => console.warn('Failed to start next round timer on server:', err));
+
       saveLiveSession({
         roundIndex: nextIdx,
         stage: 'call',
@@ -667,7 +740,7 @@ export const LiveRoundScreen: React.FC = () => {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [waitingCountdown, activeRoundIndex, eventRounds]);
+  }, [waitingCountdown, activeRoundIndex, eventRounds, activeEvent.EventID, currentUser.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession, setActiveRoundIndex]);
 
   const enterBreakStage = () => {
     const breakStart = Date.now();
@@ -742,7 +815,10 @@ export const LiveRoundScreen: React.FC = () => {
 
     if (activeRoundIndex < eventRounds.length - 1) {
       setStage('waiting_room');
-      saveLiveSession({ stage: 'waiting_room' });
+      setSelectedDecision(null);
+      setPrivateNotes('');
+      serverRoundRef.current = null;
+      saveLiveSession({ stage: 'waiting_room', vote: null, notes: '' });
       showNotification("Placed in Waiting Room. Matching you with the next dater...", 'info');
     } else {
       // Completed all rounds

@@ -1,0 +1,18 @@
+[
+  {
+    "matchId": "match_usr_01_usr_kristy_evt_live_now",
+    "userA": "usr_kristy",
+    "userB": "usr_01",
+    "eventId": "evt_live_now",
+    "timestamp": "2026-10-29T12:18:32.598Z",
+    "chatUnlocked": false,
+    "chemistryScore": 90,
+    "mutualInterests": [
+      "Live Music",
+      "Travel"
+    ],
+    "sparkNote": "Mutual connection sparked!",
+    "userALike": true,
+    "userBLike": true
+  }
+]

@@ -513,6 +513,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { allowed: true };
   };
 
+  // Sync mutual matches with server-authoritative store
+  useEffect(() => {
+    let isMounted = true;
+    const fetchServerMatches = async () => {
+      try {
+        const res = await fetch(`/api/matches?userId=${currentUserId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && data.success && Array.isArray(data.matches)) {
+            const serverMatches: Match[] = data.matches.map((sm: any) => ({
+              MatchID: sm.matchId,
+              UserA: sm.userA,
+              UserB: sm.userB,
+              EventID: sm.eventId,
+              Timestamp: sm.timestamp,
+              ChatUnlocked: Boolean(sm.chatUnlocked),
+              ChemistryScore: sm.chemistryScore || 90,
+              MutualInterests: sm.mutualInterests || ['Speed Date Spark'],
+              SparkNote: sm.sparkNote || 'Mutual attraction confirmed!',
+            }));
+
+            setMatches(prev => {
+              const combined = [...prev];
+              for (const sm of serverMatches) {
+                const exists = combined.some(
+                  m =>
+                    (m.UserA === sm.UserA && m.UserB === sm.UserB) ||
+                    (m.UserA === sm.UserB && m.UserB === sm.UserA)
+                );
+                if (!exists) {
+                  combined.unshift(sm);
+                }
+              }
+              return combined;
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to sync server matches:', e);
+      }
+    };
+
+    fetchServerMatches();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId]);
+
   // Persistence
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}users`, JSON.stringify(users));
@@ -833,6 +881,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
 
         setMatches(prev => [newMatch, ...prev]);
+
+        // Persist mutual match to server store
+        fetch('/api/matches', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            matchId: newMatch.MatchID,
+            userA: newMatch.UserA,
+            userB: newMatch.UserB,
+            eventId: newMatch.EventID,
+            chatUnlocked: newMatch.ChatUnlocked,
+            chemistryScore: newMatch.ChemistryScore,
+            mutualInterests: newMatch.MutualInterests,
+            sparkNote: newMatch.SparkNote,
+            userALike: true,
+            userBLike: true,
+          }),
+        }).catch(err => console.warn('Failed to persist match to server:', err));
 
         if (bothPaid) {
           const starterMsg: Message = {
@@ -1289,18 +1355,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       eventRounds = generateRoundsForEvent(eventId);
     }
 
+    // Clear any stale completed rounds on the server for this event so rounds start fresh
+    fetch(`/api/events/${eventId}/reset-rounds`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.UserID }),
+    }).catch(() => {});
+
     setSelectedEventId(eventId);
     setActiveRoundIndex(0);
     setCurrentView('live');
 
     const firstRound = eventRounds[0];
     const partnerId = firstRound ? (firstRound.UserA === currentUser.UserID ? firstRound.UserB : firstRound.UserA) : '';
+    const initialStage = partnerId ? 'call' : 'waiting_room';
 
     saveLiveSession({
       userId: currentUser.UserID,
       eventId,
       roundIndex: 0,
-      stage: 'call',
+      stage: initialStage,
       roundStartedAt: Date.now(),
       breakStartedAt: null,
       roundDurationSeconds: 300,
@@ -1313,7 +1387,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       mode: appMode,
     });
 
-    showNotification(`${targetEvent.EventName} is LIVE! 5-minute video round 1 started.`, 'pink');
+    showNotification(
+      initialStage === 'call'
+        ? `${targetEvent.EventName} is LIVE! 5-minute video round 1 started.`
+        : `${targetEvent.EventName} is LIVE! Waiting for an eligible partner in the Waiting Room...`,
+      'pink'
+    );
     return true;
   };
 
@@ -1379,6 +1458,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
 
         setMatches(prev => [newMatch, ...prev]);
+
+        // Persist mutual match to server store
+        fetch('/api/matches', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            matchId: newMatch.MatchID,
+            userA: newMatch.UserA,
+            userB: newMatch.UserB,
+            eventId: newMatch.EventID,
+            chatUnlocked: newMatch.ChatUnlocked,
+            chemistryScore: newMatch.ChemistryScore,
+            mutualInterests: newMatch.MutualInterests,
+            sparkNote: newMatch.SparkNote,
+            userALike: true,
+            userBLike: true,
+          }),
+        }).catch(err => console.warn('Failed to persist match to server:', err));
 
         if (bothPaid) {
           const welcomeMessage: Message = {

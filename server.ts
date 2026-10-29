@@ -169,23 +169,85 @@ function saveSharedRoundsToDisk() {
 
 loadSharedRoundsFromDisk();
 
+// ============================================================================
+// PERSISTENT MUTUAL MATCHES STORAGE (SERVER-AUTHORITATIVE)
+// ============================================================================
+export interface ServerPersistentMatch {
+  matchId: string;
+  userA: string;
+  userB: string;
+  eventId: string;
+  timestamp: string;
+  chatUnlocked: boolean;
+  chemistryScore: number;
+  mutualInterests: string[];
+  sparkNote: string;
+  userALike: boolean;
+  userBLike: boolean;
+}
+
+const MATCHES_FILE = path.join(DATA_DIR, 'matches.json');
+const persistentMatches = new Map<string, ServerPersistentMatch>();
+
+function loadMatchesFromDisk() {
+  try {
+    if (fs.existsSync(MATCHES_FILE)) {
+      const data = fs.readFileSync(MATCHES_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (item && item.matchId) {
+            persistentMatches.set(item.matchId, item);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load persistent matches from disk:', err);
+  }
+}
+
+function saveMatchesToDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const array = Array.from(persistentMatches.values());
+    fs.writeFileSync(MATCHES_FILE, JSON.stringify(array, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Failed to save persistent matches to disk:', err);
+  }
+}
+
+loadMatchesFromDisk();
+
 export function getSharedRound(
   eventId: string,
   roundIndex: number,
   userId?: string,
-  partnerId?: string
+  partnerId?: string,
+  allowCompleted: boolean = false
 ): ServerSharedRound | undefined {
+  const now = Date.now();
+  const isRoundActive = (r: ServerSharedRound) => {
+    if (allowCompleted) return true;
+    if (r.status === 'completed') return false;
+    if (r.status === 'break' && r.breakExpiresAt && now >= r.breakExpiresAt) return false;
+    return true;
+  };
+
   if (userId && partnerId) {
     const sortedPair = [userId, partnerId].sort().join('_');
     const exactRoundId = `${eventId}_r${roundIndex}_${sortedPair}`;
-    if (sharedRounds.has(exactRoundId)) {
-      return sharedRounds.get(exactRoundId);
+    const round = sharedRounds.get(exactRoundId);
+    if (round && isRoundActive(round)) {
+      return round;
     }
   }
 
   // Fallback 1: match by eventId, roundIndex and both participants
   for (const round of sharedRounds.values()) {
-    if (round.eventId === eventId && round.roundIndex === roundIndex) {
+    if (round.eventId === eventId && round.roundIndex === roundIndex && isRoundActive(round)) {
       if (userId && partnerId) {
         if (round.participants.includes(userId) && round.participants.includes(partnerId)) {
           return round;
@@ -196,7 +258,7 @@ export function getSharedRound(
 
   // Fallback 2: match by eventId, roundIndex and either participant
   for (const round of sharedRounds.values()) {
-    if (round.eventId === eventId && round.roundIndex === roundIndex) {
+    if (round.eventId === eventId && round.roundIndex === roundIndex && isRoundActive(round)) {
       if (userId && round.participants.includes(userId)) {
         return round;
       }
@@ -206,19 +268,19 @@ export function getSharedRound(
     }
   }
 
-  // Fallback 3: For developer staging (evt_staging_dev), all authorized accounts share the active round
+  // Fallback 3: For developer staging (evt_staging_dev), authorized accounts share the active round
   if (eventId === 'evt_staging_dev') {
     for (const round of sharedRounds.values()) {
-      if (round.eventId === eventId && round.roundIndex === roundIndex) {
+      if (round.eventId === eventId && round.roundIndex === roundIndex && isRoundActive(round)) {
         return round;
       }
     }
   }
 
-  // Fallback 4: If neither userId nor partnerId specified, return active round for this event & roundIndex
+  // Fallback 4: If neither userId nor partnerId specified, return active round
   if (!userId && !partnerId) {
     for (const round of sharedRounds.values()) {
-      if (round.eventId === eventId && round.roundIndex === roundIndex) {
+      if (round.eventId === eventId && round.roundIndex === roundIndex && isRoundActive(round)) {
         return round;
       }
     }
@@ -234,9 +296,10 @@ export function getOrCreateSharedRound(
   partnerId: string,
   roundDurationSeconds = 300,
   breakDurationSeconds = 120,
-  mode: 'demonstration' | 'production' = 'production'
+  mode: 'demonstration' | 'production' = 'production',
+  forceFresh = false
 ): ServerSharedRound {
-  const existing = getSharedRound(eventId, roundIndex, userId, partnerId);
+  const existing = !forceFresh ? getSharedRound(eventId, roundIndex, userId, partnerId, false) : undefined;
   const now = Date.now();
 
   if (existing) {
@@ -266,11 +329,13 @@ export function getOrCreateSharedRound(
         saveSharedRoundsToDisk();
       }
     }
-    // Return existing round - NEVER restart or extend the expiration time!
-    return existing;
+    // Return existing active round - NEVER restart or extend the expiration time on reconnect/refresh!
+    if (existing.status !== 'completed') {
+      return existing;
+    }
   }
 
-  // Create new shared round
+  // Create fresh new shared round (never reuse a completed round)
   const sortedPair = [userId, partnerId].filter(Boolean).sort().join('_');
   const roundId = `${eventId}_r${roundIndex}_${sortedPair || 'all'}`;
   const roomKey = `${eventId}_r${roundIndex}`;
@@ -300,6 +365,25 @@ export function getOrCreateSharedRound(
   return newRound;
 }
 
+// API: Clear/Reset rounds for an event so starting matchmaking starts clean
+app.post('/api/events/:eventId/reset-rounds', (req, res) => {
+  const { eventId } = req.params;
+  const { userId } = req.body;
+
+  let clearedCount = 0;
+  for (const [key, round] of sharedRounds.entries()) {
+    if (round.eventId === eventId) {
+      if (!userId || round.participants.includes(userId)) {
+        sharedRounds.delete(key);
+        clearedCount++;
+      }
+    }
+  }
+
+  saveSharedRoundsToDisk();
+  return res.json({ success: true, clearedCount, message: `Reset ${clearedCount} rounds for event ${eventId}` });
+});
+
 // API: Retrieve authoritative round timer state
 app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
   const { eventId, roundIndex: roundIndexParam } = req.params;
@@ -307,13 +391,13 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
   const userId = req.query.userId as string | undefined;
   const partnerId = req.query.partnerId as string | undefined;
 
-  let round = getSharedRound(eventId, roundIndex, userId, partnerId);
+  let round = getSharedRound(eventId, roundIndex, userId, partnerId, false);
   const now = Date.now();
 
   if (!round && userId) {
     const effectivePartner = partnerId || (userId === 'usr_kristy' ? 'usr_me' : 'usr_kristy');
     // Auto-create with server-authoritative 5-minute duration
-    round = getOrCreateSharedRound(eventId, roundIndex, userId, effectivePartner, 300, 120, 'production');
+    round = getOrCreateSharedRound(eventId, roundIndex, userId, effectivePartner, 300, 120, 'production', false);
   }
 
   if (!round) {
@@ -379,6 +463,7 @@ app.post('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
     breakDurationSeconds = 120,
     mode = 'production',
     action,
+    forceFresh = false,
   } = req.body;
 
   const round = getOrCreateSharedRound(
@@ -388,7 +473,8 @@ app.post('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
     partnerId,
     roundDurationSeconds,
     breakDurationSeconds,
-    mode
+    mode,
+    Boolean(forceFresh)
   );
 
   const now = Date.now();
@@ -431,6 +517,86 @@ app.post('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
       isExpired: now >= round.roundExpiresAt,
     },
   });
+});
+
+// API: Retrieve persistent mutual matches for a user
+app.get('/api/matches', (req, res) => {
+  const userId = req.query.userId as string;
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  const userMatches: ServerPersistentMatch[] = [];
+  for (const m of persistentMatches.values()) {
+    if (m.userA === userId || m.userB === userId) {
+      userMatches.push(m);
+    }
+  }
+
+  return res.json({ success: true, matches: userMatches });
+});
+
+// API: Save a mutual match (Strictly requires both participants to have liked each other)
+app.post('/api/matches', (req, res) => {
+  const {
+    matchId,
+    userA,
+    userB,
+    eventId = 'evt_general',
+    chatUnlocked = false,
+    chemistryScore = 90,
+    mutualInterests = [],
+    sparkNote = 'Mutual connection sparked!',
+    userALike,
+    userBLike,
+  } = req.body;
+
+  if (!userA || !userB) {
+    return res.status(400).json({ success: false, error: 'userA and userB are required' });
+  }
+
+  // Security check: NEVER fabricate a mutual match from a one-sided vote
+  if (userALike !== true || userBLike !== true) {
+    return res.status(400).json({
+      success: false,
+      code: 'MUTUAL_LIKE_REQUIRED',
+      error: 'Cannot record match: Both participants must select Like for a mutual match to be created.',
+    });
+  }
+
+  const sortedPair = [userA, userB].sort().join('_');
+  const finalMatchId = matchId || `match_${sortedPair}_${eventId}`;
+
+  // Check if already stored
+  if (persistentMatches.has(finalMatchId)) {
+    return res.json({ success: true, match: persistentMatches.get(finalMatchId), alreadyExisted: true });
+  }
+
+  // Also check if any existing match between userA and userB exists
+  for (const m of persistentMatches.values()) {
+    if ((m.userA === userA && m.userB === userB) || (m.userA === userB && m.userB === userA)) {
+      return res.json({ success: true, match: m, alreadyExisted: true });
+    }
+  }
+
+  const newMatch: ServerPersistentMatch = {
+    matchId: finalMatchId,
+    userA,
+    userB,
+    eventId,
+    timestamp: new Date().toISOString(),
+    chatUnlocked: Boolean(chatUnlocked),
+    chemistryScore: Number(chemistryScore) || 90,
+    mutualInterests: Array.isArray(mutualInterests) ? mutualInterests : [],
+    sparkNote: String(sparkNote),
+    userALike: true,
+    userBLike: true,
+  };
+
+  persistentMatches.set(finalMatchId, newMatch);
+  saveMatchesToDisk();
+
+  return res.json({ success: true, match: newMatch, created: true });
 });
 
 // ============================================================================
