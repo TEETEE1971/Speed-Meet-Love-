@@ -223,5 +223,7 @@ export interface LiveSessionState {
   accumulatedPauseMs?: number;
   hasEndedEarly?: boolean;
   votedAt?: number;
+  isReady?: boolean;
+  completedRoundIndex?: number;
 }
 

@@ -1421,9 +1421,51 @@ app.post('/api/events/:eventId/simulate-start', (req, res) => {
   res.json({ success: true, simulatedLiveEvents: Array.from(simulatedLiveEvents) });
 });
 
-// In-memory mutual consent store: tracks explicit "I'm Ready / Next Date" button clicks
+// Server-authoritative mutual consent store: tracks explicit "I'm Ready / Next Date" button clicks
 // Key: `${eventId}_r${roundIndex}` -> Map<userId, { isReady: boolean, timestamp: number }>
+const CONSENT_FILE = path.join(DATA_DIR, 'round_consent.json');
 const roundConsentStore = new Map<string, Map<string, { isReady: boolean; timestamp: number }>>();
+
+function loadConsentFromDisk() {
+  try {
+    ensureStorageDirectory();
+    if (fs.existsSync(CONSENT_FILE)) {
+      const data = fs.readFileSync(CONSENT_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (typeof parsed === 'object' && parsed !== null) {
+        for (const [roomKey, userEntries] of Object.entries(parsed)) {
+          if (typeof userEntries === 'object' && userEntries !== null) {
+            const userMap = new Map<string, { isReady: boolean; timestamp: number }>();
+            for (const [uid, record] of Object.entries(userEntries as any)) {
+              userMap.set(uid, record as any);
+            }
+            roundConsentStore.set(roomKey, userMap);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load consent store from disk:', err);
+  }
+}
+
+function saveConsentToDisk() {
+  try {
+    ensureStorageDirectory();
+    const serialized: Record<string, Record<string, { isReady: boolean; timestamp: number }>> = {};
+    for (const [roomKey, userMap] of roundConsentStore.entries()) {
+      serialized[roomKey] = {};
+      for (const [uid, record] of userMap.entries()) {
+        serialized[roomKey][uid] = record;
+      }
+    }
+    fs.writeFileSync(CONSENT_FILE, JSON.stringify(serialized, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Failed to save consent store to disk:', err);
+  }
+}
+
+loadConsentFromDisk();
 
 // Authorized developer & QA staging accounts (server-authoritative whitelist)
 // Restricts the on-demand 2-person staging test strictly to verified test accounts
@@ -1725,6 +1767,7 @@ app.post('/api/events/:eventId/consent', (req, res) => {
 
   const roundMap = roundConsentStore.get(roomKey)!;
   roundMap.set(userId, { isReady: Boolean(isReady), timestamp: Date.now() });
+  saveConsentToDisk();
 
   const partnerConsent = partnerId ? roundMap.get(partnerId) : undefined;
   const isMutuallyReady = Boolean(isReady && partnerConsent?.isReady);
@@ -1737,6 +1780,35 @@ app.post('/api/events/:eventId/consent', (req, res) => {
     userConsented: Boolean(isReady),
     partnerConsented: Boolean(partnerConsent?.isReady),
     isMutuallyReady,
+  });
+});
+
+// API: Retrieve recorded consent / ready status for a member
+app.get('/api/events/:eventId/consent', (req, res) => {
+  const { eventId } = req.params;
+  const userId = req.query.userId as string;
+  const roundIndex = Number(req.query.roundIndex || 0);
+  const partnerId = req.query.partnerId as string;
+
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  const roomKey = `${eventId}_r${roundIndex}`;
+  const roundMap = roundConsentStore.get(roomKey);
+  const userRecord = roundMap?.get(userId);
+  const partnerRecord = partnerId && roundMap ? roundMap.get(partnerId) : undefined;
+
+  return res.json({
+    success: true,
+    eventId,
+    roundIndex,
+    userId,
+    isReady: Boolean(userRecord?.isReady),
+    userConsented: Boolean(userRecord?.isReady),
+    partnerConsented: Boolean(partnerRecord?.isReady),
+    isMutuallyReady: Boolean(userRecord?.isReady && partnerRecord?.isReady),
+    timestamp: userRecord?.timestamp || null,
   });
 });
 

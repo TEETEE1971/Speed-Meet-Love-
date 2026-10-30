@@ -102,6 +102,13 @@ export const LiveRoundScreen: React.FC = () => {
   const hasEndedEarlyRef = useRef<boolean>(false);
   const endedEarlySessionKey = `sml_ended_early_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
   const isLocallyEndedEarly = () => {
+    try {
+      const completedKey = `sml_round_completed_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
+      if (typeof window !== 'undefined' && window.sessionStorage?.getItem(completedKey) === 'true') {
+        return false;
+      }
+    } catch (e) {}
+
     if (hasEndedEarlyRef.current) return true;
     try {
       return typeof window !== 'undefined' && window.sessionStorage?.getItem(endedEarlySessionKey) === 'true';
@@ -122,21 +129,21 @@ export const LiveRoundScreen: React.FC = () => {
 
   // Initialize stage from active persistent live session or default to 'call'
   const [stage, setStage] = useState<RoundStage>(() => {
-    if (isLocallyEndedEarly()) {
-      return 'break';
-    }
     if (isSessionForCurrentModeAndEvent && liveSession?.roundIndex === activeRoundIndex) {
-      if (liveSession.hasEndedEarly || liveSession.stage === 'break') {
-        return 'break';
-      }
       if (liveSession.stage === 'waiting_room') {
         return 'waiting_room';
+      }
+      if (liveSession.hasEndedEarly || liveSession.stage === 'break') {
+        return 'break';
       }
       if (liveSession.stage === 'call') {
         const isExpired = Date.now() >= liveSession.roundStartedAt + defaultDuration * 1000;
         if (isExpired) return 'break';
         return 'call';
       }
+    }
+    if (isLocallyEndedEarly()) {
+      return 'break';
     }
     return 'call';
   });
@@ -256,6 +263,23 @@ export const LiveRoundScreen: React.FC = () => {
           setVoteSaved(true);
           if (data.vote.notes) {
             setPrivateNotes(data.vote.notes);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID]);
+
+  // Restore server-recorded consent and ready status for this round on mount or round index change
+  useEffect(() => {
+    if (!currentUser.UserID || !activeEvent.EventID) return;
+    fetch(`/api/events/${activeEvent.EventID}/consent?userId=${currentUser.UserID}&roundIndex=${activeRoundIndex}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.isReady) {
+          // If member is already marked ready for this round, ensure waiting room stage is active
+          if (stageRef.current !== 'call') {
+            stageRef.current = 'waiting_room';
+            setStage('waiting_room');
           }
         }
       })
@@ -449,6 +473,12 @@ export const LiveRoundScreen: React.FC = () => {
         if (data.success && data.round) {
           const round = data.round;
           const now = Date.now();
+
+          // CRITICAL: If client is currently in waiting room, NEVER hijack stage back to 'break' or 'call'!
+          if ((stageRef.current as string) === 'waiting_room') {
+            return round;
+          }
+
           const userEndedEarly = Boolean(round.userEndedEarly || isLocallyEndedEarly() || hasEndedEarlyRef.current);
 
           // If current user ended early or is in break, keep them in break stage strictly (never bounce back to call)
@@ -773,10 +803,10 @@ export const LiveRoundScreen: React.FC = () => {
     if (stage !== 'waiting_room' || !isEligible) return;
 
     let isMounted = true;
-    const nextIndex = activeRoundIndex + 1;
+    const currentRoundIdx = activeRoundIndex;
     const totalEventRounds = Math.max(5, eventRounds.length);
 
-    if (nextIndex >= totalEventRounds) {
+    if (currentRoundIdx >= totalEventRounds) {
       clearLiveSession();
       try {
         confetti({
@@ -790,19 +820,19 @@ export const LiveRoundScreen: React.FC = () => {
       return;
     }
 
-    const nextRound = eventRounds[nextIndex];
-    const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
-    const nextPartner = users.find(u => u.UserID === nextPartnerId);
+    const currentTargetRound = eventRounds[currentRoundIdx];
+    const targetPartnerId = currentTargetRound ? (currentTargetRound.UserA === currentUser.UserID ? currentTargetRound.UserB : currentTargetRound.UserA) : '';
+    const targetPartner = users.find(u => u.UserID === targetPartnerId);
 
     // Poll server matchmaking / consent
     const checkInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/events/${activeEvent.EventID}/match-status/${currentUser.UserID}?roundIndex=${nextIndex}`);
+        const res = await fetch(`/api/events/${activeEvent.EventID}/match-status/${currentUser.UserID}?roundIndex=${currentRoundIdx}`);
         if (res.ok) {
           const data = await res.json();
           if (data.status === 'matched') {
             if (isMounted) {
-              setFoundPartnerName(data.partner?.userName || nextPartner?.FirstName || 'Next Partner');
+              setFoundPartnerName(data.partner?.userName || targetPartner?.FirstName || 'Next Partner');
               setWaitingCountdown(3);
               clearInterval(checkInterval);
             }
@@ -822,8 +852,7 @@ export const LiveRoundScreen: React.FC = () => {
   useEffect(() => {
     if (waitingCountdown === null) return;
     if (waitingCountdown <= 0) {
-      const nextIdx = activeRoundIndex + 1;
-      setActiveRoundIndex(nextIdx);
+      const targetIdx = activeRoundIndex;
       const now = Date.now();
       callMountTimeRef.current = now;
       hasEndedEarlyRef.current = false;
@@ -837,17 +866,17 @@ export const LiveRoundScreen: React.FC = () => {
       setWaitingCountdown(null);
       setFoundPartnerName(null);
 
-      const nextRound = eventRounds[nextIdx];
+      const nextRound = eventRounds[targetIdx];
       const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
 
       // Clear sessionStorage for this round
       try {
-        const endedEarlyKey = `sml_ended_early_${activeEvent.EventID}_${nextIdx}_${currentUser.UserID}`;
+        const endedEarlyKey = `sml_ended_early_${activeEvent.EventID}_${targetIdx}_${currentUser.UserID}`;
         window.sessionStorage?.removeItem(endedEarlyKey);
       } catch (e) {}
 
       // Initialize fresh 5-minute round on server for this next date
-      fetch(`/api/events/${activeEvent.EventID}/rounds/${nextIdx}/timer`, {
+      fetch(`/api/events/${activeEvent.EventID}/rounds/${targetIdx}/timer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -869,7 +898,7 @@ export const LiveRoundScreen: React.FC = () => {
         .catch(err => console.warn('Failed to start next round timer on server:', err));
 
       saveLiveSession({
-        roundIndex: nextIdx,
+        roundIndex: targetIdx,
         stage: 'call',
         roundStartedAt: now,
         breakStartedAt: null,
@@ -1059,6 +1088,14 @@ export const LiveRoundScreen: React.FC = () => {
     const totalEventRounds = Math.max(5, eventRounds.length);
 
     if (nextIndex < totalEventRounds) {
+      // 1. Mark completed for current round and clear ended early
+      try {
+        const endedEarlyKey = `sml_ended_early_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
+        window.sessionStorage?.removeItem(endedEarlyKey);
+        const completedKey = `sml_round_completed_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
+        window.sessionStorage?.setItem(completedKey, 'true');
+      } catch (e) {}
+
       hasEndedEarlyRef.current = false;
       stageRef.current = 'waiting_room';
       setStage('waiting_room');
@@ -1068,6 +1105,9 @@ export const LiveRoundScreen: React.FC = () => {
       serverRoundRef.current = null;
       setWaitingCountdown(null);
       setFoundPartnerName(null);
+
+      // Advance activeRoundIndex in context & localStorage to next date
+      setActiveRoundIndex(nextIndex);
 
       const nextRound = eventRounds[nextIndex];
       const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
@@ -1083,6 +1123,7 @@ export const LiveRoundScreen: React.FC = () => {
         vote: null,
         notes: '',
         hasEndedEarly: false,
+        isReady: true,
       });
 
       showNotification("Waiting for your next date...", 'info');
