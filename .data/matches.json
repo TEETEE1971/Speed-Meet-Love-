@@ -14,5 +14,21 @@
     "sparkNote": "Mutual connection sparked!",
     "userALike": true,
     "userBLike": true
+  },
+  {
+    "matchId": "match_usr_01_usr_kristy_evt_staging_dev",
+    "userA": "usr_01",
+    "userB": "usr_kristy",
+    "eventId": "evt_staging_dev",
+    "timestamp": "2026-10-30T10:54:18.819Z",
+    "chatUnlocked": true,
+    "chemistryScore": 95,
+    "mutualInterests": [
+      "Speed Dating Spark",
+      "Mutual Chemistry"
+    ],
+    "sparkNote": "Mutual chemistry sparked during round 1!",
+    "userALike": true,
+    "userBLike": true
   }
 ]

@@ -95,26 +95,81 @@ export const LiveRoundScreen: React.FC = () => {
     liveSession.eventId === activeEvent.EventID
   );
 
+  // Mount wall-clock timestamp reference to guarantee fresh round never prematurely triggers break
+  const callMountTimeRef = useRef<number>(Date.now());
+
+  // Reliable in-memory and storage early exit tracking
+  const hasEndedEarlyRef = useRef<boolean>(false);
+  const endedEarlySessionKey = `sml_ended_early_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
+  const isLocallyEndedEarly = () => {
+    if (hasEndedEarlyRef.current) return true;
+    try {
+      return typeof window !== 'undefined' && window.sessionStorage?.getItem(endedEarlySessionKey) === 'true';
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Reset in-memory early exit and ballot flags when round index changes
+  useEffect(() => {
+    hasEndedEarlyRef.current = false;
+    setVoteSaved(false);
+    setSelectedDecision(null);
+    setPrivateNotes('');
+    setEndRoundError(null);
+    setVoteError(null);
+  }, [activeRoundIndex]);
+
   // Initialize stage from active persistent live session or default to 'call'
   const [stage, setStage] = useState<RoundStage>(() => {
+    if (isLocallyEndedEarly()) {
+      return 'break';
+    }
     if (isSessionForCurrentModeAndEvent && liveSession?.roundIndex === activeRoundIndex) {
+      if (liveSession.hasEndedEarly) {
+        return 'break';
+      }
+      const isRecent = Boolean(liveSession.lastActive && Date.now() - liveSession.lastActive < defaultDuration * 1000);
       if (liveSession.stage === 'call') {
         const isExpired = Date.now() >= liveSession.roundStartedAt + defaultDuration * 1000;
-        if (isExpired) return 'break';
+        if (isRecent && isExpired) return 'break';
+        return 'call';
       }
-      return liveSession.stage;
+      if (liveSession.stage === 'break') {
+        const breakExpired = Date.now() >= (liveSession.breakStartedAt || 0) + defaultBreak * 1000;
+        if (isRecent && !breakExpired) return 'break';
+      }
+      if (liveSession.stage === 'waiting_room') {
+        return 'waiting_room';
+      }
     }
     return 'call';
   });
+
+  const stageRef = useRef<RoundStage>(stage);
+  useEffect(() => {
+    stageRef.current = stage;
+  }, [stage]);
+
+  // Reliable state handling for End Round & Vote and Voting
+  const [isEndingRound, setIsEndingRound] = useState(false);
+  const [endRoundError, setEndRoundError] = useState<string | null>(null);
+  const [isSubmittingVote, setIsSubmittingVote] = useState(false);
+  const [voteError, setVoteError] = useState<string | null>(null);
+  const [voteSaved, setVoteSaved] = useState<boolean>(false);
 
   // Calculate actual elapsed wall-clock time
   const [timeLeft, setTimeLeft] = useState<number>(() => {
     if (isSessionForCurrentModeAndEvent && liveSession?.roundIndex === activeRoundIndex) {
       if (liveSession.stage === 'call') {
-        const elapsed = Math.floor((Date.now() - liveSession.roundStartedAt) / 1000);
-        return Math.max(0, defaultDuration - elapsed);
+        const isRecent = Boolean(liveSession.lastActive && Date.now() - liveSession.lastActive < defaultDuration * 1000);
+        if (isRecent) {
+          const elapsed = Math.floor((Date.now() - liveSession.roundStartedAt) / 1000);
+          if (elapsed < defaultDuration) {
+            return Math.max(1, defaultDuration - elapsed);
+          }
+        }
       }
-      return 0;
     }
     return defaultDuration;
   });
@@ -195,6 +250,23 @@ export const LiveRoundScreen: React.FC = () => {
       .catch(() => {});
   }, []);
 
+  // Restore server-recorded vote for this round on mount or round index change
+  useEffect(() => {
+    if (!currentUser.UserID || !activeEvent.EventID) return;
+    fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/vote?userId=${currentUser.UserID}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.vote) {
+          setSelectedDecision(data.vote.decision);
+          setVoteSaved(true);
+          if (data.vote.notes) {
+            setPrivateNotes(data.vote.notes);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID]);
+
   // In Production Mode, acquire secure LiveKit room token when entering call stage
   const fetchLiveKitRoomToken = useCallback(async () => {
     if (appMode !== 'production' || stage !== 'call' || !liveKitStatus?.configured) {
@@ -240,14 +312,8 @@ export const LiveRoundScreen: React.FC = () => {
         setLiveKitServerUrl(data.liveKitUrl);
         setLiveKitError(null);
       } else {
-        if (data.code === 'ROUND_EXPIRED' || data.status === 'break') {
-          // Server authoritative check: round expired, transition immediately to confidential ballot
-          setStage('break');
-          setTimeLeft(0);
-          setLiveKitToken(null);
-        } else {
-          setLiveKitError(data.error || 'Waiting for mutual consent from partner...');
-        }
+        // Do NOT automatically exit the video call room on token acquisition delay or reconnection
+        setLiveKitError(data.error || 'Waiting for mutual consent from partner...');
       }
     } catch (err: any) {
       setLiveKitError('LiveKit connection service error.');
@@ -258,9 +324,9 @@ export const LiveRoundScreen: React.FC = () => {
     appMode,
     stage,
     liveKitStatus?.configured,
-    activeEvent,
-    currentUser,
-    partner,
+    activeEvent.EventID,
+    currentUser.UserID,
+    partner.UserID,
     activeRoundIndex,
   ]);
 
@@ -359,6 +425,11 @@ export const LiveRoundScreen: React.FC = () => {
   // Synchronize server-authoritative shared round timer
   const syncServerRoundTimer = useCallback(async (createIfMissing = false) => {
     try {
+      // If user has explicitly advanced to waiting room, never let round timer override it
+      if (stageRef.current === 'waiting_room') {
+        return null;
+      }
+
       const partnerIdParam = partner?.UserID || '';
       const url = `/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/timer?userId=${currentUser.UserID}&partnerId=${partnerIdParam}`;
       let res = await fetch(url);
@@ -383,9 +454,10 @@ export const LiveRoundScreen: React.FC = () => {
         if (data.success && data.round) {
           const round = data.round;
           const now = Date.now();
+          const userEndedEarly = Boolean(round.userEndedEarly || isLocallyEndedEarly() || hasEndedEarlyRef.current);
 
-          // Active 5-minute video call in progress
-          if (round.status === 'call' && !round.isExpired) {
+          // If current user ended early or is in break, keep them in break stage strictly (never bounce back to call)
+          if (userEndedEarly || round.userStage === 'break' || stageRef.current === 'break') {
             serverRoundRef.current = {
               roundId: round.roundId,
               roundStartedAt: round.roundStartedAt,
@@ -395,7 +467,42 @@ export const LiveRoundScreen: React.FC = () => {
               status: round.status,
             };
 
-            if (stage !== 'waiting_room') {
+            setStage('break');
+            setTimeLeft(0);
+            setLiveKitToken(null);
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach(t => t.stop());
+              streamRef.current = null;
+            }
+            if (round.remainingBreakSeconds !== undefined) {
+              setBreakTimeLeft(round.remainingBreakSeconds);
+            }
+
+            saveLiveSession({
+              stage: 'break',
+              roundStartedAt: round.roundStartedAt,
+              breakStartedAt: round.breakStartedAt || now,
+              roundDurationSeconds: round.roundDurationSeconds,
+              breakDurationSeconds: round.breakDurationSeconds,
+              hasEndedEarly: userEndedEarly,
+              lastActive: now,
+              mode: appMode,
+            });
+            return round;
+          }
+
+          // Active 5-minute video call in progress for this participant
+          if (round.status === 'call' && !round.isExpired && !userEndedEarly) {
+            serverRoundRef.current = {
+              roundId: round.roundId,
+              roundStartedAt: round.roundStartedAt,
+              roundExpiresAt: round.roundExpiresAt,
+              breakStartedAt: round.breakStartedAt,
+              breakExpiresAt: round.breakExpiresAt,
+              status: round.status,
+            };
+
+            if (stageRef.current === 'call') {
               setStage('call');
             }
             setTimeLeft(round.remainingSeconds);
@@ -411,8 +518,8 @@ export const LiveRoundScreen: React.FC = () => {
             return round;
           }
 
-          // Active 2-minute break & voting in progress
-          if (round.status === 'break' && round.remainingBreakSeconds > 0) {
+          // Both participants moved to break when 5-minute round has expired on server
+          if (round.status === 'break' || round.isExpired) {
             serverRoundRef.current = {
               roundId: round.roundId,
               roundStartedAt: round.roundStartedAt,
@@ -425,6 +532,10 @@ export const LiveRoundScreen: React.FC = () => {
             setStage('break');
             setTimeLeft(0);
             setLiveKitToken(null);
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach(t => t.stop());
+              streamRef.current = null;
+            }
             setBreakTimeLeft(round.remainingBreakSeconds);
 
             saveLiveSession({
@@ -439,7 +550,7 @@ export const LiveRoundScreen: React.FC = () => {
             return round;
           }
 
-          // If the round has completed/expired in the past, never reuse as a new date!
+          // If the round has completed/expired in the past, start a fresh round when requested
           if (createIfMissing) {
             const freshRes = await fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/timer`, {
               method: 'POST',
@@ -464,7 +575,7 @@ export const LiveRoundScreen: React.FC = () => {
                   breakExpiresAt: freshData.round.breakExpiresAt,
                   status: freshData.round.status,
                 };
-                if (stage !== 'waiting_room') {
+                if (stageRef.current === 'call') {
                   setStage('call');
                 }
                 setTimeLeft(freshData.round.remainingSeconds);
@@ -478,7 +589,7 @@ export const LiveRoundScreen: React.FC = () => {
       console.warn('Server round timer sync failed:', err);
     }
     return null;
-  }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, stage, saveLiveSession]);
+  }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession]);
 
   // Initial synchronization upon entering round or changing index
   useEffect(() => {
@@ -494,11 +605,22 @@ export const LiveRoundScreen: React.FC = () => {
       const serverRound = serverRoundRef.current;
 
       if (stage === 'call' && !isPaused) {
-        const expiresAt = serverRound?.roundExpiresAt || (liveSession?.roundStartedAt ? liveSession.roundStartedAt + defaultDuration * 1000 : now + defaultDuration * 1000);
+        // Authoritative expiration calculation:
+        // Prioritize server expiration timestamp.
+        // Fall back to clean round timer starting from callMountTimeRef so fresh calls start at 5:00.
+        let expiresAt = serverRound?.roundExpiresAt;
+        if (!expiresAt) {
+          const isRecent = Boolean(liveSession?.roundStartedAt && (now - liveSession.roundStartedAt < defaultDuration * 1000));
+          expiresAt = isRecent ? (liveSession!.roundStartedAt + defaultDuration * 1000) : (callMountTimeRef.current + defaultDuration * 1000);
+        }
+
         const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
         setTimeLeft(remaining);
 
-        if (remaining <= 0) {
+        // Guard: round must have been active on screen for at least 8 seconds before remaining <= 0
+        // can transition to break, preventing initial mount race conditions or stale cached data
+        const screenElapsedMs = now - callMountTimeRef.current;
+        if (remaining <= 0 && screenElapsedMs >= 8000) {
           // Exactly 5 minutes have elapsed!
           // Server and client automatically end video round, disconnect LiveKit, and show voting screen
           setStage('break');
@@ -655,32 +777,61 @@ export const LiveRoundScreen: React.FC = () => {
   useEffect(() => {
     if (stage !== 'waiting_room' || !isEligible) return;
 
-    // Simulate matchmaking discovery after 3 seconds
+    let isMounted = true;
+    const nextIndex = activeRoundIndex + 1;
+    const totalEventRounds = Math.max(5, eventRounds.length);
+
+    if (nextIndex >= totalEventRounds) {
+      clearLiveSession();
+      try {
+        confetti({
+          particleCount: 90,
+          spread: 80,
+          origin: { y: 0.6 },
+          colors: ['#FF2E93', '#FF147E', '#E11D48'],
+        });
+      } catch (e) {}
+      setCurrentView('results');
+      return;
+    }
+
+    const nextRound = eventRounds[nextIndex];
+    const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
+    const nextPartner = users.find(u => u.UserID === nextPartnerId);
+
+    // Poll server matchmaking / consent
+    const checkInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/events/${activeEvent.EventID}/match-status/${currentUser.UserID}?roundIndex=${nextIndex}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'matched') {
+            if (isMounted) {
+              setFoundPartnerName(data.partner?.userName || nextPartner?.FirstName || 'Next Partner');
+              setWaitingCountdown(3);
+              clearInterval(checkInterval);
+            }
+            return;
+          }
+        }
+      } catch (e) {}
+    }, 2000);
+
+    // In demo or staging after 3.5 seconds, if not matched by poll, smoothly pair with candidate
     const matchmakerTimeout = setTimeout(() => {
-      const nextIndex = activeRoundIndex + 1;
-      if (nextIndex < eventRounds.length) {
-        const nextRound = eventRounds[nextIndex];
-        const nextPartnerId = nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA;
-        const nextPartner = users.find(u => u.UserID === nextPartnerId);
+      if (isMounted) {
         setFoundPartnerName(nextPartner ? `${nextPartner.FirstName}, ${nextPartner.Age}` : 'Next Partner');
         setWaitingCountdown(3);
-      } else {
-        // Event completed
-        clearLiveSession();
-        try {
-          confetti({
-            particleCount: 90,
-            spread: 80,
-            origin: { y: 0.6 },
-            colors: ['#FF2E93', '#FF147E', '#E11D48'],
-          });
-        } catch (e) {}
-        setCurrentView('results');
+        clearInterval(checkInterval);
       }
-    }, 3000);
+    }, 3500);
 
-    return () => clearTimeout(matchmakerTimeout);
-  }, [stage, activeRoundIndex, eventRounds, isEligible]);
+    return () => {
+      isMounted = false;
+      clearInterval(checkInterval);
+      clearTimeout(matchmakerTimeout);
+    };
+  }, [stage, activeRoundIndex, eventRounds, isEligible, activeEvent.EventID, currentUser.UserID, users, setCurrentView, clearLiveSession]);
 
   // Waiting room 3-2-1 countdown into call
   useEffect(() => {
@@ -689,16 +840,26 @@ export const LiveRoundScreen: React.FC = () => {
       const nextIdx = activeRoundIndex + 1;
       setActiveRoundIndex(nextIdx);
       const now = Date.now();
+      callMountTimeRef.current = now;
+      hasEndedEarlyRef.current = false;
+      stageRef.current = 'call';
       setStage('call');
       setTimeLeft(defaultDuration);
       setBreakTimeLeft(defaultBreak);
       setSelectedDecision(null);
       setPrivateNotes('');
+      setVoteSaved(false);
       setWaitingCountdown(null);
       setFoundPartnerName(null);
 
       const nextRound = eventRounds[nextIdx];
       const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
+
+      // Clear sessionStorage for this round
+      try {
+        const endedEarlyKey = `sml_ended_early_${activeEvent.EventID}_${nextIdx}_${currentUser.UserID}`;
+        window.sessionStorage?.removeItem(endedEarlyKey);
+      } catch (e) {}
 
       // Initialize fresh 5-minute round on server for this next date
       fetch(`/api/events/${activeEvent.EventID}/rounds/${nextIdx}/timer`, {
@@ -731,6 +892,7 @@ export const LiveRoundScreen: React.FC = () => {
         notes: '',
         partnerId: nextPartnerId,
         lastActive: now,
+        hasEndedEarly: false,
       });
       return;
     }
@@ -742,59 +904,151 @@ export const LiveRoundScreen: React.FC = () => {
     return () => clearTimeout(timer);
   }, [waitingCountdown, activeRoundIndex, eventRounds, activeEvent.EventID, currentUser.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession, setActiveRoundIndex]);
 
-  const enterBreakStage = () => {
-    const breakStart = Date.now();
+  // Immediately and cleanly end round early for this user and show confidential voting screen
+  const handleEndRoundAndVote = async () => {
+    if (isEndingRound) return;
+    setIsEndingRound(true);
+    setEndRoundError(null);
+
+    const now = Date.now();
+    hasEndedEarlyRef.current = true;
+    stageRef.current = 'break';
+
+    // 1. Immediately terminate audio and video hardware streams
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          try {
+            track.stop();
+          } catch (e) {}
+        });
+        streamRef.current = null;
+      }
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+    } catch (e) {
+      console.warn('Error stopping local media tracks:', e);
+    }
     setLiveKitToken(null);
+
+    // 2. Immediately transition local stage to 'break' and reset round timer
     setStage('break');
     setTimeLeft(0);
     setBreakTimeLeft(defaultBreak);
 
+    // Persist early exit state locally to prevent any reload / network race conditions
+    const endedEarlyKey = `sml_ended_early_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        window.sessionStorage.setItem(endedEarlyKey, 'true');
+      }
+    } catch (e) {}
+
     if (serverRoundRef.current) {
       serverRoundRef.current.status = 'break';
-      serverRoundRef.current.breakStartedAt = breakStart;
-      serverRoundRef.current.breakExpiresAt = breakStart + defaultBreak * 1000;
+      serverRoundRef.current.breakStartedAt = now;
+      serverRoundRef.current.breakExpiresAt = now + defaultBreak * 1000;
     }
 
     saveLiveSession({
       stage: 'break',
-      breakStartedAt: breakStart,
-      lastActive: breakStart,
+      breakStartedAt: now,
+      hasEndedEarly: true,
+      lastActive: now,
       mode: appMode,
     });
 
-    fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/timer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: currentUser.UserID,
-        partnerId: partner?.UserID || '',
-        action: 'end_round',
-        mode: appMode,
-      }),
-    }).catch(() => {});
+    showNotification('Video call ended. Please cast your confidential Like or Pass vote below.', 'pink');
 
-    showNotification('5-minute round concluded! Video date ended. Please cast your confidential vote.', 'pink');
+    // 3. Notify server endpoint /api/events/:eventId/rounds/:roundIndex/end-early
+    try {
+      const res = await fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/end-early`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.UserID,
+          partnerId: partner?.UserID || '',
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.remainingBreakSeconds !== undefined) {
+        setBreakTimeLeft(data.remainingBreakSeconds);
+      }
+    } catch (err: any) {
+      console.warn('Server early end sync failed:', err);
+      setEndRoundError(err.message || 'Server sync error. Your voting ballot is safely active.');
+    } finally {
+      setIsEndingRound(false);
+    }
   };
 
-  const handleDecision = (decision: 'like' | 'pass') => {
-    setSelectedDecision(decision);
-    if (currentRound) {
-      submitRoundDecision(currentRound.RoundID, decision === 'like', privateNotes);
-    }
-    saveLiveSession({ vote: decision, notes: privateNotes });
+  const enterBreakStage = () => {
+    handleEndRoundAndVote();
+  };
 
-    if (decision === 'like') {
-      try {
-        confetti({
-          particleCount: 40,
-          spread: 60,
-          origin: { y: 0.8 },
-          colors: ['#FF2E93', '#FFE600'],
-        });
-      } catch (e) {}
-      showNotification(`You liked ${partner.FirstName}! Mutual likes unlock messaging in Matches.`, 'pink');
-    } else {
-      showNotification(`Pass recorded privately. Your choices remain strictly confidential.`, 'info');
+  const handleDecision = async (decision: 'like' | 'pass') => {
+    if (isSubmittingVote) return;
+    setIsSubmittingVote(true);
+    setVoteError(null);
+    setSelectedDecision(decision);
+
+    try {
+      // 1. Submit to context store
+      if (currentRound) {
+        submitRoundDecision(currentRound.RoundID, decision === 'like', privateNotes);
+      }
+      saveLiveSession({ vote: decision, notes: privateNotes, votedAt: Date.now() });
+
+      // 2. Submit to server-authoritative voting endpoint (idempotent: 1 vote per user per round)
+      const res = await fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.UserID,
+          partnerId: partner.UserID,
+          decision,
+          notes: privateNotes,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to record vote (HTTP ${res.status})`);
+      }
+
+      const data = await res.json();
+      setVoteSaved(true);
+
+      if (decision === 'like') {
+        try {
+          confetti({
+            particleCount: 40,
+            spread: 60,
+            origin: { y: 0.8 },
+            colors: ['#FF2E93', '#FFE600'],
+          });
+        } catch (e) {}
+
+        if (data.isMutualMatch) {
+          showNotification(`It's a Mutual Match with ${partner.FirstName}! Mutual likes unlock messaging in Matches. ❤️⚡`, 'pink');
+        } else {
+          showNotification(`You liked ${partner.FirstName}! Mutual likes unlock messaging in Matches.`, 'pink');
+        }
+      } else {
+        showNotification(`Pass recorded privately. Your choices remain strictly confidential.`, 'info');
+      }
+    } catch (err: any) {
+      console.warn('Failed to submit confidential vote:', err);
+      setVoteError(err.message || 'Failed to record vote. Please tap Retry.');
+    } finally {
+      setIsSubmittingVote(false);
     }
   };
 
@@ -806,22 +1060,79 @@ export const LiveRoundScreen: React.FC = () => {
     saveLiveSession({ notes: text });
   };
 
-  const handleNextDateClick = () => {
+  const handleNextDateClick = async () => {
     // If not voted yet, default to pass
     if (selectedDecision === null && currentRound) {
       submitRoundDecision(currentRound.RoundID, false, privateNotes);
       saveLiveSession({ vote: 'pass', notes: privateNotes });
     }
 
-    if (activeRoundIndex < eventRounds.length - 1) {
+    const nextIndex = activeRoundIndex + 1;
+    const totalEventRounds = Math.max(5, eventRounds.length);
+
+    if (nextIndex < totalEventRounds) {
+      hasEndedEarlyRef.current = false;
+      stageRef.current = 'waiting_room';
       setStage('waiting_room');
       setSelectedDecision(null);
       setPrivateNotes('');
+      setVoteSaved(false);
       serverRoundRef.current = null;
-      saveLiveSession({ stage: 'waiting_room', vote: null, notes: '' });
-      showNotification("Placed in Waiting Room. Matching you with the next dater...", 'info');
+      setWaitingCountdown(null);
+      setFoundPartnerName(null);
+
+      const nextRound = eventRounds[nextIndex];
+      const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
+
+      try {
+        const nextEndedEarlyKey = `sml_ended_early_${activeEvent.EventID}_${nextIndex}_${currentUser.UserID}`;
+        window.sessionStorage?.removeItem(nextEndedEarlyKey);
+      } catch (e) {}
+
+      saveLiveSession({
+        roundIndex: activeRoundIndex,
+        stage: 'waiting_room',
+        vote: null,
+        notes: '',
+        hasEndedEarly: false,
+      });
+
+      showNotification("Waiting for your next date...", 'info');
+
+      // Register readiness with server
+      try {
+        await fetch(`/api/events/${activeEvent.EventID}/consent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.UserID,
+            partnerId: nextPartnerId,
+            roundIndex: nextIndex,
+            isReady: true,
+          }),
+        });
+
+        await fetch(`/api/events/${activeEvent.EventID}/matchmaking`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.UserID,
+            userName: currentUser.FirstName,
+            userAge: currentUser.Age,
+            gender: currentUser.Gender,
+            interestedIn: currentUser.InterestedIn,
+            tier: currentUser.SubscriptionTier,
+            isRegistered: true,
+            roundIndex: nextIndex,
+            isReady: true,
+            eventId: activeEvent.EventID,
+          }),
+        });
+      } catch (e) {
+        console.warn('Readiness sync warning:', e);
+      }
     } else {
-      // Completed all rounds
+      // Completed all 5 rounds!
       clearLiveSession();
       try {
         confetti({
@@ -832,6 +1143,7 @@ export const LiveRoundScreen: React.FC = () => {
         });
       } catch (e) {}
       setCurrentView('results');
+      showNotification('Congratulations on completing all 5 speed dating rounds! Revealing your mutual matches...', 'pink');
     }
   };
 
@@ -1000,12 +1312,25 @@ export const LiveRoundScreen: React.FC = () => {
                 <span className="hidden sm:inline">Send Heart</span>
               </button>
 
+              {/* End Round & Vote Button with loading spinner and clear active click feedback */}
               <button
-                onClick={enterBreakStage}
-                className="px-3 sm:px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-pink-50 border border-slate-200 hover:border-pink-200 text-xs font-bold text-slate-700 hover:text-[#FF2E93] transition-colors cursor-pointer"
-                title="Conclude 5-min round early to cast your ballot and take your break"
+                type="button"
+                onClick={handleEndRoundAndVote}
+                disabled={isEndingRound}
+                className="px-3.5 sm:px-4 py-2 min-h-[42px] rounded-2xl bg-white hover:bg-pink-50 active:bg-pink-100 border-2 border-pink-300 text-xs font-black text-[#FF2E93] transition-all shadow-sm hover:shadow active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+                title="Immediately end your video session and cast your confidential vote"
               >
-                End Round & Vote
+                {isEndingRound ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-[#FF2E93] border-t-transparent rounded-full animate-spin" />
+                    <span>Ending...</span>
+                  </>
+                ) : (
+                  <>
+                    <FastForward className="w-3.5 h-3.5 fill-current" />
+                    <span>End Round & Vote</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1218,13 +1543,19 @@ export const LiveRoundScreen: React.FC = () => {
 
                       <div className="flex items-center gap-1.5">
                         <button
-                          onClick={() => setMicOn(prev => !prev)}
-                          className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                            micOn ? 'bg-slate-900/80 text-white hover:bg-slate-800' : 'bg-rose-600 text-white'
+                          onClick={() => {
+                            setMicOn(prev => !prev);
+                            if (!micOn) {
+                              showNotification('Microphone unmuted. Video session continues active.', 'pink');
+                            }
+                          }}
+                          className={`px-2 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold ${
+                            micOn ? 'bg-slate-900/80 text-white hover:bg-slate-800' : 'bg-amber-500 hover:bg-amber-600 text-white shadow-sm'
                           }`}
-                          title={micOn ? 'Mute Microphone' : 'Unmute Microphone'}
+                          title={micOn ? 'Mute Microphone' : 'Unmute / Retry Microphone'}
                         >
                           {micOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+                          {!micOn && <span>Retry Mic</span>}
                         </button>
 
                         <button
@@ -1241,8 +1572,16 @@ export const LiveRoundScreen: React.FC = () => {
 
                     {/* Self bottom info */}
                     <div className="relative z-10 flex items-center justify-between text-[11px] text-slate-300">
-                      <span className="bg-black/50 px-2.5 py-1 rounded-xl backdrop-blur-xs">
-                        Self Mirror View
+                      <span className="bg-black/50 px-2.5 py-1 rounded-xl backdrop-blur-xs flex items-center gap-1">
+                        <span>Mic: {micOn ? 'Active' : 'Muted'}</span>
+                        {!micOn && (
+                          <button
+                            onClick={() => setMicOn(true)}
+                            className="ml-1 text-[10px] text-pink-300 underline font-bold cursor-pointer hover:text-white"
+                          >
+                            Retry
+                          </button>
+                        )}
                       </span>
                       <span className="bg-black/50 px-2.5 py-1 rounded-xl backdrop-blur-xs font-mono text-[#FF2E93]">
                         Tier: {currentUser.SubscriptionTier}
@@ -1349,22 +1688,34 @@ export const LiveRoundScreen: React.FC = () => {
                 />
               </div>
 
-              {/* Skip / Report Safety */}
+              {/* Skip / Report Safety & End Round Controls */}
               <div className="flex items-center justify-between pt-1 text-xs">
                 <button
-                  onClick={handleSkipRound}
-                  className="text-slate-500 hover:text-slate-800 flex items-center gap-1 font-semibold"
+                  type="button"
+                  onClick={handleEndRoundAndVote}
+                  disabled={isEndingRound}
+                  className="text-[#FF2E93] hover:text-rose-700 flex items-center gap-1 font-bold cursor-pointer"
                 >
-                  <FastForward className="w-3.5 h-3.5" />
-                  Skip to Break
+                  <FastForward className="w-3.5 h-3.5 fill-current" />
+                  <span>{isEndingRound ? 'Ending...' : 'End Round & Vote'}</span>
                 </button>
-                <button
-                  onClick={() => setReportModalTarget(partner)}
-                  className="text-rose-500 hover:text-rose-700 flex items-center gap-1 font-semibold"
-                >
-                  <ShieldAlert className="w-3.5 h-3.5" />
-                  Report / Block
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSkipRound}
+                    className="text-slate-500 hover:text-slate-800 flex items-center gap-1 font-semibold cursor-pointer"
+                  >
+                    <span>Skip to Break</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReportModalTarget(partner)}
+                    className="text-rose-500 hover:text-rose-700 flex items-center gap-1 font-semibold cursor-pointer"
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>Report</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1422,6 +1773,39 @@ export const LiveRoundScreen: React.FC = () => {
               </div>
             </div>
 
+            {/* Error notifications with immediate retry options */}
+            {endRoundError && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center justify-between gap-3 text-left">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>{endRoundError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEndRoundAndVote}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold rounded-xl text-[11px] shrink-0 cursor-pointer shadow-xs"
+                >
+                  Retry Sync
+                </button>
+              </div>
+            )}
+
+            {voteError && (
+              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between gap-3 text-left">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{voteError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => selectedDecision && handleDecision(selectedDecision)}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold rounded-xl text-[11px] shrink-0 cursor-pointer shadow-xs"
+                >
+                  Retry Vote
+                </button>
+              </div>
+            )}
+
             {/* The Private Like or Pass Ballot */}
             <div className="space-y-3">
               <div className="text-xs font-bold text-slate-400 uppercase tracking-wider font-heading">
@@ -1429,34 +1813,38 @@ export const LiveRoundScreen: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <button
+                  type="button"
+                  disabled={isSubmittingVote}
                   onClick={() => handleDecision('pass')}
-                  className={`py-4 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  className={`py-4 px-6 min-h-[52px] rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                     selectedDecision === 'pass'
-                      ? 'bg-slate-800 text-white shadow-md ring-2 ring-slate-700'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                      ? 'bg-slate-800 text-white shadow-md ring-4 ring-slate-400 scale-[1.02]'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 active:scale-98'
                   }`}
                 >
-                  <X className="w-5 h-5" />
-                  <span>Pass</span>
+                  <X className="w-5 h-5 stroke-[2.5]" />
+                  <span>{isSubmittingVote && selectedDecision === 'pass' ? 'Saving...' : 'Pass'}</span>
                 </button>
 
                 <button
+                  type="button"
+                  disabled={isSubmittingVote}
                   onClick={() => handleDecision('like')}
-                  className={`py-4 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  className={`py-4 px-6 min-h-[52px] rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                     selectedDecision === 'like'
-                      ? 'btn-pink-gradient text-white shadow-lg shadow-pink-500/25 ring-2 ring-pink-300'
-                      : 'bg-pink-50 hover:bg-pink-100 text-[#FF2E93] border border-pink-200'
+                      ? 'btn-pink-gradient text-white shadow-lg shadow-pink-500/30 ring-4 ring-pink-300 scale-[1.02]'
+                      : 'bg-pink-50 hover:bg-pink-100 text-[#FF2E93] border-2 border-pink-300 active:scale-98'
                   }`}
                 >
                   <Heart className="w-5 h-5 fill-current" />
-                  <span>Like {partner.FirstName}</span>
+                  <span>{isSubmittingVote && selectedDecision === 'like' ? 'Saving...' : `Like ${partner.FirstName}`}</span>
                 </button>
               </div>
 
-              {selectedDecision && (
-                <div className="text-xs text-emerald-600 font-bold flex items-center justify-center gap-1.5 pt-1">
-                  <CheckCircle className="w-4 h-4" />
-                  <span>Your choice is recorded and 100% confidential.</span>
+              {(selectedDecision || voteSaved) && (
+                <div className="text-xs text-emerald-700 font-bold flex items-center justify-center gap-1.5 pt-1.5 bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Your confidential choice is securely recorded. Neither dater sees this unless it's a mutual match!</span>
                 </div>
               )}
             </div>
@@ -1478,8 +1866,12 @@ export const LiveRoundScreen: React.FC = () => {
             {/* Consent-Based Next Date Button */}
             <div className="pt-4 border-t border-pink-100 space-y-3">
               <button
-                onClick={handleNextDateClick}
-                className="w-full py-4 rounded-2xl btn-pink-gradient font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20 hover:scale-[1.01] transition-transform cursor-pointer"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNextDateClick();
+                }}
+                className="w-full py-4 rounded-2xl btn-pink-gradient font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20 hover:scale-[1.01] active:scale-98 transition-transform cursor-pointer"
               >
                 <span>Next Date (I'm Ready)</span>
                 <ChevronRight className="w-5 h-5" />

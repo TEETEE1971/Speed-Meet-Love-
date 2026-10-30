@@ -1272,12 +1272,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    // Ensure candidatePartners has at least 5 daters to guarantee 5 scheduled speed-dating rounds
+    const targetRoundCount = targetEvent.TotalRounds || 5;
+    if (candidatePartners.length < targetRoundCount) {
+      const remainingUsers = users.filter(
+        u =>
+          u.UserID !== currentUser.UserID &&
+          !blockedUserIds.includes(u.UserID) &&
+          !candidatePartners.some(cp => cp.UserID === u.UserID)
+      );
+      candidatePartners = [...candidatePartners, ...remainingUsers];
+    }
+
     const meId = currentUser.UserID;
     const newRounds: Round[] = [];
     const duration = 300; // Exactly 5 minutes
     const baseTime = Date.now();
 
-    candidatePartners.slice(0, targetEvent.TotalRounds || 5).forEach((partner, index) => {
+    candidatePartners.slice(0, targetRoundCount).forEach((partner, index) => {
       const roundStart = new Date(baseTime + index * (duration + 120) * 1000).toISOString();
       const roundEnd = new Date(baseTime + (index * (duration + 120) + duration) * 1000).toISOString();
 
@@ -1351,29 +1363,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       r => r.EventID === eventId && (r.UserA === currentUser.UserID || r.UserB === currentUser.UserID)
     );
     let eventRounds = myRounds;
-    if (eventId === 'evt_staging_dev' || myRounds.length === 0) {
+    if (eventId === 'evt_staging_dev' || myRounds.length < 5) {
       eventRounds = generateRoundsForEvent(eventId);
     }
 
-    // Clear any stale completed rounds on the server for this event so rounds start fresh
-    fetch(`/api/events/${eventId}/reset-rounds`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: currentUser.UserID }),
-    }).catch(() => {});
+    // Check which rounds are already completed/voted
+    const uncompletedIdx = eventRounds.findIndex(r => {
+      const isUserA = r.UserA === currentUser.UserID;
+      const myVote = isUserA ? r.UserA_Like : r.UserB_Like;
+      return myVote === null || myVote === undefined;
+    });
+
+    // If all 5 scheduled rounds are completed and voted, go straight to match results
+    if (uncompletedIdx === -1 && eventRounds.length >= 5) {
+      setSelectedEventId(eventId);
+      setCurrentView('results');
+      showNotification('All 5 speed dating rounds complete! Revealing mutual matches...', 'pink');
+      return true;
+    }
+
+    const targetRoundIdx = uncompletedIdx >= 0 ? uncompletedIdx : 0;
+
+    // Only clear server rounds if starting from round 0 fresh with no prior votes
+    if (targetRoundIdx === 0 && (!eventRounds[0] || (eventRounds[0].UserA_Like === null && eventRounds[0].UserB_Like === null))) {
+      fetch(`/api/events/${eventId}/reset-rounds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.UserID }),
+      }).catch(() => {});
+    }
 
     setSelectedEventId(eventId);
-    setActiveRoundIndex(0);
+    setActiveRoundIndex(targetRoundIdx);
     setCurrentView('live');
 
-    const firstRound = eventRounds[0];
-    const partnerId = firstRound ? (firstRound.UserA === currentUser.UserID ? firstRound.UserB : firstRound.UserA) : '';
+    const activeRound = eventRounds[targetRoundIdx];
+    const partnerId = activeRound ? (activeRound.UserA === currentUser.UserID ? activeRound.UserB : activeRound.UserA) : '';
     const initialStage = partnerId ? 'call' : 'waiting_room';
 
     saveLiveSession({
       userId: currentUser.UserID,
       eventId,
-      roundIndex: 0,
+      roundIndex: targetRoundIdx,
       stage: initialStage,
       roundStartedAt: Date.now(),
       breakStartedAt: null,
@@ -1385,11 +1416,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentView: 'live',
       lastActive: Date.now(),
       mode: appMode,
+      hasEndedEarly: false,
     });
 
     showNotification(
       initialStage === 'call'
-        ? `${targetEvent.EventName} is LIVE! 5-minute video round 1 started.`
+        ? `${targetEvent.EventName} is LIVE! 5-minute video round ${targetRoundIdx + 1} started.`
         : `${targetEvent.EventName} is LIVE! Waiting for an eligible partner in the Waiting Room...`,
       'pink'
     );

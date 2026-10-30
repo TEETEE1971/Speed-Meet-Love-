@@ -101,6 +101,43 @@ function RemotePartnerVideoFeed({ partner }: { partner: User }) {
   );
 }
 
+function MicrophoneStatusBanner() {
+  const { localParticipant, lastMicrophoneError } = useLocalParticipant();
+  const [retrying, setRetrying] = React.useState(false);
+
+  if (!lastMicrophoneError) return null;
+
+  return (
+    <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 bg-amber-950/95 border border-amber-400/80 text-amber-100 text-xs px-3.5 py-1.5 rounded-2xl shadow-xl flex items-center gap-2.5 max-w-md pointer-events-auto backdrop-blur-md animate-in fade-in">
+      <AlertCircle className="w-4 h-4 text-amber-300 shrink-0" />
+      <span className="text-[11px] font-medium leading-tight">
+        {lastMicrophoneError.name === 'NotAllowedError'
+          ? 'Microphone permission blocked in browser. Video remains live!'
+          : 'Microphone temporarily unavailable. Video call continues uninterrupted.'}
+      </span>
+      <button
+        onClick={async () => {
+          setRetrying(true);
+          try {
+            if (localParticipant) {
+              await localParticipant.setMicrophoneEnabled(true);
+            }
+          } catch (e) {
+            console.warn('Microphone retry error:', e);
+          } finally {
+            setRetrying(false);
+          }
+        }}
+        disabled={retrying}
+        className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold text-[10px] shrink-0 cursor-pointer shadow-sm transition-transform active:scale-95 flex items-center gap-1"
+      >
+        <RefreshCw className={`w-3 h-3 ${retrying ? 'animate-spin' : ''}`} />
+        <span>{retrying ? 'Connecting...' : 'Retry Mic'}</span>
+      </button>
+    </div>
+  );
+}
+
 function SelfLocalVideoFeed({
   currentUser,
   cameraOn,
@@ -108,7 +145,13 @@ function SelfLocalVideoFeed({
   currentUser: User;
   cameraOn: boolean;
 }) {
-  const { localParticipant, isCameraEnabled, cameraTrack, lastCameraError } = useLocalParticipant();
+  const {
+    localParticipant,
+    isCameraEnabled,
+    cameraTrack,
+    lastCameraError,
+    lastMicrophoneError,
+  } = useLocalParticipant();
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Directly attach the track if available to guarantee video playback on Android/iOS mobile
@@ -233,6 +276,9 @@ export const LiveKitVideoStage: React.FC<LiveKitVideoStageProps> = ({
     >
       {/* In-room connection status overlay for transient signaling hiccups */}
       <ConnectionStatusOverlay onReconnectRequest={onReconnectRequest} />
+
+      {/* In-room microphone permission / status banner with retry option */}
+      <MicrophoneStatusBanner />
 
       {/* Audio relay for crystal-clear two-way voice */}
       <RoomAudioRenderer />

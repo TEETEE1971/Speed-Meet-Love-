@@ -221,5 +221,7 @@ export interface LiveSessionState {
   isPaused?: boolean;
   pausedAt?: number | null;
   accumulatedPauseMs?: number;
+  hasEndedEarly?: boolean;
+  votedAt?: number;
 }
 

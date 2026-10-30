@@ -651,7 +651,7 @@ export const INITIAL_EVENTS: SpeedEvent[] = [
     HostID: 'host_speedmeet_01',
     EventType: 'Straight',
     Description: 'Authorized developer and QA testing session. Connects two real devices (e.g. Kristy & Marcus) via LiveKit WebRTC in the same private video room. Requires Premium Plus, adult verification (18+), event registration, and mutual consent.',
-    TotalRounds: 3,
+    TotalRounds: 5,
     RoundDurationSeconds: 300, // 5 minutes
     BreakDurationSeconds: 120, // 2-minute break
     MinAge: 18,
@@ -838,6 +838,32 @@ export const INITIAL_ROUNDS: Round[] = [
     UserB: 'usr_06', // Marcus Sterling
     RoundStart: new Date(Date.now() + 700000).toISOString(),
     RoundEnd: new Date(Date.now() + 1000000).toISOString(),
+    UserA_Like: null,
+    UserB_Like: null,
+    UserA_Notes: '',
+    UserB_Notes: '',
+  },
+  {
+    RoundID: 'rnd_live_04',
+    EventID: 'evt_live_now',
+    RoundNumber: 4,
+    UserA: 'usr_me',
+    UserB: 'usr_04', // Maya Patel
+    RoundStart: new Date(Date.now() + 1100000).toISOString(),
+    RoundEnd: new Date(Date.now() + 1400000).toISOString(),
+    UserA_Like: null,
+    UserB_Like: null,
+    UserA_Notes: '',
+    UserB_Notes: '',
+  },
+  {
+    RoundID: 'rnd_live_05',
+    EventID: 'evt_live_now',
+    RoundNumber: 5,
+    UserA: 'usr_me',
+    UserB: 'usr_05', // Chloe Vaughn
+    RoundStart: new Date(Date.now() + 1500000).toISOString(),
+    RoundEnd: new Date(Date.now() + 1800000).toISOString(),
     UserA_Like: null,
     UserB_Like: null,
     UserA_Notes: '',

@@ -128,6 +128,8 @@ export interface ServerSharedRound {
   completedAt: number | null;
   mode: 'demonstration' | 'production';
   lastUpdated: number;
+  earlyExitedParticipants?: string[]; // userIds who explicitly tapped End Round early
+  earlyEndTimestamps?: Record<string, number>;
 }
 
 const DATA_DIR = path.resolve(__dirname, '.data');
@@ -221,6 +223,55 @@ function saveMatchesToDisk() {
 
 loadMatchesFromDisk();
 
+// ============================================================================
+// SERVER-AUTHORITATIVE ROUND VOTES STORAGE (IDEMPOTENT & CONFIDENTIAL)
+// ============================================================================
+export interface ServerRoundVote {
+  voteId: string; // `${eventId}_r${roundIndex}_${userId}`
+  eventId: string;
+  roundIndex: number;
+  userId: string;
+  partnerId: string;
+  decision: 'like' | 'pass';
+  notes: string;
+  timestamp: number;
+}
+
+const VOTES_FILE = path.join(DATA_DIR, 'round_votes.json');
+const roundVotes = new Map<string, ServerRoundVote>();
+
+function loadVotesFromDisk() {
+  try {
+    if (fs.existsSync(VOTES_FILE)) {
+      const data = fs.readFileSync(VOTES_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (item && item.voteId) {
+            roundVotes.set(item.voteId, item);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load votes from disk:', err);
+  }
+}
+
+function saveVotesToDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const array = Array.from(roundVotes.values());
+    fs.writeFileSync(VOTES_FILE, JSON.stringify(array, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Failed to save votes to disk:', err);
+  }
+}
+
+loadVotesFromDisk();
+
 export function getSharedRound(
   eventId: string,
   roundIndex: number,
@@ -232,10 +283,12 @@ export function getSharedRound(
   const isRoundActive = (r: ServerSharedRound) => {
     if (allowCompleted) return true;
     if (r.status === 'completed') return false;
+    // An active round must not have had its break expire
     if (r.status === 'break' && r.breakExpiresAt && now >= r.breakExpiresAt) return false;
     return true;
   };
 
+  // If both userId and partnerId are provided, ONLY match rounds that contain BOTH participants!
   if (userId && partnerId) {
     const sortedPair = [userId, partnerId].sort().join('_');
     const exactRoundId = `${eventId}_r${roundIndex}_${sortedPair}`;
@@ -243,46 +296,34 @@ export function getSharedRound(
     if (round && isRoundActive(round)) {
       return round;
     }
-  }
 
-  // Fallback 1: match by eventId, roundIndex and both participants
-  for (const round of sharedRounds.values()) {
-    if (round.eventId === eventId && round.roundIndex === roundIndex && isRoundActive(round)) {
-      if (userId && partnerId) {
-        if (round.participants.includes(userId) && round.participants.includes(partnerId)) {
-          return round;
+    for (const r of sharedRounds.values()) {
+      if (r.eventId === eventId && r.roundIndex === roundIndex && isRoundActive(r)) {
+        if (r.participants.includes(userId) && r.participants.includes(partnerId)) {
+          return r;
         }
       }
     }
+    // Strict isolation: NEVER match a round with another dater when partnerId is specified!
+    return undefined;
   }
 
-  // Fallback 2: match by eventId, roundIndex and either participant
-  for (const round of sharedRounds.values()) {
-    if (round.eventId === eventId && round.roundIndex === roundIndex && isRoundActive(round)) {
-      if (userId && round.participants.includes(userId)) {
-        return round;
-      }
-      if (partnerId && round.participants.includes(partnerId)) {
-        return round;
+  // If only userId is provided
+  if (userId && !partnerId) {
+    for (const r of sharedRounds.values()) {
+      if (r.eventId === eventId && r.roundIndex === roundIndex && isRoundActive(r)) {
+        if (r.participants.includes(userId)) {
+          return r;
+        }
       }
     }
+    return undefined;
   }
 
-  // Fallback 3: For developer staging (evt_staging_dev), authorized accounts share the active round
-  if (eventId === 'evt_staging_dev') {
-    for (const round of sharedRounds.values()) {
-      if (round.eventId === eventId && round.roundIndex === roundIndex && isRoundActive(round)) {
-        return round;
-      }
-    }
-  }
-
-  // Fallback 4: If neither userId nor partnerId specified, return active round
-  if (!userId && !partnerId) {
-    for (const round of sharedRounds.values()) {
-      if (round.eventId === eventId && round.roundIndex === roundIndex && isRoundActive(round)) {
-        return round;
-      }
+  // If neither provided
+  for (const r of sharedRounds.values()) {
+    if (r.eventId === eventId && r.roundIndex === roundIndex && isRoundActive(r)) {
+      return r;
     }
   }
 
@@ -299,8 +340,8 @@ export function getOrCreateSharedRound(
   mode: 'demonstration' | 'production' = 'production',
   forceFresh = false
 ): ServerSharedRound {
-  const existing = !forceFresh ? getSharedRound(eventId, roundIndex, userId, partnerId, false) : undefined;
   const now = Date.now();
+  const existing = !forceFresh ? getSharedRound(eventId, roundIndex, userId, partnerId, false) : undefined;
 
   if (existing) {
     // Add participants if not already present
@@ -311,10 +352,13 @@ export function getOrCreateSharedRound(
       existing.participants.push(partnerId);
     }
 
-    // Check if status needs to transition based on authoritative server clock
+    // Check if the call is still within its active 5 minutes
     if (existing.status === 'call') {
-      if (now >= existing.roundExpiresAt) {
-        // Automatically expired! Transition to break without allowing client to reset
+      if (now < existing.roundExpiresAt) {
+        // Active 5-minute call in progress! Reconnecting/refreshing MUST continue from original roundExpiresAt.
+        return existing;
+      } else {
+        // Expired naturally based on authoritative server clock
         existing.status = 'break';
         existing.breakStartedAt = existing.roundExpiresAt;
         existing.breakExpiresAt = existing.roundExpiresAt + existing.breakDurationSeconds * 1000;
@@ -329,13 +373,14 @@ export function getOrCreateSharedRound(
         saveSharedRoundsToDisk();
       }
     }
-    // Return existing active round - NEVER restart or extend the expiration time on reconnect/refresh!
-    if (existing.status !== 'completed') {
+
+    // Only return existing break round if we are NOT requesting to start a fresh call
+    if (!forceFresh && existing.status === 'break' && existing.breakExpiresAt && now < existing.breakExpiresAt) {
       return existing;
     }
   }
 
-  // Create fresh new shared round (never reuse a completed round)
+  // Create fresh new shared round (never reuse an expired round for a new date)
   const sortedPair = [userId, partnerId].filter(Boolean).sort().join('_');
   const roundId = `${eventId}_r${roundIndex}_${sortedPair || 'all'}`;
   const roomKey = `${eventId}_r${roundIndex}`;
@@ -358,6 +403,8 @@ export function getOrCreateSharedRound(
     completedAt: null,
     mode,
     lastUpdated: now,
+    earlyExitedParticipants: [],
+    earlyEndTimestamps: {},
   };
 
   sharedRounds.set(roundId, newRound);
@@ -408,7 +455,7 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
     });
   }
 
-  // Check expiration status transition
+  // Check expiration status transition (5 minutes elapsed on server)
   if (round.status === 'call' && now >= round.roundExpiresAt) {
     round.status = 'break';
     round.breakStartedAt = round.roundExpiresAt;
@@ -422,13 +469,20 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
     saveSharedRoundsToDisk();
   }
 
-  const remainingSeconds = round.status === 'call'
+  const isParticipantEarlyExited = userId ? Boolean(round.earlyExitedParticipants?.includes(userId)) : false;
+  const userBreakStartedAt = isParticipantEarlyExited && userId
+    ? (round.earlyEndTimestamps && round.earlyEndTimestamps[userId]) || round.breakStartedAt || now
+    : round.breakStartedAt;
+  const userBreakExpiresAt = userBreakStartedAt
+    ? userBreakStartedAt + round.breakDurationSeconds * 1000
+    : (round.roundExpiresAt + round.breakDurationSeconds * 1000);
+
+  const remainingSeconds = round.status === 'call' && !isParticipantEarlyExited
     ? Math.max(0, Math.floor((round.roundExpiresAt - now) / 1000))
     : 0;
 
-  const remainingBreakSeconds = round.breakExpiresAt
-    ? Math.max(0, Math.floor((round.breakExpiresAt - now) / 1000))
-    : round.breakDurationSeconds;
+  const remainingBreakSeconds = Math.max(0, Math.floor((userBreakExpiresAt - now) / 1000));
+  const userStage = isParticipantEarlyExited ? 'break' : round.status;
 
   return res.json({
     success: true,
@@ -438,17 +492,82 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
       eventId: round.eventId,
       roundIndex: round.roundIndex,
       status: round.status,
+      userStage,
+      userEndedEarly: isParticipantEarlyExited,
       roundStartedAt: round.roundStartedAt,
       roundExpiresAt: round.roundExpiresAt,
       roundDurationSeconds: round.roundDurationSeconds,
-      breakStartedAt: round.breakStartedAt,
-      breakExpiresAt: round.breakExpiresAt,
+      breakStartedAt: userBreakStartedAt,
+      breakExpiresAt: userBreakExpiresAt,
       breakDurationSeconds: round.breakDurationSeconds,
       remainingSeconds,
       remainingBreakSeconds,
       serverTime: now,
       isExpired: now >= round.roundExpiresAt,
     },
+  });
+});
+
+// API: Immediately end round early for an individual participant without terminating partner's 5-minute round
+app.post('/api/events/:eventId/rounds/:roundIndex/end-early', (req, res) => {
+  const { eventId, roundIndex: roundIndexParam } = req.params;
+  const roundIndex = Number(roundIndexParam) || 0;
+  const { userId, partnerId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  const now = Date.now();
+  let round = getSharedRound(eventId, roundIndex, userId, partnerId, false);
+  if (!round) {
+    round = getOrCreateSharedRound(eventId, roundIndex, userId, partnerId || '', 300, 120, 'production', false);
+  }
+
+  if (!round.earlyExitedParticipants) {
+    round.earlyExitedParticipants = [];
+  }
+  if (!round.earlyEndTimestamps) {
+    round.earlyEndTimestamps = {};
+  }
+
+  if (!round.earlyExitedParticipants.includes(userId)) {
+    round.earlyExitedParticipants.push(userId);
+  }
+  round.earlyEndTimestamps[userId] = now;
+  round.lastUpdated = now;
+
+  // If ALL active participants have exited early, move the shared round into break
+  const allEnded = round.participants.length > 0 && round.participants.every(p => round!.earlyExitedParticipants?.includes(p));
+  if (allEnded && round.status === 'call') {
+    round.status = 'break';
+    round.breakStartedAt = now;
+    round.breakExpiresAt = now + round.breakDurationSeconds * 1000;
+  }
+
+  saveSharedRoundsToDisk();
+
+  // Synchronize session store for this user
+  for (const mode of ['demonstration', 'production']) {
+    const key = getSessionKey(mode, userId);
+    const existingSession = sessions.get(key);
+    if (existingSession && existingSession.eventId === eventId && existingSession.roundIndex === roundIndex) {
+      existingSession.stage = 'break';
+      existingSession.breakStartedAt = now;
+      existingSession.lastActive = now;
+      sessions.set(key, existingSession);
+    }
+  }
+
+  return res.json({
+    success: true,
+    userEndedEarly: true,
+    userStage: 'break',
+    roundStatus: round.status,
+    roundExpiresAt: round.roundExpiresAt,
+    userBreakExpiresAt: now + round.breakDurationSeconds * 1000,
+    remainingBreakSeconds: round.breakDurationSeconds,
+    serverTime: now,
   });
 });
 
@@ -479,23 +598,42 @@ app.post('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
 
   const now = Date.now();
 
-  // Handle explicit early vote / skip action
+  // Handle explicit early vote / skip action per user
   if (action === 'end_round' && round.status === 'call') {
-    round.status = 'break';
-    round.roundExpiresAt = now;
-    round.breakStartedAt = now;
-    round.breakExpiresAt = now + round.breakDurationSeconds * 1000;
+    if (userId && userId !== 'unknown_user') {
+      if (!round.earlyExitedParticipants) round.earlyExitedParticipants = [];
+      if (!round.earlyEndTimestamps) round.earlyEndTimestamps = {};
+      if (!round.earlyExitedParticipants.includes(userId)) {
+        round.earlyExitedParticipants.push(userId);
+      }
+      round.earlyEndTimestamps[userId] = now;
+    }
+
+    const allEnded = round.participants.length > 0 && round.participants.every(p => round!.earlyExitedParticipants?.includes(p));
+    if (allEnded || !partnerId) {
+      round.status = 'break';
+      round.roundExpiresAt = now;
+      round.breakStartedAt = now;
+      round.breakExpiresAt = now + round.breakDurationSeconds * 1000;
+    }
     round.lastUpdated = now;
     saveSharedRoundsToDisk();
   }
 
-  const remainingSeconds = round.status === 'call'
+  const isParticipantEarlyExited = userId ? Boolean(round.earlyExitedParticipants?.includes(userId)) : false;
+  const userBreakStartedAt = isParticipantEarlyExited && userId
+    ? (round.earlyEndTimestamps && round.earlyEndTimestamps[userId]) || round.breakStartedAt || now
+    : round.breakStartedAt;
+  const userBreakExpiresAt = userBreakStartedAt
+    ? userBreakStartedAt + round.breakDurationSeconds * 1000
+    : (round.roundExpiresAt + round.breakDurationSeconds * 1000);
+
+  const remainingSeconds = round.status === 'call' && !isParticipantEarlyExited
     ? Math.max(0, Math.floor((round.roundExpiresAt - now) / 1000))
     : 0;
 
-  const remainingBreakSeconds = round.breakExpiresAt
-    ? Math.max(0, Math.floor((round.breakExpiresAt - now) / 1000))
-    : round.breakDurationSeconds;
+  const remainingBreakSeconds = Math.max(0, Math.floor((userBreakExpiresAt - now) / 1000));
+  const userStage = isParticipantEarlyExited ? 'break' : round.status;
 
   return res.json({
     success: true,
@@ -505,11 +643,13 @@ app.post('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
       eventId: round.eventId,
       roundIndex: round.roundIndex,
       status: round.status,
+      userStage,
+      userEndedEarly: isParticipantEarlyExited,
       roundStartedAt: round.roundStartedAt,
       roundExpiresAt: round.roundExpiresAt,
       roundDurationSeconds: round.roundDurationSeconds,
-      breakStartedAt: round.breakStartedAt,
-      breakExpiresAt: round.breakExpiresAt,
+      breakStartedAt: userBreakStartedAt,
+      breakExpiresAt: userBreakExpiresAt,
       breakDurationSeconds: round.breakDurationSeconds,
       remainingSeconds,
       remainingBreakSeconds,
@@ -517,6 +657,115 @@ app.post('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
       isExpired: now >= round.roundExpiresAt,
     },
   });
+});
+
+// API: Confidential Secret Ballot Voting (Idempotent: 1 vote per user per round, secure server persistence)
+app.post('/api/events/:eventId/rounds/:roundIndex/vote', (req, res) => {
+  const { eventId, roundIndex: roundIndexParam } = req.params;
+  const roundIndex = Number(roundIndexParam) || 0;
+  const { userId, partnerId, decision, notes = '' } = req.body;
+
+  if (!userId || !partnerId) {
+    return res.status(400).json({ success: false, error: 'userId and partnerId are required' });
+  }
+
+  if (decision !== 'like' && decision !== 'pass') {
+    return res.status(400).json({ success: false, error: 'decision must be either "like" or "pass"' });
+  }
+
+  const now = Date.now();
+  const voteId = `${eventId}_r${roundIndex}_${userId}`;
+  const existingVote = roundVotes.get(voteId);
+
+  let vote: ServerRoundVote;
+  if (existingVote) {
+    // Vote already cast: update notes if provided, preserve single vote record (idempotency guard)
+    if (notes) existingVote.notes = notes;
+    existingVote.decision = decision;
+    existingVote.timestamp = now;
+    vote = existingVote;
+  } else {
+    vote = {
+      voteId,
+      eventId,
+      roundIndex,
+      userId,
+      partnerId,
+      decision,
+      notes: notes || '',
+      timestamp: now,
+    };
+    roundVotes.set(voteId, vote);
+  }
+  saveVotesToDisk();
+
+  // Sync session store with vote
+  for (const mode of ['demonstration', 'production']) {
+    const key = getSessionKey(mode, userId);
+    const s = sessions.get(key);
+    if (s && s.eventId === eventId && s.roundIndex === roundIndex) {
+      s.vote = decision;
+      s.notes = notes || s.notes;
+      s.lastActive = now;
+      sessions.set(key, s);
+    }
+  }
+
+  // Automatic Mutual Like Evaluation: check if partner also cast a Like for this round
+  const partnerVoteId = `${eventId}_r${roundIndex}_${partnerId}`;
+  const partnerVote = roundVotes.get(partnerVoteId);
+  let isMutualMatch = false;
+  let createdMatch: ServerPersistentMatch | null = null;
+
+  if (decision === 'like' && partnerVote && partnerVote.decision === 'like' && partnerVote.partnerId === userId) {
+    isMutualMatch = true;
+    const sortedPair = [userId, partnerId].sort().join('_');
+    const matchId = `match_${sortedPair}_${eventId}`;
+
+    if (!persistentMatches.has(matchId)) {
+      createdMatch = {
+        matchId,
+        userA: userId,
+        userB: partnerId,
+        eventId,
+        timestamp: new Date().toISOString(),
+        chatUnlocked: true,
+        chemistryScore: Math.floor(88 + Math.random() * 11),
+        mutualInterests: ['Speed Dating Spark', 'Mutual Chemistry'],
+        sparkNote: `Mutual chemistry sparked during round ${roundIndex + 1}!`,
+        userALike: true,
+        userBLike: true,
+      };
+      persistentMatches.set(matchId, createdMatch);
+      saveMatchesToDisk();
+    } else {
+      createdMatch = persistentMatches.get(matchId)!;
+    }
+  }
+
+  return res.json({
+    success: true,
+    vote,
+    isMutualMatch,
+    match: createdMatch,
+    message: decision === 'like' ? 'Confidential Like recorded securely.' : 'Confidential Pass recorded securely.',
+  });
+});
+
+// API: Retrieve recorded vote for a user in this round
+app.get('/api/events/:eventId/rounds/:roundIndex/vote', (req, res) => {
+  const { eventId, roundIndex: roundIndexParam } = req.params;
+  const roundIndex = Number(roundIndexParam) || 0;
+  const userId = req.query.userId as string;
+
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  const voteId = `${eventId}_r${roundIndex}_${userId}`;
+  const vote = roundVotes.get(voteId) || null;
+
+  return res.json({ success: true, vote });
 });
 
 // API: Retrieve persistent mutual matches for a user
@@ -1361,8 +1610,8 @@ app.post('/api/events/:eventId/match-queue', (req, res) => {
     rMap.set(userId, { isReady: true, timestamp: Date.now() });
     rMap.set(matchedPartner.userId, { isReady: true, timestamp: Date.now() });
 
-    // Initialize server-authoritative shared round timer for this exact pair
-    getOrCreateSharedRound(eventId, roundIndex, userId, matchedPartner.userId, 300, 120, 'production');
+    // Initialize server-authoritative shared round timer for this exact pair (fresh 5-minute round)
+    getOrCreateSharedRound(eventId, roundIndex, userId, matchedPartner.userId, 300, 120, 'production', true);
 
     // Remove from queue since they are now actively paired
     queue.delete(userId);
@@ -1728,9 +1977,16 @@ app.post('/api/livekit/token', async (req, res) => {
     }
 
     // 9. Security Check: Server-Authoritative 5-Minute Round Expiration Check
-    // Reconnecting or refreshing must NEVER extend an expired round or create a new token for an expired round!
     const existingSharedRound = getSharedRound(eventId, roundIndex, userId, partnerId);
     if (existingSharedRound) {
+      if (existingSharedRound.earlyExitedParticipants?.includes(userId)) {
+        return res.status(403).json({
+          success: false,
+          code: 'USER_ENDED_EARLY',
+          error: 'You have ended this speed dating round early. Please cast your vote on the confidential voting screen.',
+          status: 'break',
+        });
+      }
       if (existingSharedRound.status === 'break' || existingSharedRound.status === 'completed' || now >= existingSharedRound.roundExpiresAt) {
         existingSharedRound.status = 'break';
         existingSharedRound.breakStartedAt = existingSharedRound.breakStartedAt || existingSharedRound.roundExpiresAt;
