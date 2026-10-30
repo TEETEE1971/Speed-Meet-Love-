@@ -133,14 +133,25 @@ export interface ServerSharedRound {
 }
 
 const DATA_DIR = path.resolve(__dirname, '.data');
+
+// Ensure runtime storage directory exists on server startup
+function ensureStorageDirectory() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.warn('Failed to initialize storage directory:', err);
+  }
+}
+ensureStorageDirectory();
+
 const ROUNDS_FILE = path.join(DATA_DIR, 'shared_rounds.json');
 const sharedRounds = new Map<string, ServerSharedRound>();
 
 function loadSharedRoundsFromDisk() {
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
+    ensureStorageDirectory();
     if (fs.existsSync(ROUNDS_FILE)) {
       const data = fs.readFileSync(ROUNDS_FILE, 'utf-8');
       const parsed = JSON.parse(data);
@@ -193,6 +204,7 @@ const persistentMatches = new Map<string, ServerPersistentMatch>();
 
 function loadMatchesFromDisk() {
   try {
+    ensureStorageDirectory();
     if (fs.existsSync(MATCHES_FILE)) {
       const data = fs.readFileSync(MATCHES_FILE, 'utf-8');
       const parsed = JSON.parse(data);
@@ -242,6 +254,7 @@ const roundVotes = new Map<string, ServerRoundVote>();
 
 function loadVotesFromDisk() {
   try {
+    ensureStorageDirectory();
     if (fs.existsSync(VOTES_FILE)) {
       const data = fs.readFileSync(VOTES_FILE, 'utf-8');
       const parsed = JSON.parse(data);
@@ -283,8 +296,6 @@ export function getSharedRound(
   const isRoundActive = (r: ServerSharedRound) => {
     if (allowCompleted) return true;
     if (r.status === 'completed') return false;
-    // An active round must not have had its break expire
-    if (r.status === 'break' && r.breakExpiresAt && now >= r.breakExpiresAt) return false;
     return true;
   };
 
@@ -341,7 +352,7 @@ export function getOrCreateSharedRound(
   forceFresh = false
 ): ServerSharedRound {
   const now = Date.now();
-  const existing = !forceFresh ? getSharedRound(eventId, roundIndex, userId, partnerId, false) : undefined;
+  const existing = !forceFresh ? getSharedRound(eventId, roundIndex, userId, partnerId, true) : undefined;
 
   if (existing) {
     // Add participants if not already present
@@ -374,8 +385,8 @@ export function getOrCreateSharedRound(
       }
     }
 
-    // Only return existing break round if we are NOT requesting to start a fresh call
-    if (!forceFresh && existing.status === 'break' && existing.breakExpiresAt && now < existing.breakExpiresAt) {
+    // If not explicitly requesting a fresh new round, return existing state (prevents round restart loop)
+    if (!forceFresh) {
       return existing;
     }
   }
@@ -438,7 +449,7 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
   const userId = req.query.userId as string | undefined;
   const partnerId = req.query.partnerId as string | undefined;
 
-  let round = getSharedRound(eventId, roundIndex, userId, partnerId, false);
+  let round = getSharedRound(eventId, roundIndex, userId, partnerId, true);
   const now = Date.now();
 
   if (!round && userId) {
@@ -519,7 +530,7 @@ app.post('/api/events/:eventId/rounds/:roundIndex/end-early', (req, res) => {
   }
 
   const now = Date.now();
-  let round = getSharedRound(eventId, roundIndex, userId, partnerId, false);
+  let round = getSharedRound(eventId, roundIndex, userId, partnerId, true);
   if (!round) {
     round = getOrCreateSharedRound(eventId, roundIndex, userId, partnerId || '', 300, 120, 'production', false);
   }
@@ -551,7 +562,8 @@ app.post('/api/events/:eventId/rounds/:roundIndex/end-early', (req, res) => {
   for (const mode of ['demonstration', 'production']) {
     const key = getSessionKey(mode, userId);
     const existingSession = sessions.get(key);
-    if (existingSession && existingSession.eventId === eventId && existingSession.roundIndex === roundIndex) {
+    if (existingSession && existingSession.eventId === eventId) {
+      existingSession.roundIndex = roundIndex;
       existingSession.stage = 'break';
       existingSession.breakStartedAt = now;
       existingSession.lastActive = now;
@@ -938,6 +950,7 @@ const secondDateSessions = new Map<string, ServerSecondDateSession>();
 
 function loadSecondDateSessionsFromDisk() {
   try {
+    ensureStorageDirectory();
     if (fs.existsSync(SECOND_DATES_FILE)) {
       const data = fs.readFileSync(SECOND_DATES_FILE, 'utf-8');
       const parsed = JSON.parse(data);
@@ -1453,7 +1466,7 @@ const liveActiveMatches = new Map<string, StagedMatch>();
 
 // API: Matchmaking queue and mutual pairing for live speed dating
 // Coordinates real-time two-person pairing across separate devices/browsers
-app.post('/api/events/:eventId/match-queue', (req, res) => {
+const handleMatchQueue = (req: express.Request, res: express.Response) => {
   const { eventId } = req.params;
   const {
     userId,
@@ -1637,7 +1650,10 @@ app.post('/api/events/:eventId/match-queue', (req, res) => {
     status: 'waiting',
     message: 'Waiting for partner mutual consent ("Begin Matchmaking / Next Date")...',
   });
-});
+};
+
+app.post('/api/events/:eventId/match-queue', handleMatchQueue);
+app.post('/api/events/:eventId/matchmaking', handleMatchQueue);
 
 // API: Check match status (polling for the second user to provide mutual consent)
 app.get('/api/events/:eventId/match-status/:userId', (req, res) => {

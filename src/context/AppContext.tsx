@@ -620,7 +620,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const saveLiveSession = (partial: Partial<LiveSessionState>) => {
+  const saveLiveSession = useCallback((partial: Partial<LiveSessionState>) => {
     setLiveSessionState(prev => {
       const base: LiveSessionState = prev || {
         userId: currentUser.UserID,
@@ -659,7 +659,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       return updated;
     });
-  };
+  }, [currentUser.UserID, selectedEventId, activeRoundIndex, appMode]);
 
   const clearLiveSession = () => {
     setLiveSessionState(null);

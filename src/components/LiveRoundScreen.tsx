@@ -126,21 +126,16 @@ export const LiveRoundScreen: React.FC = () => {
       return 'break';
     }
     if (isSessionForCurrentModeAndEvent && liveSession?.roundIndex === activeRoundIndex) {
-      if (liveSession.hasEndedEarly) {
+      if (liveSession.hasEndedEarly || liveSession.stage === 'break') {
         return 'break';
-      }
-      const isRecent = Boolean(liveSession.lastActive && Date.now() - liveSession.lastActive < defaultDuration * 1000);
-      if (liveSession.stage === 'call') {
-        const isExpired = Date.now() >= liveSession.roundStartedAt + defaultDuration * 1000;
-        if (isRecent && isExpired) return 'break';
-        return 'call';
-      }
-      if (liveSession.stage === 'break') {
-        const breakExpired = Date.now() >= (liveSession.breakStartedAt || 0) + defaultBreak * 1000;
-        if (isRecent && !breakExpired) return 'break';
       }
       if (liveSession.stage === 'waiting_room') {
         return 'waiting_room';
+      }
+      if (liveSession.stage === 'call') {
+        const isExpired = Date.now() >= liveSession.roundStartedAt + defaultDuration * 1000;
+        if (isExpired) return 'break';
+        return 'call';
       }
     }
     return 'call';
@@ -817,19 +812,9 @@ export const LiveRoundScreen: React.FC = () => {
       } catch (e) {}
     }, 2000);
 
-    // In demo or staging after 3.5 seconds, if not matched by poll, smoothly pair with candidate
-    const matchmakerTimeout = setTimeout(() => {
-      if (isMounted) {
-        setFoundPartnerName(nextPartner ? `${nextPartner.FirstName}, ${nextPartner.Age}` : 'Next Partner');
-        setWaitingCountdown(3);
-        clearInterval(checkInterval);
-      }
-    }, 3500);
-
     return () => {
       isMounted = false;
       clearInterval(checkInterval);
-      clearTimeout(matchmakerTimeout);
     };
   }, [stage, activeRoundIndex, eventRounds, isEligible, activeEvent.EventID, currentUser.UserID, users, setCurrentView, clearLiveSession]);
 
@@ -952,14 +937,16 @@ export const LiveRoundScreen: React.FC = () => {
     }
 
     saveLiveSession({
+      roundIndex: activeRoundIndex,
       stage: 'break',
       breakStartedAt: now,
       hasEndedEarly: true,
       lastActive: now,
       mode: appMode,
+      partnerId: partner.UserID,
     });
 
-    showNotification('Video call ended. Please cast your confidential Like or Pass vote below.', 'pink');
+    showNotification(`Video date with ${partner.FirstName} ended. Please cast your confidential Like or Pass vote below.`, 'pink');
 
     // 3. Notify server endpoint /api/events/:eventId/rounds/:roundIndex/end-early
     try {
@@ -1061,10 +1048,11 @@ export const LiveRoundScreen: React.FC = () => {
   };
 
   const handleNextDateClick = async () => {
-    // If not voted yet, default to pass
-    if (selectedDecision === null && currentRound) {
-      submitRoundDecision(currentRound.RoundID, false, privateNotes);
-      saveLiveSession({ vote: 'pass', notes: privateNotes });
+    // Requirement 2: Do not automatically start another date before voting is completed!
+    if (!selectedDecision) {
+      setVoteError(`Please choose Like or Pass for ${partner.FirstName} to complete your confidential ballot before advancing.`);
+      showNotification(`Please choose Like or Pass for ${partner.FirstName} before advancing.`, 'info');
+      return;
     }
 
     const nextIndex = activeRoundIndex + 1;
@@ -1090,7 +1078,7 @@ export const LiveRoundScreen: React.FC = () => {
       } catch (e) {}
 
       saveLiveSession({
-        roundIndex: activeRoundIndex,
+        roundIndex: nextIndex,
         stage: 'waiting_room',
         vote: null,
         notes: '',
@@ -1112,7 +1100,7 @@ export const LiveRoundScreen: React.FC = () => {
           }),
         });
 
-        await fetch(`/api/events/${activeEvent.EventID}/matchmaking`, {
+        await fetch(`/api/events/${activeEvent.EventID}/match-queue`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1871,13 +1859,19 @@ export const LiveRoundScreen: React.FC = () => {
                   e.stopPropagation();
                   handleNextDateClick();
                 }}
-                className="w-full py-4 rounded-2xl btn-pink-gradient font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20 hover:scale-[1.01] active:scale-98 transition-transform cursor-pointer"
+                className={`w-full py-4 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  !selectedDecision
+                    ? 'bg-pink-100 text-[#FF2E93] border border-pink-300 hover:bg-pink-200 shadow-sm'
+                    : 'btn-pink-gradient text-white shadow-lg shadow-pink-500/20 hover:scale-[1.01] active:scale-98'
+                }`}
               >
-                <span>Next Date (I'm Ready)</span>
+                <span>{!selectedDecision ? `Vote on ${partner.FirstName} to Continue` : "Next Date (I'm Ready)"}</span>
                 <ChevronRight className="w-5 h-5" />
               </button>
               <p className="text-[11px] text-slate-400">
-                We never automatically start calls without your explicit consent. Tapping Next Date places you into the waiting room.
+                {!selectedDecision
+                  ? `Please select Like or Pass above for ${partner.FirstName} to complete your confidential ballot before advancing.`
+                  : `We never automatically start calls without your explicit consent. Tapping Next Date places you into the waiting room.`}
               </p>
             </div>
 
