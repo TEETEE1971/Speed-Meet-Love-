@@ -1277,9 +1277,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // Ensure candidatePartners has at least 5 daters to guarantee 5 scheduled speed-dating rounds
-    const targetRoundCount = targetEvent.TotalRounds || 5;
-    if (candidatePartners.length < targetRoundCount) {
+    // Preserve all existing votes and dates when repairing a previously short schedule.
+    // Older saved sessions may contain only 3 rounds although the event requires 5.
+    const targetRoundCount = Math.max(5, targetEvent.TotalRounds || 5);
+    const existingEventRounds = rounds
+      .filter(r => r.EventID === eventId && (r.UserA === currentUser.UserID || r.UserB === currentUser.UserID))
+      .sort((a, b) => a.RoundNumber - b.RoundNumber);
+    if (existingEventRounds.length >= targetRoundCount) {
+      return existingEventRounds;
+    }
+
+    // Demo-only accounts are appropriate for the demonstration sandbox. Never invent
+    // unregistered partners in live production events to fill a scheduling shortfall.
+    if (appMode === 'demonstration' && candidatePartners.length < targetRoundCount) {
       const remainingUsers = users.filter(
         u =>
           u.UserID !== currentUser.UserID &&
@@ -1289,40 +1299,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       candidatePartners = [...candidatePartners, ...remainingUsers];
     }
 
-    const meId = currentUser.UserID;
+    const usedPartners = new Set(existingEventRounds.map(r =>
+      r.UserA === currentUser.UserID ? r.UserB : r.UserA
+    ));
+    const availablePartners = candidatePartners.filter(u => !usedPartners.has(u.UserID));
     const newRounds: Round[] = [];
-    const duration = 300; // Exactly 5 minutes
+    const duration = 300;
     const baseTime = Date.now();
 
-    candidatePartners.slice(0, targetRoundCount).forEach((partner, index) => {
+    for (let index = 0; index < targetRoundCount; index++) {
+      if (existingEventRounds.some(r => r.RoundNumber === index + 1)) continue;
+      // Only the developer staging test may repeat a consenting tester to exercise
+      // all five transitions with fewer than five distinct test accounts.
+      const partner = availablePartners.shift() ||
+        (eventId === 'evt_staging_dev' ? candidatePartners[index % candidatePartners.length] : undefined);
+      if (!partner) break;
+
       const roundStart = new Date(baseTime + index * (duration + 120) * 1000).toISOString();
       const roundEnd = new Date(baseTime + (index * (duration + 120) + duration) * 1000).toISOString();
-
       newRounds.push({
         RoundID: `rnd_${eventId}_${index + 1}_${Date.now().toString(36)}`,
         EventID: eventId,
         RoundNumber: index + 1,
-        UserA: meId,
+        UserA: currentUser.UserID,
         UserB: partner.UserID,
         RoundStart: roundStart,
         RoundEnd: roundEnd,
         UserA_Like: null,
-        UserB_Like: Math.random() > 0.35,
+        UserB_Like: appMode === 'demonstration' ? Math.random() > 0.35 : null,
         UserA_Notes: '',
-        UserB_Notes: `Enjoyed connecting on ${targetEvent.DayOfWeek} night!`,
+        UserB_Notes: appMode === 'demonstration' ? `Enjoyed connecting on ${targetEvent.DayOfWeek} night!` : '',
       });
-    });
+    }
 
-    setRounds(prev => {
-      const filtered = prev.filter(r => r.EventID !== eventId);
-      return [...filtered, ...newRounds];
-    });
+    if (newRounds.length > 0) {
+      setRounds(prev => {
+        // Protect against the lobby and startEventLive both attempting to backfill.
+        const existingNumbers = new Set(prev.filter(r =>
+          r.EventID === eventId && (r.UserA === currentUser.UserID || r.UserB === currentUser.UserID)
+        ).map(r => r.RoundNumber));
+        const additions = newRounds.filter(r => !existingNumbers.has(r.RoundNumber));
+        return additions.length > 0 ? [...prev, ...additions] : prev;
+      });
+    }
 
     setEvents(prev =>
       prev.map(e => (e.EventID === eventId ? { ...e, RoundsGenerated: true } : e))
     );
 
-    return newRounds;
+    return [...existingEventRounds, ...newRounds].sort((a, b) => a.RoundNumber - b.RoundNumber);
   };
 
   const startEventLive = (eventId: string): boolean => {
