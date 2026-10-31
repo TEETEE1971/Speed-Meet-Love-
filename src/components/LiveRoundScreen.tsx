@@ -48,6 +48,7 @@ export const LiveRoundScreen: React.FC = () => {
     activeRoundIndex,
     setActiveRoundIndex,
     submitRoundDecision,
+    generateRoundsForEvent,
     skipRound,
     requestReplay,
     setCurrentView,
@@ -1084,8 +1085,19 @@ export const LiveRoundScreen: React.FC = () => {
     }
 
     const nextIndex = activeRoundIndex + 1;
-    if (nextIndex < eventRounds.length) {
-      const nextRound = eventRounds[nextIndex];
+    const plannedRoundCount = Math.max(5, activeEvent.TotalRounds || 5);
+    // Older sessions can have fewer stored rounds than the five advertised dates.
+    // Backfill the missing slots without discarding existing ballots or matches.
+    const scheduledRounds = nextIndex < plannedRoundCount && nextIndex >= eventRounds.length
+      ? generateRoundsForEvent(activeEvent.EventID)
+      : eventRounds;
+
+    if (nextIndex < plannedRoundCount) {
+      const nextRound = scheduledRounds[nextIndex];
+      if (!nextRound) {
+        setVoteError('Your vote is saved, but no eligible partner is scheduled for the next round yet. Please wait for more registered participants.');
+        return;
+      }
       const nextPartnerId = nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA;
 
       setIsAdvancing(true);
@@ -1970,10 +1982,10 @@ export const LiveRoundScreen: React.FC = () => {
                 <span>Pause & Take More Break</span>
               </button>
 
-              <button
+              {appMode === 'demonstration' && (<button
                 onClick={() => {
-                  // Instant pair for demonstration
-                  const nextIndex = activeRoundIndex + 1;
+                  // Active round index already points to the round we are waiting for.
+                  const nextIndex = activeRoundIndex;
                   if (nextIndex < eventRounds.length) {
                     const now = Date.now();
                     setActiveRoundIndex(nextIndex);
@@ -1999,22 +2011,13 @@ export const LiveRoundScreen: React.FC = () => {
                       lastActive: now,
                     });
                   } else {
-                    clearLiveSession();
-                    try {
-                      confetti({
-                        particleCount: 90,
-                        spread: 80,
-                        origin: { y: 0.6 },
-                        colors: ['#FF2E93', '#FF147E', '#E11D48'],
-                      });
-                    } catch (e) {}
-                    setCurrentView('results');
+                    showNotification('No next date is scheduled yet. Your prior votes are still saved.', 'info');
                   }
                 }}
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-[#FF2E93] border border-pink-200 text-xs font-bold transition-colors cursor-pointer"
               >
                 Connect Now (Demo)
-              </button>
+              </button>)}
             </div>
 
             <p className="text-[11px] text-slate-400">
