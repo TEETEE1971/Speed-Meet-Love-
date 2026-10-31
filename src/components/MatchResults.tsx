@@ -13,6 +13,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Avatar } from './Avatar';
+import { PushNotificationOptIn } from './PushNotificationOptIn';
 import confetti from 'canvas-confetti';
 
 export const MatchResults: React.FC = () => {
@@ -86,6 +87,9 @@ export const MatchResults: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Push Notification Opt-In for Instant 10-Minute Second-Chance Date Alerts */}
+      <PushNotificationOptIn />
 
       {/* Mutual Matches Gallery */}
       <div className="space-y-4">

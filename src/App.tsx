@@ -19,6 +19,7 @@ import { SubscriptionScreen } from './components/SubscriptionScreen';
 import { ProfileSetup } from './components/ProfileSetup';
 import { DatabaseViewer } from './components/DatabaseViewer';
 import { ReportModal } from './components/ReportModal';
+import { SecondChanceInvitationModal } from './components/SecondChanceInvitationModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SpeedMeetLoveLogo } from './components/SpeedMeetLoveLogo';
 import { Heart, Zap, Sparkles } from 'lucide-react';
@@ -91,6 +92,9 @@ const MainContent: React.FC = () => {
 
       {/* Global Safety Modal */}
       <ReportModal />
+
+      {/* Global In-App Second-Chance Date Notification Modal */}
+      <SecondChanceInvitationModal />
 
       {/* Speed Meet Love Brand Footer */}
       <footer className="border-t-2 border-rose-200 py-8 bg-white text-xs text-slate-700 mt-auto shadow-inner">

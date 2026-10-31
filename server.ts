@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { AccessToken } from 'livekit-server-sdk';
+import webpush from 'web-push';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -981,6 +982,115 @@ function saveSecondDateSessionsToDisk() {
 
 loadSecondDateSessionsFromDisk();
 
+// ============================================================================
+// BROWSER PUSH NOTIFICATIONS & VAPID KEYS (WEB-PUSH)
+// ============================================================================
+const VAPID_KEYS_FILE = path.join(DATA_DIR, 'vapid_keys.json');
+const PUSH_SUBSCRIPTIONS_FILE = path.join(DATA_DIR, 'push_subscriptions.json');
+
+interface VapidKeys {
+  publicKey: string;
+  privateKey: string;
+}
+
+let vapidKeys: VapidKeys = {
+  publicKey: '',
+  privateKey: '',
+};
+
+function initVapidKeys() {
+  try {
+    ensureStorageDirectory();
+    if (fs.existsSync(VAPID_KEYS_FILE)) {
+      const data = fs.readFileSync(VAPID_KEYS_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (parsed.publicKey && parsed.privateKey) {
+        vapidKeys = parsed;
+      }
+    }
+    if (!vapidKeys.publicKey || !vapidKeys.privateKey) {
+      vapidKeys = webpush.generateVAPIDKeys();
+      fs.writeFileSync(VAPID_KEYS_FILE, JSON.stringify(vapidKeys, null, 2), 'utf-8');
+    }
+    webpush.setVapidDetails(
+      'mailto:notifications@speedmeetlove.com',
+      vapidKeys.publicKey,
+      vapidKeys.privateKey
+    );
+  } catch (err) {
+    console.warn('Failed to initialize VAPID keys:', err);
+  }
+}
+initVapidKeys();
+
+// userId -> PushSubscription[]
+const userPushSubscriptions = new Map<string, any[]>();
+
+function loadPushSubscriptionsFromDisk() {
+  try {
+    ensureStorageDirectory();
+    if (fs.existsSync(PUSH_SUBSCRIPTIONS_FILE)) {
+      const data = fs.readFileSync(PUSH_SUBSCRIPTIONS_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (typeof parsed === 'object' && parsed !== null) {
+        for (const [uid, subs] of Object.entries(parsed)) {
+          if (Array.isArray(subs)) {
+            userPushSubscriptions.set(uid, subs);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load push subscriptions:', err);
+  }
+}
+
+function savePushSubscriptionsToDisk() {
+  try {
+    ensureStorageDirectory();
+    const serialized: Record<string, any[]> = {};
+    for (const [uid, subs] of userPushSubscriptions.entries()) {
+      serialized[uid] = subs;
+    }
+    fs.writeFileSync(PUSH_SUBSCRIPTIONS_FILE, JSON.stringify(serialized, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Failed to save push subscriptions:', err);
+  }
+}
+
+loadPushSubscriptionsFromDisk();
+
+async function sendPushNotificationToUser(userId: string, payload: { title: string; body: string; icon?: string; data?: any; tag?: string }) {
+  const subs = userPushSubscriptions.get(userId) || [];
+  if (subs.length === 0) return { delivered: 0, total: 0 };
+
+  let delivered = 0;
+  const validSubs: any[] = [];
+
+  for (const sub of subs) {
+    try {
+      await webpush.sendNotification(sub, JSON.stringify(payload));
+      delivered++;
+      validSubs.push(sub);
+    } catch (err: any) {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        // Expired push subscription
+        console.log(`Push subscription expired for ${userId}`);
+      } else {
+        console.warn('Push delivery note:', err.message || err);
+        validSubs.push(sub);
+      }
+    }
+  }
+
+  if (validSubs.length !== subs.length) {
+    userPushSubscriptions.set(userId, validSubs);
+    savePushSubscriptionsToDisk();
+  }
+
+  return { delivered, total: subs.length };
+}
+
 export function getSecondDateSession(
   eventId: string,
   userId: string,
@@ -1006,16 +1116,17 @@ export function getSecondDateSession(
 app.post('/api/second-date/request', (req, res) => {
   const {
     eventId = 'evt_live_now',
-    userId,
     userName = 'Dater',
     userAge,
     tier,
-    partnerId,
     partnerName = 'Partner',
     mode = 'production',
     matchId,
     simulatePartnerConsent = false,
   } = req.body;
+
+  const userId = req.body.userId || req.body.userA;
+  const partnerId = req.body.partnerId || req.body.userB;
 
   if (!userId || !partnerId) {
     return res.status(400).json({ success: false, error: 'userId and partnerId are required' });
@@ -1067,6 +1178,40 @@ app.post('/api/second-date/request', (req, res) => {
   const isUserA = userId === userA;
 
   if (session) {
+    // Prevent duplicate invitations if already waiting for partner
+    if (session.status === 'waiting_for_partner' && session.requestedBy === userId) {
+      return res.status(409).json({
+        success: false,
+        code: 'INVITATION_ALREADY_PENDING',
+        session,
+        message: 'An invitation is already pending for this member. Duplicate invitations are prevented.',
+      });
+    }
+
+    // If partner previously requested, this is mutual consent!
+    if (session.status === 'waiting_for_partner' && session.requestedBy !== userId) {
+      session.userAConsent = true;
+      session.userBConsent = true;
+      session.status = 'ready_to_start';
+      session.lastUpdated = now;
+      saveSecondDateSessionsToDisk();
+
+      // Notify original requester that partner accepted
+      sendPushNotificationToUser(session.requestedBy, {
+        title: 'Second-Chance Date Accepted! ❤️',
+        body: `${userName} agreed to Another Date! Ready when both of you are.`,
+        icon: '/assets/kristy_exact.png',
+        tag: `sml_second_date_accepted_${sessionId}`,
+        data: {
+          url: '/?view=matches',
+          sessionId,
+          status: 'ready_to_start',
+        },
+      }).catch(() => {});
+
+      return res.json({ success: true, session });
+    }
+
     if (isUserA) {
       session.userAConsent = true;
     } else {
@@ -1085,6 +1230,23 @@ app.post('/api/second-date/request', (req, res) => {
     }
     session.lastUpdated = now;
     saveSecondDateSessionsToDisk();
+
+    // Dispatch push notification to partner
+    sendPushNotificationToUser(partnerId, {
+      title: 'Second-Chance Date Invitation ❤️',
+      body: `${userName} invited you to a private 10-minute video date! Tap to review.`,
+      icon: '/assets/kristy_exact.png',
+      tag: `sml_second_date_${sessionId}`,
+      data: {
+        url: '/?view=matches',
+        sessionId,
+        requesterId: userId,
+        requesterName: userName,
+        partnerId,
+        eventId,
+      },
+    }).catch(() => {});
+
     return res.json({ success: true, session });
   }
 
@@ -1111,6 +1273,23 @@ app.post('/api/second-date/request', (req, res) => {
 
   secondDateSessions.set(sessionId, newSession);
   saveSecondDateSessionsToDisk();
+
+  // Dispatch immediate push notification to partner
+  sendPushNotificationToUser(partnerId, {
+    title: 'Second-Chance Date Invitation ❤️',
+    body: `${userName} invited you to a private 10-minute video date! Tap to review.`,
+    icon: '/assets/kristy_exact.png',
+    tag: `sml_second_date_${sessionId}`,
+    data: {
+      url: '/?view=matches',
+      sessionId,
+      requesterId: userId,
+      requesterName: userName,
+      partnerId,
+      eventId,
+    },
+  }).catch(() => {});
+
   return res.json({ success: true, session: newSession });
 });
 
@@ -1135,15 +1314,104 @@ app.post('/api/second-date/respond', (req, res) => {
 
     if (session.userAConsent && session.userBConsent) {
       session.status = 'ready_to_start';
+
+      // Notify the requester that partner accepted
+      const otherUserId = isUserA ? session.userB : session.userA;
+      const respondentName = isUserA ? session.userAName : session.userBName;
+      sendPushNotificationToUser(otherUserId, {
+        title: 'Second-Chance Date Accepted! ❤️',
+        body: `${respondentName || 'Your match'} agreed to Another Date! Ready when both of you are.`,
+        icon: '/assets/kristy_exact.png',
+        tag: `sml_second_date_accepted_${sessionId}`,
+        data: {
+          url: '/?view=matches',
+          sessionId,
+          status: 'ready_to_start',
+        },
+      }).catch(() => {});
     }
   } else if (action === 'decline' || action === 'save_and_chat') {
-    // Feature 2: If someone declines or chooses to save and chat, do not start the call. Keep match saved.
+    // Feature 7: Decline without exposing private reasons to requester
     session.status = 'declined';
   }
 
   session.lastUpdated = now;
   saveSecondDateSessionsToDisk();
   return res.json({ success: true, session });
+});
+
+// API: Retrieve incoming Second-Chance Date invitations and ready sessions for a user
+app.get('/api/second-date/invitations', (req, res) => {
+  const userId = req.query.userId as string;
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  const invitations = Array.from(secondDateSessions.values()).filter(s => {
+    const isParticipant = s.userA === userId || s.userB === userId;
+    if (!isParticipant) return false;
+    if (s.status === 'waiting_for_partner' && s.requestedBy !== userId) return true;
+    if (s.status === 'ready_to_start') return true;
+    return false;
+  });
+
+  return res.json({ success: true, invitations, serverTime: Date.now() });
+});
+
+// API: Get VAPID public key for browser push registration
+app.get('/api/push/vapid-public-key', (_req, res) => {
+  return res.json({ success: true, publicKey: vapidKeys.publicKey });
+});
+
+// API: Subscribe browser to push notifications
+app.post('/api/push/subscribe', (req, res) => {
+  const { userId, subscription } = req.body;
+  if (!userId || !subscription || !subscription.endpoint) {
+    return res.status(400).json({ success: false, error: 'userId and valid subscription are required' });
+  }
+
+  let subs = userPushSubscriptions.get(userId) || [];
+  const exists = subs.some(s => s.endpoint === subscription.endpoint);
+  if (!exists) {
+    subs.push(subscription);
+    userPushSubscriptions.set(userId, subs);
+    savePushSubscriptionsToDisk();
+  }
+
+  return res.json({ success: true, subscribed: true, totalSubscriptions: subs.length });
+});
+
+// API: Unsubscribe browser from push notifications
+app.post('/api/push/unsubscribe', (req, res) => {
+  const { userId, endpoint } = req.body;
+  if (!userId || !endpoint) {
+    return res.status(400).json({ success: false, error: 'userId and endpoint are required' });
+  }
+
+  let subs = userPushSubscriptions.get(userId) || [];
+  const filtered = subs.filter(s => s.endpoint !== endpoint);
+  userPushSubscriptions.set(userId, filtered);
+  savePushSubscriptionsToDisk();
+
+  return res.json({ success: true, unsubscribed: true });
+});
+
+// API: Test push delivery for a specific member
+app.post('/api/push/test', async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  const result = await sendPushNotificationToUser(userId, {
+    title: 'Speed Meet Love Push Test ❤️',
+    body: 'Browser push notifications are active and verified for Second-Chance Dates!',
+    icon: '/assets/kristy_exact.png',
+    tag: `test_push_${Date.now()}`,
+    data: { url: '/?view=matches' },
+  });
+
+  return res.json({ success: true, ...result });
 });
 
 // API: Explicitly start the 10-Minute Second Chance Date

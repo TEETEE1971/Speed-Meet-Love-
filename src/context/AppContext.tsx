@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { User, SpeedEvent, Round, Match, Message, SubscriptionTier, EventType, UserReport, AppView, LiveSessionState, AppMode, UserPreferences, SecondDateSession } from '../types';
 import { INITIAL_USERS, INITIAL_EVENTS, INITIAL_ROUNDS, INITIAL_MATCHES, INITIAL_MESSAGES } from '../data/initialData';
 
@@ -128,6 +128,11 @@ interface AppContextType {
   ) => Promise<{ success: boolean; session?: SecondDateSession; error?: string }>;
   endSecondDate: (sessionId: string) => Promise<{ success: boolean }>;
   refreshSecondDateSessions: () => Promise<SecondDateSession[]>;
+  pendingSecondDateCount: number;
+  incomingSecondDateInvitation: SecondDateSession | null;
+  acceptSecondDateInvitation: (sessionId: string) => Promise<{ success: boolean; session?: SecondDateSession }>;
+  declineSecondDateInvitation: (sessionId: string) => Promise<{ success: boolean; session?: SecondDateSession }>;
+  dismissSecondDateInvitation: (sessionId: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -1670,12 +1675,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   }, [currentUser.UserID, selectedEventId]);
 
+  const [dismissedInvitationIds, setDismissedInvitationIds] = useState<string[]>([]);
+
   useEffect(() => {
-    if (currentView !== 'results' && currentView !== 'second_date' && currentView !== 'matches') return;
     refreshSecondDateSessions();
-    const interval = setInterval(refreshSecondDateSessions, 3000);
-    return () => clearInterval(interval);
-  }, [currentView, refreshSecondDateSessions]);
+    const interval = setInterval(refreshSecondDateSessions, 3500);
+
+    const handleReactivation = () => {
+      if (document.visibilityState === 'visible') {
+        refreshSecondDateSessions();
+      }
+    };
+    document.addEventListener('visibilitychange', handleReactivation);
+    window.addEventListener('focus', handleReactivation);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleReactivation);
+      window.removeEventListener('focus', handleReactivation);
+    };
+  }, [refreshSecondDateSessions]);
+
+  const pendingSecondDateCount = useMemo(() => {
+    return secondDateSessions.filter(s => {
+      const isParticipant = s.userA === currentUser.UserID || s.userB === currentUser.UserID;
+      if (!isParticipant) return false;
+      // Incoming invitation waiting for current user's consent
+      if (s.status === 'waiting_for_partner' && s.requestedBy !== currentUser.UserID) return true;
+      // Or both agreed, ready to enter
+      if (s.status === 'ready_to_start') return true;
+      return false;
+    }).length;
+  }, [secondDateSessions, currentUser.UserID]);
+
+  const incomingSecondDateInvitation = useMemo(() => {
+    const activePending = secondDateSessions.find(s => {
+      const isParticipant = s.userA === currentUser.UserID || s.userB === currentUser.UserID;
+      if (!isParticipant) return false;
+      if (dismissedInvitationIds.includes(s.sessionId)) return false;
+      if (s.status === 'waiting_for_partner' && s.requestedBy !== currentUser.UserID) return true;
+      if (s.status === 'ready_to_start') return true;
+      return false;
+    });
+    return activePending || null;
+  }, [secondDateSessions, currentUser.UserID, dismissedInvitationIds]);
+
+  const acceptSecondDateInvitation = async (sessionId: string) => {
+    return respondToSecondDate(sessionId, 'accept');
+  };
+
+  const declineSecondDateInvitation = async (sessionId: string) => {
+    setDismissedInvitationIds(prev => [...prev, sessionId]);
+    return respondToSecondDate(sessionId, 'decline');
+  };
+
+  const dismissSecondDateInvitation = (sessionId: string) => {
+    setDismissedInvitationIds(prev => [...prev, sessionId]);
+  };
 
   const requestSecondDate = async (
     partnerId: string,
@@ -1883,6 +1939,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         startSecondDate,
         endSecondDate,
         refreshSecondDateSessions,
+        pendingSecondDateCount,
+        incomingSecondDateInvitation,
+        acceptSecondDateInvitation,
+        declineSecondDateInvitation,
+        dismissSecondDateInvitation,
       }}
     >
       {children}

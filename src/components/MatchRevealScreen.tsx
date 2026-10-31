@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { FloatingHearts } from './FloatingHearts';
+import { PushNotificationOptIn } from './PushNotificationOptIn';
 import confetti from 'canvas-confetti';
 import { SecondDateSession } from '../types';
 
@@ -176,6 +177,9 @@ export const MatchRevealScreen: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="relative z-10 space-y-6">
+        {/* Push Notification Opt-In Banner */}
+        <PushNotificationOptIn />
+
         {/* If NO Mutual Matches Found for this event */}
         {!hasMutualMatches ? (
           <div className="rounded-3xl bg-white border border-rose-200 p-8 sm:p-12 text-center space-y-6 shadow-sm">

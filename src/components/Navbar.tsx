@@ -35,6 +35,7 @@ export const Navbar: React.FC = () => {
     setSelectedEventId,
     registerForEvent,
     clearLiveSession,
+    pendingSecondDateCount,
   } = useApp();
 
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -129,13 +130,21 @@ export const Navbar: React.FC = () => {
           >
             <Heart className={`w-5 h-5 shrink-0 ${currentView === 'matches' || currentView === 'results' ? 'text-red-600 fill-red-600' : 'text-white fill-white'}`} />
             <span>Matches</span>
-            {mutualMatchCount > 0 && (
+            {pendingSecondDateCount > 0 ? (
+              <span
+                title={`${pendingSecondDateCount} Second-Chance Date Invitation${pendingSecondDateCount > 1 ? 's' : ''}`}
+                className="ml-1 px-2 py-0.5 rounded-full text-xs font-mono font-black bg-amber-400 text-slate-950 animate-pulse flex items-center gap-1 shadow-sm"
+              >
+                <Sparkles className="w-3 h-3 text-amber-900 fill-amber-900" />
+                <span>{pendingSecondDateCount}</span>
+              </span>
+            ) : mutualMatchCount > 0 ? (
               <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-mono font-black ${
                 currentView === 'matches' ? 'bg-red-600 text-white' : 'bg-white text-red-600'
               }`}>
                 {mutualMatchCount}
               </span>
-            )}
+            ) : null}
           </button>
 
           {/* Messages */}
@@ -391,11 +400,15 @@ export const Navbar: React.FC = () => {
         >
           <div className="relative">
             <Heart className={`w-5 h-5 shrink-0 ${currentView === 'matches' || currentView === 'results' ? 'fill-red-600' : 'fill-current'}`} />
-            {mutualMatchCount > 0 && (
+            {pendingSecondDateCount > 0 ? (
+              <span className="absolute -top-1.5 -right-2.5 px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black leading-tight border border-amber-300 animate-pulse flex items-center">
+                !
+              </span>
+            ) : mutualMatchCount > 0 ? (
               <span className="absolute -top-1.5 -right-2 px-1 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black leading-tight border border-amber-300">
                 {mutualMatchCount}
               </span>
-            )}
+            ) : null}
           </div>
           <span className="text-[10px] sm:text-[11px] font-bold tracking-tight mt-0.5 leading-none">Matches</span>
         </button>
