@@ -157,6 +157,7 @@ export const LiveRoundScreen: React.FC = () => {
   const [isEndingRound, setIsEndingRound] = useState(false);
   const [endRoundError, setEndRoundError] = useState<string | null>(null);
   const [isSubmittingVote, setIsSubmittingVote] = useState(false);
+  const [isAdvancing, setIsAdvancing] = useState(false);
   const [voteError, setVoteError] = useState<string | null>(null);
   const [voteSaved, setVoteSaved] = useState<boolean>(false);
 
@@ -463,7 +464,7 @@ export const LiveRoundScreen: React.FC = () => {
             roundDurationSeconds: defaultDuration,
             breakDurationSeconds: defaultBreak,
             mode: appMode,
-            forceFresh: true,
+            forceFresh: false,
           }),
         });
       }
@@ -586,7 +587,7 @@ export const LiveRoundScreen: React.FC = () => {
                 roundDurationSeconds: defaultDuration,
                 breakDurationSeconds: defaultBreak,
                 mode: appMode,
-                forceFresh: true,
+                forceFresh: false,
               }),
             });
             if (freshRes.ok) {
@@ -885,7 +886,7 @@ export const LiveRoundScreen: React.FC = () => {
           roundDurationSeconds: defaultDuration,
           breakDurationSeconds: defaultBreak,
           mode: appMode,
-          forceFresh: true,
+          forceFresh: false,
         }),
       })
         .then(r => r.json())
@@ -1010,19 +1011,14 @@ export const LiveRoundScreen: React.FC = () => {
   };
 
   const handleDecision = async (decision: 'like' | 'pass') => {
-    if (isSubmittingVote) return;
+    if (isSubmittingVote || isAdvancing) return;
     setIsSubmittingVote(true);
     setVoteError(null);
+    setVoteSaved(false);
     setSelectedDecision(decision);
 
     try {
-      // 1. Submit to context store
-      if (currentRound) {
-        submitRoundDecision(currentRound.RoundID, decision === 'like', privateNotes);
-      }
-      saveLiveSession({ vote: decision, notes: privateNotes, votedAt: Date.now() });
-
-      // 2. Submit to server-authoritative voting endpoint (idempotent: 1 vote per user per round)
+      // Do not claim a vote is saved until the server confirms it.
       const res = await fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1034,12 +1030,15 @@ export const LiveRoundScreen: React.FC = () => {
         }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Failed to record vote (HTTP ${res.status})`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Failed to record vote (HTTP ${res.status})`);
       }
 
-      const data = await res.json();
+      if (currentRound) {
+        submitRoundDecision(currentRound.RoundID, decision === 'like', privateNotes);
+      }
+      saveLiveSession({ vote: decision, notes: privateNotes, votedAt: Date.now() });
       setVoteSaved(true);
 
       if (decision === 'like') {
@@ -1058,11 +1057,12 @@ export const LiveRoundScreen: React.FC = () => {
           showNotification(`You liked ${partner.FirstName}! Mutual likes unlock messaging in Matches.`, 'pink');
         }
       } else {
-        showNotification(`Pass recorded privately. Your choices remain strictly confidential.`, 'info');
+        showNotification('Pass recorded privately. Your choices remain strictly confidential.', 'info');
       }
     } catch (err: any) {
       console.warn('Failed to submit confidential vote:', err);
-      setVoteError(err.message || 'Failed to record vote. Please tap Retry.');
+      setVoteSaved(false);
+      setVoteError(err.message || 'Failed to record vote. Please retry.');
     } finally {
       setIsSubmittingVote(false);
     }
@@ -1070,67 +1070,30 @@ export const LiveRoundScreen: React.FC = () => {
 
   const handleNotesChange = (text: string) => {
     setPrivateNotes(text);
-    if (currentRound) {
-      submitRoundDecision(currentRound.RoundID, selectedDecision === 'like', text);
-    }
+    // Notes must never submit a Like/Pass ballot; only the vote buttons can.
     saveLiveSession({ notes: text });
   };
 
   const handleNextDateClick = async () => {
-    // Requirement 2: Do not automatically start another date before voting is completed!
-    if (!selectedDecision) {
-      setVoteError(`Please choose Like or Pass for ${partner.FirstName} to complete your confidential ballot before advancing.`);
-      showNotification(`Please choose Like or Pass for ${partner.FirstName} before advancing.`, 'info');
+    if (isAdvancing || isSubmittingVote) return;
+
+    // A locally selected ballot is not enough: the server must confirm the save.
+    if (!selectedDecision || !voteSaved) {
+      setVoteError(`Please save a Like or Pass vote for ${partner.FirstName} before advancing.`);
       return;
     }
 
     const nextIndex = activeRoundIndex + 1;
-    const totalEventRounds = Math.max(5, eventRounds.length);
-
-    if (nextIndex < totalEventRounds) {
-      // 1. Mark completed for current round and clear ended early
-      try {
-        const endedEarlyKey = `sml_ended_early_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
-        window.sessionStorage?.removeItem(endedEarlyKey);
-        const completedKey = `sml_round_completed_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
-        window.sessionStorage?.setItem(completedKey, 'true');
-      } catch (e) {}
-
-      hasEndedEarlyRef.current = false;
-      stageRef.current = 'waiting_room';
-      setStage('waiting_room');
-      setSelectedDecision(null);
-      setPrivateNotes('');
-      setVoteSaved(false);
-      serverRoundRef.current = null;
-      setWaitingCountdown(null);
-      setFoundPartnerName(null);
-
-      // Advance activeRoundIndex in context & localStorage to next date
-      setActiveRoundIndex(nextIndex);
-
+    if (nextIndex < eventRounds.length) {
       const nextRound = eventRounds[nextIndex];
-      const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
+      const nextPartnerId = nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA;
 
+      setIsAdvancing(true);
+      setVoteError(null);
       try {
-        const nextEndedEarlyKey = `sml_ended_early_${activeEvent.EventID}_${nextIndex}_${currentUser.UserID}`;
-        window.sessionStorage?.removeItem(nextEndedEarlyKey);
-      } catch (e) {}
-
-      saveLiveSession({
-        roundIndex: nextIndex,
-        stage: 'waiting_room',
-        vote: null,
-        notes: '',
-        hasEndedEarly: false,
-        isReady: true,
-      });
-
-      showNotification("Waiting for your next date...", 'info');
-
-      // Register readiness with server
-      try {
-        await fetch(`/api/events/${activeEvent.EventID}/consent`, {
+        // Register consent and queue presence *before* leaving the ballot.
+        // The member must be able to retry if matchmaking rejects or fails.
+        const consentRes = await fetch(`/api/events/${activeEvent.EventID}/consent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1140,8 +1103,12 @@ export const LiveRoundScreen: React.FC = () => {
             isReady: true,
           }),
         });
+        const consentData = await consentRes.json().catch(() => ({}));
+        if (!consentRes.ok || !consentData.success) {
+          throw new Error(consentData.error || 'Unable to register readiness.');
+        }
 
-        await fetch(`/api/events/${activeEvent.EventID}/match-queue`, {
+        const queueRes = await fetch(`/api/events/${activeEvent.EventID}/match-queue`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1151,17 +1118,53 @@ export const LiveRoundScreen: React.FC = () => {
             gender: currentUser.Gender,
             interestedIn: currentUser.InterestedIn,
             tier: currentUser.SubscriptionTier,
-            isRegistered: true,
+            isRegistered: activeEvent.ParticipantsList.includes(currentUser.UserID),
             roundIndex: nextIndex,
             isReady: true,
             eventId: activeEvent.EventID,
           }),
         });
-      } catch (e) {
-        console.warn('Readiness sync warning:', e);
+        const queueData = await queueRes.json().catch(() => ({}));
+        if (!queueRes.ok || !queueData.success) {
+          throw new Error(queueData.error || 'Unable to join the next date waiting room.');
+        }
+
+        try {
+          const endedEarlyKey = `sml_ended_early_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
+          window.sessionStorage?.removeItem(endedEarlyKey);
+          const completedKey = `sml_round_completed_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
+          window.sessionStorage?.setItem(completedKey, 'true');
+        } catch (e) {}
+
+        hasEndedEarlyRef.current = false;
+        stageRef.current = 'waiting_room';
+        setStage('waiting_room');
+        setSelectedDecision(null);
+        setPrivateNotes('');
+        setVoteSaved(false);
+        serverRoundRef.current = null;
+        setWaitingCountdown(null);
+        setFoundPartnerName(null);
+        setActiveRoundIndex(nextIndex);
+        saveLiveSession({
+          roundIndex: nextIndex,
+          stage: 'waiting_room',
+          vote: null,
+          notes: '',
+          hasEndedEarly: false,
+          isReady: true,
+          partnerId: nextPartnerId,
+        });
+        showNotification('Waiting for your next date...', 'info');
+      } catch (err: any) {
+        console.warn('Failed to enter next date queue:', err);
+        setVoteError(err.message || 'Unable to join the next date. Please try again.');
+        showNotification('Could not join the next date. Your vote is still saved. Please retry.', 'info');
+      } finally {
+        setIsAdvancing(false);
       }
     } else {
-      // Completed all 5 rounds!
+      // No more scheduled rounds: reveal results rather than waiting forever.
       clearLiveSession();
       try {
         confetti({
@@ -1172,7 +1175,7 @@ export const LiveRoundScreen: React.FC = () => {
         });
       } catch (e) {}
       setCurrentView('results');
-      showNotification('Congratulations on completing all 5 speed dating rounds! Revealing your mutual matches...', 'pink');
+      showNotification('Your speed dating rounds are complete! Revealing mutual matches...', 'pink');
     }
   };
 
@@ -1827,10 +1830,10 @@ export const LiveRoundScreen: React.FC = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => selectedDecision && handleDecision(selectedDecision)}
+                  onClick={() => voteSaved ? handleNextDateClick() : selectedDecision && handleDecision(selectedDecision)}
                   className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold rounded-xl text-[11px] shrink-0 cursor-pointer shadow-xs"
                 >
-                  Retry Vote
+                  {voteSaved ? 'Retry Next Date' : 'Retry Vote'}
                 </button>
               </div>
             )}
@@ -1870,7 +1873,7 @@ export const LiveRoundScreen: React.FC = () => {
                 </button>
               </div>
 
-              {(selectedDecision || voteSaved) && (
+              {voteSaved && (
                 <div className="text-xs text-emerald-700 font-bold flex items-center justify-center gap-1.5 pt-1.5 bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200">
                   <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>Your confidential choice is securely recorded. Neither dater sees this unless it's a mutual match!</span>
@@ -1896,23 +1899,21 @@ export const LiveRoundScreen: React.FC = () => {
             <div className="pt-4 border-t border-pink-100 space-y-3">
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleNextDateClick();
-                }}
-                className={`w-full py-4 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                onClick={handleNextDateClick}
+                disabled={!voteSaved || isSubmittingVote || isAdvancing}
+                className={`w-full py-4 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                   !selectedDecision
                     ? 'bg-pink-100 text-[#FF2E93] border border-pink-300 hover:bg-pink-200 shadow-sm'
                     : 'btn-pink-gradient text-white shadow-lg shadow-pink-500/20 hover:scale-[1.01] active:scale-98'
                 }`}
               >
-                <span>{!selectedDecision ? `Vote on ${partner.FirstName} to Continue` : "Next Date (I'm Ready)"}</span>
+                <span>{isAdvancing ? 'Joining Next Date...' : !voteSaved ? `Save your vote for ${partner.FirstName} to continue` : "Next Date (I'm Ready)"}</span>
                 <ChevronRight className="w-5 h-5" />
               </button>
               <p className="text-[11px] text-slate-400">
-                {!selectedDecision
-                  ? `Please select Like or Pass above for ${partner.FirstName} to complete your confidential ballot before advancing.`
-                  : `We never automatically start calls without your explicit consent. Tapping Next Date places you into the waiting room.`}
+                {!voteSaved
+                  ? `Please select Like or Pass above for ${partner.FirstName} and wait for your vote to save before advancing.`
+                  : 'We never automatically start calls without your explicit consent. Tapping Next Date places you into the waiting room.'}
               </p>
             </div>
 
