@@ -41,10 +41,15 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      - name: Install Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.6'
+          gradle-version: '8.11.1'
 
       - name: Make Gradle Wrapper Executable
         run: chmod +x android/gradlew
@@ -73,10 +78,15 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      - name: Install Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.6'
+          gradle-version: '8.11.1'
 
       - name: Validate GitHub Secrets for Release Signing
         env:

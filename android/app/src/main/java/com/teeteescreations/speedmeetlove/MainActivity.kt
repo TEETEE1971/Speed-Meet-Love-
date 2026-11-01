@@ -26,6 +26,8 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : AppCompatActivity() {
 
@@ -135,6 +137,16 @@ class MainActivity : AppCompatActivity() {
         rootLayout.addView(progressBar)
         rootLayout.addView(errorLayout)
         setContentView(rootLayout)
+
+        // Android 15+ draws edge-to-edge: keep controls clear of system bars and cutouts.
+        ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, insets ->
+            val safeArea = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(safeArea.left, safeArea.top, safeArea.right, safeArea.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(rootLayout)
 
         checkAndRequestAppPermissions()
         configureWebView()
