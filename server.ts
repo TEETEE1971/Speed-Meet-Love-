@@ -439,6 +439,28 @@ app.post('/api/events/:eventId/reset-rounds', (req, res) => {
     }
   }
 
+  // Also clear liveActiveMatches, queues, and consent records for this event/user
+  for (const [mId, match] of liveActiveMatches.entries()) {
+    if (match.eventId === eventId) {
+      if (!userId || match.userA.userId === userId || match.userB.userId === userId) {
+        liveActiveMatches.delete(mId);
+      }
+    }
+  }
+  const q = liveEventQueues.get(eventId);
+  if (q) {
+    if (userId) q.delete(userId);
+    else q.clear();
+  }
+  const roomKeyPrefix = `${eventId}_r`;
+  for (const [rKey, rMap] of roundConsentStore.entries()) {
+    if (rKey.startsWith(roomKeyPrefix)) {
+      if (userId) rMap.delete(userId);
+      else roundConsentStore.delete(rKey);
+    }
+  }
+  saveConsentToDisk();
+
   saveSharedRoundsToDisk();
   return res.json({ success: true, clearedCount, message: `Reset ${clearedCount} rounds for event ${eventId}` });
 });
@@ -1832,7 +1854,12 @@ const handleMatchQueue = (req: express.Request, res: express.Response) => {
   }
 
   // Check if user is already part of an active match for this event & round
-  for (const match of liveActiveMatches.values()) {
+  const now = Date.now();
+  for (const [mId, match] of liveActiveMatches.entries()) {
+    if (now >= match.expiresAt) {
+      liveActiveMatches.delete(mId);
+      continue;
+    }
     if (
       match.eventId === eventId &&
       match.roundIndex === roundIndex &&

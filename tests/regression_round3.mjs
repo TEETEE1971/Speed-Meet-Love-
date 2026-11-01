@@ -39,6 +39,9 @@ async function runRegressionTest() {
   const round3Index = 2; // 0-indexed: Round 1=0, Round 2=1, Round 3=2
   const round4Index = 3;
 
+  // Clean staging rounds and queues for reliable isolation
+  await request('POST', `/api/events/${eventId}/reset-rounds`, { userId });
+
   // 1. Initialize Elena's Round 3 date timer
   console.log('Step 1: Starting Round 3 (index 2) video date with Elena Rostova...');
   const tRes = await request('POST', `/api/events/${eventId}/rounds/${round3Index}/timer`, {

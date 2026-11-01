@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { ICEBREAKER_QUESTIONS } from '../data/initialData';
+import { User } from '../types';
 import {
   Heart,
   X,
@@ -63,26 +64,53 @@ export const LiveRoundScreen: React.FC = () => {
     clearLiveSession,
     syncLiveSessionFromServer,
     appMode,
+    repairEventRounds,
   } = useApp();
 
   const isEligible = canAccessLiveSpeedDating(currentUser);
 
   const activeEvent = events.find(e => e.EventID === selectedEventId) || events[0];
   const isStaging = activeEvent.EventID === 'evt_staging_dev';
+  const targetTotalRounds = Math.max(activeEvent.TotalRounds || 5, 5);
 
   // Find rounds for active event that involve the current user
   const userEventRounds = rounds.filter(
     r => r.EventID === activeEvent.EventID && (r.UserA === currentUser.UserID || r.UserB === currentUser.UserID)
   );
-  const eventRounds = userEventRounds.length > 0 ? userEventRounds : rounds.filter(r => r.EventID === activeEvent.EventID);
+  const rawEventRounds = userEventRounds.length > 0 ? userEventRounds : rounds.filter(r => r.EventID === activeEvent.EventID);
+
+  // Auto-repair missing round slots if fewer than targetTotalRounds (e.g. 3-round sessions repaired to 5)
+  useEffect(() => {
+    if (activeEvent && rawEventRounds.length < targetTotalRounds) {
+      repairEventRounds(activeEvent.EventID);
+    }
+  }, [activeEvent.EventID, rawEventRounds.length, targetTotalRounds, repairEventRounds]);
+
+  const eventRounds = rawEventRounds.length > 0
+    ? [...rawEventRounds].sort((a, b) => a.RoundNumber - b.RoundNumber)
+    : [];
   const currentRound = eventRounds[activeRoundIndex] || eventRounds[0];
 
   const isUserA = currentRound ? currentRound.UserA === currentUser.UserID : true;
   const defaultStagingPartnerId = currentUser.UserID === 'usr_kristy' ? 'usr_me' : 'usr_kristy';
   const partnerId = currentRound
     ? (isUserA ? currentRound.UserB : currentRound.UserA)
-    : (isStaging ? defaultStagingPartnerId : 'usr_02');
-  const partner = users.find(u => u.UserID === partnerId) || users.find(u => u.UserID === defaultStagingPartnerId) || users[1];
+    : (isStaging ? defaultStagingPartnerId : (appMode === 'demonstration' ? 'usr_02' : ''));
+
+  // In production mode: NEVER invent participants!
+  // Partner must be an actual found user who is either an authorized staging partner or registered in the event
+  const isFoundUser = partnerId ? users.find(u => u.UserID === partnerId) : undefined;
+  const isEligibleRegistered = isStaging
+    ? Boolean(isFoundUser && ['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(isFoundUser.UserID))
+    : Boolean(isFoundUser && activeEvent.ParticipantsList.includes(isFoundUser.UserID));
+
+  const hasEligiblePartner = appMode === 'production'
+    ? Boolean(isEligibleRegistered && isFoundUser)
+    : true;
+
+  const partner: User = (appMode === 'production' && isEligibleRegistered && isFoundUser)
+    ? isFoundUser
+    : (isFoundUser || users.find(u => u.UserID === defaultStagingPartnerId) || users[1] || users[0]);
 
   // 5-minute round (300 seconds)
   const defaultDuration = activeEvent.RoundDurationSeconds || 300;
@@ -1078,34 +1106,45 @@ export const LiveRoundScreen: React.FC = () => {
     if (isAdvancing || isSubmittingVote) return;
 
     // A locally selected ballot is not enough: the server must confirm the save.
-    if (!selectedDecision || !voteSaved) {
-      setVoteError(`Please save a Like or Pass vote for ${partner.FirstName} before advancing.`);
-      return;
+    // If there is an eligible partner, vote must be confirmed by server before advancing.
+    if (hasEligiblePartner && partner) {
+      if (!selectedDecision || !voteSaved) {
+        setVoteError(`Please save a Like or Pass vote for ${partner.FirstName} before advancing.`);
+        return;
+      }
     }
 
     const nextIndex = activeRoundIndex + 1;
-    if (nextIndex < eventRounds.length) {
-      const nextRound = eventRounds[nextIndex];
-      const nextPartnerId = nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA;
+    const totalEventRounds = Math.max(activeEvent.TotalRounds || 5, eventRounds.length);
+
+    if (nextIndex < totalEventRounds) {
+      let currentRoundsList = eventRounds;
+      if (nextIndex >= currentRoundsList.length) {
+        currentRoundsList = repairEventRounds(activeEvent.EventID);
+      }
+      const nextRound = currentRoundsList[nextIndex];
+      const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
 
       setIsAdvancing(true);
       setVoteError(null);
       try {
         // Register consent and queue presence *before* leaving the ballot.
         // The member must be able to retry if matchmaking rejects or fails.
-        const consentRes = await fetch(`/api/events/${activeEvent.EventID}/consent`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: currentUser.UserID,
-            partnerId: nextPartnerId,
-            roundIndex: nextIndex,
-            isReady: true,
-          }),
-        });
-        const consentData = await consentRes.json().catch(() => ({}));
-        if (!consentRes.ok || !consentData.success) {
-          throw new Error(consentData.error || 'Unable to register readiness.');
+        if (nextPartnerId) {
+          const consentRes = await fetch(`/api/events/${activeEvent.EventID}/consent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: currentUser.UserID,
+              partnerId: nextPartnerId,
+              roundIndex: nextIndex,
+              isReady: true,
+            }),
+          });
+          const consentData = await consentRes.json().catch(() => ({}));
+          if (!consentRes.ok || !consentData.success) {
+            throw new Error(consentData.error || 'Unable to register readiness.');
+          }
         }
 
         const queueRes = await fetch(`/api/events/${activeEvent.EventID}/match-queue`, {
@@ -1305,7 +1344,7 @@ export const LiveRoundScreen: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-pink-50 text-[#FF2E93] border border-pink-100 font-heading">
-                    Round {activeRoundIndex + 1} of {eventRounds.length || 5}
+                    Round {activeRoundIndex + 1} of {targetTotalRounds}
                   </span>
                   <span className="text-xs text-slate-400">·</span>
                   <span className="text-xs font-semibold text-slate-600">
@@ -1313,7 +1352,7 @@ export const LiveRoundScreen: React.FC = () => {
                   </span>
                 </div>
                 <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 font-heading mt-0.5">
-                  Dating with {partner.FirstName}
+                  Dating with {partner?.FirstName || 'Your Speed Dating Match'}
                 </h1>
               </div>
             </div>
@@ -1336,8 +1375,8 @@ export const LiveRoundScreen: React.FC = () => {
               {/* Real-time Heart Reaction Button */}
               <button
                 onClick={sendHeartReaction}
-                disabled={isSendingHeart}
-                className="px-3 sm:px-4 py-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-pink-500/25 active:scale-95 transition-all cursor-pointer"
+                disabled={isSendingHeart || !hasEligiblePartner}
+                className="px-3 sm:px-4 py-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-pink-500/25 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                 title="Send a real-time heart reaction to express interest non-verbally"
               >
                 <Heart className="w-4 h-4 fill-white" />
@@ -1367,8 +1406,46 @@ export const LiveRoundScreen: React.FC = () => {
             </div>
           </div>
 
-          {/* Main 2-Up Video Room */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Main Area: Show Waiting Card if in production with no eligible partner, otherwise show video stage */}
+          {!hasEligiblePartner && appMode === 'production' ? (
+            <div className="p-8 sm:p-10 rounded-3xl bg-white border border-amber-200 shadow-xl text-center space-y-5 my-4">
+              <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 mx-auto flex items-center justify-center text-amber-600 shadow-sm">
+                <UserCheck className="w-8 h-8" />
+              </div>
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 font-heading">
+                  Round {activeRoundIndex + 1} of {targetTotalRounds} · Live Speed Dating
+                </span>
+                <h2 className="text-2xl font-bold text-slate-900 font-heading">
+                  Awaiting Eligible Partner
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
+                  No eligible registered participant is currently available for Round {activeRoundIndex + 1}. Speed Meet Love only connects real consenting participants and never invents fake profiles in production.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStage('waiting_room');
+                    saveLiveSession({ stage: 'waiting_room', roundIndex: activeRoundIndex });
+                  }}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl btn-pink-gradient font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Radio className="w-4 h-4" />
+                  <span>Enter Waiting Room Queue</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentView('friday')}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Return to Weekend Events
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             {/* Left 8 Cols: Video Stage */}
             <div className="lg:col-span-8 space-y-4 relative">
               {/* Real-time floating hearts overlay */}
@@ -1668,7 +1745,7 @@ export const LiveRoundScreen: React.FC = () => {
                 </div>
 
                 <div className="text-xs text-slate-600 bg-pink-50/50 p-3 rounded-2xl border border-pink-100 leading-relaxed">
-                  {partner.Bio}
+                  {partner?.Bio}
                 </div>
 
                 <div>
@@ -1676,7 +1753,7 @@ export const LiveRoundScreen: React.FC = () => {
                     Shared Interests
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {partner.Interests.map(interest => {
+                    {partner?.Interests?.map((interest: string) => {
                       const isShared = currentUser.Interests.includes(interest);
                       return (
                         <span
@@ -1694,7 +1771,7 @@ export const LiveRoundScreen: React.FC = () => {
                   </div>
                 </div>
 
-                {partner.IcebreakerAnswer && (
+                {partner?.IcebreakerAnswer && (
                   <div className="pt-2 border-t border-slate-100 text-xs">
                     <span className="font-bold text-slate-700">Fun Fact: </span>
                     <span className="text-slate-600">{partner.IcebreakerAnswer}</span>
@@ -1751,6 +1828,7 @@ export const LiveRoundScreen: React.FC = () => {
               </div>
             </div>
           </div>
+          )}
         </div>
       )}
 
@@ -1766,7 +1844,7 @@ export const LiveRoundScreen: React.FC = () => {
                 <span>Round {activeRoundIndex + 1} Concluded · 2-Minute Break</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-heading">
-                How did you feel about {partner.FirstName}?
+                How did you feel about {partner?.FirstName || 'this dater'}?
               </h2>
               <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
                 Cast your confidential vote below. Neither dater will know the other’s choice unless it’s a mutual like!
@@ -1795,15 +1873,22 @@ export const LiveRoundScreen: React.FC = () => {
             </div>
 
             {/* Partner Snapshot */}
-            <div className="flex items-center justify-center gap-4 py-2">
-              <Avatar user={partner} size="lg" showBadge />
-              <div className="text-left">
-                <div className="font-extrabold text-slate-900 text-lg font-heading">
-                  {partner.FirstName} {partner.LastName}, {partner.Age}
+            {partner ? (
+              <div className="flex items-center justify-center gap-4 py-2">
+                <Avatar user={partner} size="lg" showBadge />
+                <div className="text-left">
+                  <div className="font-extrabold text-slate-900 text-lg font-heading">
+                    {partner.FirstName} {partner.LastName}, {partner.Age}
+                  </div>
+                  <div className="text-xs text-slate-500">{partner.Occupation} · {partner.Location}</div>
                 </div>
-                <div className="text-xs text-slate-500">{partner.Occupation} · {partner.Location}</div>
               </div>
-            </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-800 text-xs text-center space-y-1 my-2">
+                <div className="font-bold">No Partner Paired for Round {activeRoundIndex + 1}</div>
+                <div className="text-[11px] text-amber-700">No confidential ballot required. Tap Next Date below to enter the Waiting Room for Round {activeRoundIndex + 2}.</div>
+              </div>
+            )}
 
             {/* Error notifications with immediate retry options */}
             {endRoundError && (
@@ -1846,7 +1931,7 @@ export const LiveRoundScreen: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <button
                   type="button"
-                  disabled={isSubmittingVote}
+                  disabled={isSubmittingVote || !hasEligiblePartner}
                   onClick={() => handleDecision('pass')}
                   className={`py-4 px-6 min-h-[52px] rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                     selectedDecision === 'pass'
@@ -1860,7 +1945,7 @@ export const LiveRoundScreen: React.FC = () => {
 
                 <button
                   type="button"
-                  disabled={isSubmittingVote}
+                  disabled={isSubmittingVote || !hasEligiblePartner}
                   onClick={() => handleDecision('like')}
                   className={`py-4 px-6 min-h-[52px] rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                     selectedDecision === 'like'
@@ -1869,7 +1954,7 @@ export const LiveRoundScreen: React.FC = () => {
                   }`}
                 >
                   <Heart className="w-5 h-5 fill-current" />
-                  <span>{isSubmittingVote && selectedDecision === 'like' ? 'Saving...' : `Like ${partner.FirstName}`}</span>
+                  <span>{isSubmittingVote && selectedDecision === 'like' ? 'Saving...' : `Like ${partner?.FirstName || 'Partner'}`}</span>
                 </button>
               </div>
 
@@ -1900,19 +1985,21 @@ export const LiveRoundScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={handleNextDateClick}
-                disabled={!voteSaved || isSubmittingVote || isAdvancing}
+                disabled={Boolean(hasEligiblePartner && !voteSaved) || isSubmittingVote || isAdvancing}
                 className={`w-full py-4 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
-                  !selectedDecision
+                  hasEligiblePartner && !selectedDecision
                     ? 'bg-pink-100 text-[#FF2E93] border border-pink-300 hover:bg-pink-200 shadow-sm'
                     : 'btn-pink-gradient text-white shadow-lg shadow-pink-500/20 hover:scale-[1.01] active:scale-98'
                 }`}
               >
-                <span>{isAdvancing ? 'Joining Next Date...' : !voteSaved ? `Save your vote for ${partner.FirstName} to continue` : "Next Date (I'm Ready)"}</span>
+                <span>{isAdvancing ? 'Joining Next Date...' : !hasEligiblePartner ? "Next Date (I'm Ready)" : !voteSaved ? `Save your vote for ${partner?.FirstName || 'partner'} to continue` : "Next Date (I'm Ready)"}</span>
                 <ChevronRight className="w-5 h-5" />
               </button>
               <p className="text-[11px] text-slate-400">
-                {!voteSaved
-                  ? `Please select Like or Pass above for ${partner.FirstName} and wait for your vote to save before advancing.`
+                {!hasEligiblePartner
+                  ? 'No ballot required for this slot. Tapping Next Date places you into the waiting room.'
+                  : !voteSaved
+                  ? `Please select Like or Pass above for ${partner?.FirstName || 'this dater'} and wait for your vote to save before advancing.`
                   : 'We never automatically start calls without your explicit consent. Tapping Next Date places you into the waiting room.'}
               </p>
             </div>
@@ -1970,51 +2057,72 @@ export const LiveRoundScreen: React.FC = () => {
                 <span>Pause & Take More Break</span>
               </button>
 
-              <button
-                onClick={() => {
-                  // Instant pair for demonstration
-                  const nextIndex = activeRoundIndex + 1;
-                  if (nextIndex < eventRounds.length) {
-                    const now = Date.now();
-                    setActiveRoundIndex(nextIndex);
-                    setStage('call');
-                    setTimeLeft(defaultDuration);
-                    setBreakTimeLeft(defaultBreak);
-                    setSelectedDecision(null);
-                    setPrivateNotes('');
-                    setWaitingCountdown(null);
-                    setFoundPartnerName(null);
+              {/* DEMO SHORTCUT: Isolated strictly to demonstration mode, NO double increment */}
+              {appMode === 'demonstration' && (
+                <button
+                  onClick={() => {
+                    // Connect to the already queued activeRoundIndex (NO double increment!)
+                    const targetIdx = activeRoundIndex;
+                    const totalEventRounds = Math.max(activeEvent.TotalRounds || 5, eventRounds.length);
+                    if (targetIdx < totalEventRounds) {
+                      const now = Date.now();
+                      callMountTimeRef.current = now;
+                      hasEndedEarlyRef.current = false;
+                      stageRef.current = 'call';
+                      setStage('call');
+                      setTimeLeft(defaultDuration);
+                      setBreakTimeLeft(defaultBreak);
+                      setSelectedDecision(null);
+                      setPrivateNotes('');
+                      setVoteSaved(false);
+                      setWaitingCountdown(null);
+                      setFoundPartnerName(null);
 
-                    const nextRound = eventRounds[nextIndex];
-                    const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
+                      const targetRound = eventRounds[targetIdx];
+                      const targetPartnerId = targetRound ? (targetRound.UserA === currentUser.UserID ? targetRound.UserB : targetRound.UserA) : '';
 
-                    saveLiveSession({
-                      roundIndex: nextIndex,
-                      stage: 'call',
-                      roundStartedAt: now,
-                      breakStartedAt: null,
-                      vote: null,
-                      notes: '',
-                      partnerId: nextPartnerId,
-                      lastActive: now,
-                    });
-                  } else {
-                    clearLiveSession();
-                    try {
-                      confetti({
-                        particleCount: 90,
-                        spread: 80,
-                        origin: { y: 0.6 },
-                        colors: ['#FF2E93', '#FF147E', '#E11D48'],
+                      fetch(`/api/events/${activeEvent.EventID}/rounds/${targetIdx}/timer`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          userId: currentUser.UserID,
+                          partnerId: targetPartnerId,
+                          roundDurationSeconds: defaultDuration,
+                          breakDurationSeconds: defaultBreak,
+                          mode: appMode,
+                          forceFresh: false,
+                        }),
+                      }).catch(() => {});
+
+                      saveLiveSession({
+                        roundIndex: targetIdx,
+                        stage: 'call',
+                        roundStartedAt: now,
+                        breakStartedAt: null,
+                        vote: null,
+                        notes: '',
+                        partnerId: targetPartnerId,
+                        lastActive: now,
+                        hasEndedEarly: false,
                       });
-                    } catch (e) {}
-                    setCurrentView('results');
-                  }
-                }}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-[#FF2E93] border border-pink-200 text-xs font-bold transition-colors cursor-pointer"
-              >
-                Connect Now (Demo)
-              </button>
+                    } else {
+                      clearLiveSession();
+                      try {
+                        confetti({
+                          particleCount: 90,
+                          spread: 80,
+                          origin: { y: 0.6 },
+                          colors: ['#FF2E93', '#FF147E', '#E11D48'],
+                        });
+                      } catch (e) {}
+                      setCurrentView('results');
+                    }
+                  }}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-[#FF2E93] border border-pink-200 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Connect Now (Demo)
+                </button>
+              )}
             </div>
 
             <p className="text-[11px] text-slate-400">

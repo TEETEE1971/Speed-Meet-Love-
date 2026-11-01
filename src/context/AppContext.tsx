@@ -133,6 +133,7 @@ interface AppContextType {
   acceptSecondDateInvitation: (sessionId: string) => Promise<{ success: boolean; session?: SecondDateSession }>;
   declineSecondDateInvitation: (sessionId: string) => Promise<{ success: boolean; session?: SecondDateSession }>;
   dismissSecondDateInvitation: (sessionId: string) => void;
+  repairEventRounds: (eventId: string) => Round[];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -1277,9 +1278,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // Ensure candidatePartners has at least 5 daters to guarantee 5 scheduled speed-dating rounds
+    // Ensure candidatePartners has at least 5 daters in demonstration mode
     const targetRoundCount = targetEvent.TotalRounds || 5;
-    if (candidatePartners.length < targetRoundCount) {
+    if (appMode === 'demonstration' && candidatePartners.length < targetRoundCount) {
       const remainingUsers = users.filter(
         u =>
           u.UserID !== currentUser.UserID &&
@@ -1294,7 +1295,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const duration = 300; // Exactly 5 minutes
     const baseTime = Date.now();
 
-    candidatePartners.slice(0, targetRoundCount).forEach((partner, index) => {
+    for (let index = 0; index < targetRoundCount; index++) {
+      const partner = candidatePartners[index];
       const roundStart = new Date(baseTime + index * (duration + 120) * 1000).toISOString();
       const roundEnd = new Date(baseTime + (index * (duration + 120) + duration) * 1000).toISOString();
 
@@ -1303,19 +1305,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         EventID: eventId,
         RoundNumber: index + 1,
         UserA: meId,
-        UserB: partner.UserID,
+        UserB: partner ? partner.UserID : '',
         RoundStart: roundStart,
         RoundEnd: roundEnd,
         UserA_Like: null,
-        UserB_Like: Math.random() > 0.35,
+        UserB_Like: partner && appMode === 'demonstration' ? Math.random() > 0.35 : null,
         UserA_Notes: '',
-        UserB_Notes: `Enjoyed connecting on ${targetEvent.DayOfWeek} night!`,
+        UserB_Notes: partner && appMode === 'demonstration' ? `Enjoyed connecting on ${targetEvent.DayOfWeek} night!` : '',
       });
-    });
+    }
 
     setRounds(prev => {
       const filtered = prev.filter(r => r.EventID !== eventId);
-      return [...filtered, ...newRounds];
+      const updated = [...filtered, ...newRounds];
+      try {
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}rounds`, JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
     });
 
     setEvents(prev =>
@@ -1324,6 +1330,114 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return newRounds;
   };
+
+  const repairEventRounds = useCallback((eventId: string): Round[] => {
+    const targetEvent = events.find(e => e.EventID === eventId);
+    const targetRoundCount = targetEvent?.TotalRounds || 5;
+    const meId = currentUser.UserID;
+
+    // Find rounds for this event that involve the current user
+    const userEventRounds = rounds.filter(
+      r => r.EventID === eventId && (r.UserA === meId || r.UserB === meId)
+    );
+    const relevantRounds = userEventRounds.length > 0 ? userEventRounds : rounds.filter(r => r.EventID === eventId);
+
+    // Existing round numbers
+    const existingNumbers = new Set(relevantRounds.map(r => r.RoundNumber));
+
+    // If already has targetRoundCount rounds, return sorted rounds
+    if (existingNumbers.size >= targetRoundCount) {
+      return [...relevantRounds].sort((a, b) => a.RoundNumber - b.RoundNumber);
+    }
+
+    // Existing partner IDs to avoid duplicate dates with the same partner
+    const existingPartners = new Set<string>();
+    relevantRounds.forEach(r => {
+      const pid = r.UserA === meId ? r.UserB : r.UserA;
+      if (pid) existingPartners.add(pid);
+    });
+
+    // Determine available partners
+    let availablePartners: User[] = [];
+    if (appMode === 'production') {
+      // In production, NEVER invent participants: ONLY use registered members in event
+      if (targetEvent) {
+        availablePartners = users.filter(
+          u =>
+            targetEvent.ParticipantsList.includes(u.UserID) &&
+            u.UserID !== meId &&
+            !blockedUserIds.includes(u.UserID) &&
+            !existingPartners.has(u.UserID)
+        );
+      }
+    } else {
+      // In demonstration mode: select from matching demo users
+      availablePartners = users.filter(
+        u =>
+          u.UserID !== meId &&
+          !blockedUserIds.includes(u.UserID) &&
+          !existingPartners.has(u.UserID)
+      );
+    }
+
+    const duration = targetEvent?.RoundDurationSeconds || 300;
+    const breakDuration = targetEvent?.BreakDurationSeconds || 120;
+    const baseTime = Date.now();
+
+    const missingSlots: Round[] = [];
+    let partnerIdx = 0;
+
+    for (let rNum = 1; rNum <= targetRoundCount; rNum++) {
+      if (!existingNumbers.has(rNum)) {
+        let partnerId = '';
+        if (appMode === 'production') {
+          if (partnerIdx < availablePartners.length) {
+            partnerId = availablePartners[partnerIdx].UserID;
+            partnerIdx++;
+          } else {
+            // No eligible registered partner available: leave blank for real matchmaking
+            partnerId = '';
+          }
+        } else {
+          if (partnerIdx < availablePartners.length) {
+            partnerId = availablePartners[partnerIdx].UserID;
+            partnerIdx++;
+          } else {
+            const fallback = users.find(u => u.UserID !== meId && !blockedUserIds.includes(u.UserID));
+            partnerId = fallback ? fallback.UserID : 'usr_02';
+          }
+        }
+
+        const roundStart = new Date(baseTime + (rNum - 1) * (duration + breakDuration) * 1000).toISOString();
+        const roundEnd = new Date(baseTime + ((rNum - 1) * (duration + breakDuration) + duration) * 1000).toISOString();
+
+        missingSlots.push({
+          RoundID: `rnd_${eventId}_${rNum}_slot_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
+          EventID: eventId,
+          RoundNumber: rNum,
+          UserA: meId,
+          UserB: partnerId,
+          RoundStart: roundStart,
+          RoundEnd: roundEnd,
+          UserA_Like: null,
+          UserB_Like: partnerId && appMode === 'demonstration' ? true : null,
+          UserA_Notes: '',
+          UserB_Notes: partnerId && appMode === 'demonstration' ? `Great connecting on Round ${rNum}!` : '',
+        });
+      }
+    }
+
+    if (missingSlots.length > 0) {
+      const updatedRounds = [...rounds, ...missingSlots];
+      setRounds(updatedRounds);
+      try {
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}rounds`, JSON.stringify(updatedRounds));
+      } catch (e) {}
+      return [...relevantRounds, ...missingSlots].sort((a, b) => a.RoundNumber - b.RoundNumber);
+    }
+
+    return [...relevantRounds].sort((a, b) => a.RoundNumber - b.RoundNumber);
+  }, [events, rounds, currentUser.UserID, appMode, users, blockedUserIds]);
 
   const startEventLive = (eventId: string): boolean => {
     const targetEvent = events.find(e => e.EventID === eventId);
@@ -1944,6 +2058,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         acceptSecondDateInvitation,
         declineSecondDateInvitation,
         dismissSecondDateInvitation,
+        repairEventRounds,
       }}
     >
       {children}
