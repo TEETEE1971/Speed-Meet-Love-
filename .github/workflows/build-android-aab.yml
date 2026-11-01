@@ -43,13 +43,15 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.6'
 
       - name: Make Gradle Wrapper Executable
         run: chmod +x android/gradlew
 
       - name: Verify Android Compilation (Debug Assemble)
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon
 
   # Job 2: Production AAB Build (Runs ONLY on Main Push or Manual Dispatch)
   # Excluded from pull requests to protect signing credentials
@@ -73,20 +75,27 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.6'
 
       - name: Validate GitHub Secrets for Release Signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           MISSING_SECRETS=""
-          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             MISSING_SECRETS="${MISSING_SECRETS} - ANDROID_KEYSTORE_BASE64\n"
           fi
-          if [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ]; then
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
             MISSING_SECRETS="${MISSING_SECRETS} - KEYSTORE_PASSWORD\n"
           fi
-          if [ -z "${{ secrets.KEY_ALIAS }}" ]; then
+          if [ -z "$KEY_ALIAS" ]; then
             MISSING_SECRETS="${MISSING_SECRETS} - KEY_ALIAS\n"
           fi
-          if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
+          if [ -z "$KEY_PASSWORD" ]; then
             MISSING_SECRETS="${MISSING_SECRETS} - KEY_PASSWORD\n"
           fi
 
@@ -110,9 +119,11 @@ jobs:
           fi
 
       - name: Decode Permanent Upload Keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           mkdir -p android/keystore
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/keystore/release.jks
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/keystore/release.jks
           if [ ! -s android/keystore/release.jks ]; then
             echo "ERROR: Decoded release keystore file is empty or corrupted."
             exit 1
@@ -124,11 +135,11 @@ jobs:
       - name: Build Signed Android App Bundle (.aab)
         working-directory: android
         env:
-          KEYSTORE_PATH: keystore/release.jks
+          KEYSTORE_PATH: ${{ github.workspace }}/android/keystore/release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew bundleRelease --no-daemon --stacktrace
+        run: gradle bundleRelease --no-daemon --stacktrace
 
       - name: Verify Signed .aab Output
         run: |
