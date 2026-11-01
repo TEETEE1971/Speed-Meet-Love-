@@ -10,3 +10,10 @@ coverage/
 # Runtime speed dating session storage, confidential votes, and member data
 .data/
 *.data/
+
+# Android build outputs and keystores
+android/.gradle/
+android/build/
+android/app/build/
+*.jks
+*.keystore

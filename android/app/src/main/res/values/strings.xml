@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Speed Meet Love</string>
+    <string name="default_web_url">https://speed-meet-love.ai.studio/</string>
+    <string name="permission_camera_mic_rationale">Speed Meet Love requires camera and microphone permissions for live 5-minute video speed dates.</string>
+</resources>
