@@ -149,23 +149,28 @@ ensureStorageDirectory();
 
 const ROUNDS_FILE = path.join(DATA_DIR, 'shared_rounds.json');
 const sharedRounds = new Map<string, ServerSharedRound>();
+let lastRoundsFileMtime = 0;
 
-function loadSharedRoundsFromDisk() {
+function syncSharedRoundsFromDisk() {
   try {
     ensureStorageDirectory();
     if (fs.existsSync(ROUNDS_FILE)) {
-      const data = fs.readFileSync(ROUNDS_FILE, 'utf-8');
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) {
-        for (const item of parsed) {
-          if (item && item.roundId) {
-            sharedRounds.set(item.roundId, item);
+      const stats = fs.statSync(ROUNDS_FILE);
+      if (stats.mtimeMs > lastRoundsFileMtime) {
+        lastRoundsFileMtime = stats.mtimeMs;
+        const data = fs.readFileSync(ROUNDS_FILE, 'utf-8');
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (item && item.roundId) {
+              sharedRounds.set(item.roundId, item);
+            }
           }
         }
       }
     }
   } catch (err) {
-    console.warn('Failed to load shared rounds from disk:', err);
+    console.warn('Failed to sync shared rounds from disk:', err);
   }
 }
 
@@ -176,12 +181,15 @@ function saveSharedRoundsToDisk() {
     }
     const array = Array.from(sharedRounds.values());
     fs.writeFileSync(ROUNDS_FILE, JSON.stringify(array, null, 2), 'utf-8');
+    if (fs.existsSync(ROUNDS_FILE)) {
+      lastRoundsFileMtime = fs.statSync(ROUNDS_FILE).mtimeMs;
+    }
   } catch (err) {
     console.warn('Failed to save shared rounds to disk:', err);
   }
 }
 
-loadSharedRoundsFromDisk();
+syncSharedRoundsFromDisk();
 
 // ============================================================================
 // PERSISTENT MUTUAL MATCHES STORAGE (SERVER-AUTHORITATIVE)
@@ -293,6 +301,7 @@ export function getSharedRound(
   partnerId?: string,
   allowCompleted: boolean = false
 ): ServerSharedRound | undefined {
+  syncSharedRoundsFromDisk();
   const now = Date.now();
   const MAX_ROUND_AGE_MS = 30 * 60 * 1000; // 30 minutes maximum session age
   const isRoundActive = (r: ServerSharedRound) => {
@@ -755,37 +764,6 @@ app.post('/api/events/:eventId/rounds/:roundIndex/end-early', (req, res) => {
     userBreakExpiresAt: now + round.breakDurationSeconds * 1000,
     remainingBreakSeconds: round.breakDurationSeconds,
     serverTime: now,
-  });
-});
-
-// API: Developer/Test helper to simulate elapsed time on a shared round timer
-app.post('/api/events/:eventId/rounds/:roundIndex/offset-timer', (req, res) => {
-  const { eventId, roundIndex: roundIndexParam } = req.params;
-  const roundIndex = Number(roundIndexParam) || 0;
-  const { userId, partnerId, offsetSeconds = 0 } = req.body;
-
-  const round = getSharedRound(eventId, roundIndex, userId, partnerId, true);
-  if (!round) {
-    return res.status(404).json({ success: false, error: 'Round not found' });
-  }
-
-  const shiftMs = (Number(offsetSeconds) || 0) * 1000;
-  round.roundStartedAt -= shiftMs;
-  round.roundExpiresAt -= shiftMs;
-  if (round.breakStartedAt) round.breakStartedAt -= shiftMs;
-  if (round.breakExpiresAt) round.breakExpiresAt -= shiftMs;
-  round.lastUpdated = Date.now();
-  saveSharedRoundsToDisk();
-
-  const now = Date.now();
-  const remainingSeconds = Math.max(0, Math.floor((round.roundExpiresAt - now) / 1000));
-  return res.json({
-    success: true,
-    roundId: round.roundId,
-    roundStartedAt: round.roundStartedAt,
-    roundExpiresAt: round.roundExpiresAt,
-    remainingSeconds,
-    isExpired: now >= round.roundExpiresAt,
   });
 });
 
