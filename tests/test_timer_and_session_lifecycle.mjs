@@ -228,6 +228,103 @@ async function runTests() {
   assert.strictEqual(staleQueryRes.status, 404, 'Stale / uninitialized round must return 404, not resurrect ancient Round 3');
   log(`PASS: Stale / uninitialized round correctly returns 404`);
 
+  // --- TEST 8: Full Leave & Rejoin Lifecycle (Advance 60s, Leave, Rejoin with ~4:00, Return After Expiration, Background Recovery) ---
+  console.log('\nTest 8: Full leave and rejoin regression verification...');
+  const eventId8 = 'evt_leave_rejoin_regression';
+
+  // Step 1: Start a round with 300s (5:00) timer
+  const startR8Res = await fetch(`${BASE_URL}/api/events/${eventId8}/rounds/0/timer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId: userMe,
+      partnerId: partnerElena,
+      roundDurationSeconds: 300,
+      breakDurationSeconds: 120,
+      mode: 'production',
+      forceFresh: true,
+    }),
+  });
+  const startR8Data = await startR8Res.json();
+  assert.strictEqual(startR8Data.success, true, 'Round 0 created');
+  const originalRoundIdR8 = startR8Data.round.roundId;
+  const originalStartedAtR8 = startR8Data.round.roundStartedAt;
+  const originalExpiresAtR8 = startR8Data.round.roundExpiresAt;
+  assert.ok(startR8Data.round.remainingSeconds > 295, 'Starts at approximately 300s (5:00)');
+  log(`Initial round started: ID=${originalRoundIdR8}, expiresAt=${originalExpiresAtR8}`);
+
+  // Step 2: Advance 60 seconds (simulating 1 minute of video conversation)
+  const advanceRes = await fetch(`${BASE_URL}/api/events/${eventId8}/rounds/0/offset-timer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId: userMe,
+      partnerId: partnerElena,
+      offsetSeconds: 60,
+    }),
+  });
+  const advanceData = await advanceRes.json();
+  assert.strictEqual(advanceData.success, true, 'Timer advanced by 60 seconds');
+  assert.ok(advanceData.remainingSeconds >= 238 && advanceData.remainingSeconds <= 242, `After 60s, remaining must be ~240s (~4:00), got ${advanceData.remainingSeconds}s`);
+  log(`Elapsed 60s on server: remaining = ${advanceData.remainingSeconds}s (~4:00)`);
+
+  // Step 3: Member explicitly leaves the event
+  const leaveR8Res = await fetch(`${BASE_URL}/api/events/${eventId8}/leave`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: userMe }),
+  });
+  const leaveR8Data = await leaveR8Res.json();
+  assert.strictEqual(leaveR8Data.success, true, 'Member left event');
+  log('Member left event: readiness and presence cleared, shared round deadline preserved');
+
+  // Step 4: Rejoin the same round via GET timer and POST timer without forceFresh
+  const rejoinGetRes = await fetch(`${BASE_URL}/api/events/${eventId8}/rounds/0/timer?userId=${userMe}&partnerId=${partnerElena}`);
+  const rejoinGetData = await rejoinGetRes.json();
+  assert.strictEqual(rejoinGetData.success, true, 'Rejoin GET timer returned success');
+  assert.strictEqual(rejoinGetData.round.roundId, originalRoundIdR8, 'Round ID must remain IDENTICAL upon rejoining');
+  assert.strictEqual(rejoinGetData.round.roundExpiresAt, advanceData.roundExpiresAt, 'roundExpiresAt must NOT change upon rejoining');
+  assert.ok(rejoinGetData.round.remainingSeconds >= 235 && rejoinGetData.round.remainingSeconds <= 242, `Rejoin remaining seconds must be ~240s (~4:00), NOT reset to 300s (5:00)! Got: ${rejoinGetData.round.remainingSeconds}s`);
+  assert.notStrictEqual(rejoinGetData.round.remainingSeconds, 300, 'Bug verification: Countdown did NOT restart at 5:00');
+  log(`PASS: Rejoin confirmed: Identical round ID, ~4:00 remains (${rejoinGetData.round.remainingSeconds}s), zero countdown reset`);
+
+  // Step 5: Test returning after expiration (more than 5 minutes elapsed)
+  const expireRes = await fetch(`${BASE_URL}/api/events/${eventId8}/rounds/0/offset-timer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId: userMe,
+      partnerId: partnerElena,
+      offsetSeconds: 250, // 60 + 250 = 310 seconds elapsed (deadline passed)
+    }),
+  });
+  const expireData = await expireRes.json();
+  assert.strictEqual(expireData.isExpired, true, 'Deadline marked expired on server');
+
+  const reconnectExpiredRes = await fetch(`${BASE_URL}/api/events/${eventId8}/rounds/0/timer?userId=${userMe}&partnerId=${partnerElena}`);
+  const reconnectExpiredData = await reconnectExpiredRes.json();
+  assert.strictEqual(reconnectExpiredData.round.status, 'break', 'Expired round immediately transitions to break stage');
+  assert.strictEqual(reconnectExpiredData.round.remainingSeconds, 0, 'Remaining video call seconds must be 0 after deadline');
+  assert.ok(reconnectExpiredData.round.remainingBreakSeconds <= 120, 'Break countdown initiated immediately without video reconnection');
+  log(`PASS: Returning after expiration correctly triggers immediate break/voting state`);
+
+  // Step 6: Test background / foreground recovery
+  // Simulate phone sleep / app backgrounded during break for 20 seconds
+  await fetch(`${BASE_URL}/api/events/${eventId8}/rounds/0/offset-timer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId: userMe,
+      partnerId: partnerElena,
+      offsetSeconds: 20,
+    }),
+  });
+  const foregroundResumeRes = await fetch(`${BASE_URL}/api/events/${eventId8}/rounds/0/timer?userId=${userMe}&partnerId=${partnerElena}`);
+  const foregroundResumeData = await foregroundResumeRes.json();
+  assert.strictEqual(foregroundResumeData.round.roundId, originalRoundIdR8, 'Round identity preserved across background/foreground');
+  assert.ok(foregroundResumeData.round.remainingBreakSeconds < reconnectExpiredData.round.remainingBreakSeconds, 'Break countdown accurately decremented during background state');
+  log(`PASS: Background/foreground recovery verified: Authoritative clock synchronized cleanly`);
+
   console.log('\n============================================================');
   console.log('✓ ALL TIMER & SESSION LIFECYCLE REGRESSION CHECKS PASSED!');
   console.log('============================================================\n');

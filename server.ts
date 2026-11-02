@@ -308,7 +308,7 @@ export function getSharedRound(
     return true;
   };
 
-  // If both userId and partnerId are provided, ONLY match rounds that contain BOTH participants!
+  // 1. If both userId and partnerId are provided, ONLY match rounds that contain BOTH participants!
   if (userId && partnerId) {
     const sortedPair = [userId, partnerId].sort().join('_');
     const exactRoundId = `${eventId}_r${roundIndex}_${sortedPair}`;
@@ -324,12 +324,10 @@ export function getSharedRound(
         }
       }
     }
-    // Strict isolation: NEVER match a round with another dater when partnerId is specified!
-    return undefined;
   }
 
-  // If only userId is provided
-  if (userId && !partnerId) {
+  // 2. If userId is provided, find user's authoritative round for this roundIndex
+  if (userId) {
     for (const r of sharedRounds.values()) {
       if (r.eventId === eventId && r.roundIndex === roundIndex && isRoundActive(r)) {
         if (r.participants.includes(userId)) {
@@ -512,23 +510,12 @@ app.post('/api/events/:eventId/leave', (req, res) => {
     }
   }
 
-  // 5. If member is in an active sharedRound, mark early exit with timestamp so partner is not blocked
-  for (const [roundKey, round] of sharedRounds.entries()) {
-    if (round.eventId === eventId && round.participants.includes(userId)) {
-      if (!round.earlyExitedParticipants) round.earlyExitedParticipants = [];
-      if (!round.earlyExitedParticipants.includes(userId)) {
-        round.earlyExitedParticipants.push(userId);
-      }
-      if (!round.earlyEndTimestamps) round.earlyEndTimestamps = {};
-      round.earlyEndTimestamps[userId] = now;
-      round.lastUpdated = now;
-    }
-  }
-  saveSharedRoundsToDisk();
+  // 5. Shared round deadline: Preserve authoritative round timer on server.
+  // Explicit Leave Event clears queue presence and readiness, but NEVER erases or restarts the shared round deadline.
 
   return res.json({
     success: true,
-    message: `User ${userId} successfully left event ${eventId}. Active queue, readiness, and live session removed. Saved votes and matches preserved safely.`,
+    message: `User ${userId} successfully left event ${eventId}. Active queue, readiness, and live session removed. Shared round deadline, saved votes, and matches preserved safely.`,
     serverTime: now,
   });
 });
@@ -768,6 +755,37 @@ app.post('/api/events/:eventId/rounds/:roundIndex/end-early', (req, res) => {
     userBreakExpiresAt: now + round.breakDurationSeconds * 1000,
     remainingBreakSeconds: round.breakDurationSeconds,
     serverTime: now,
+  });
+});
+
+// API: Developer/Test helper to simulate elapsed time on a shared round timer
+app.post('/api/events/:eventId/rounds/:roundIndex/offset-timer', (req, res) => {
+  const { eventId, roundIndex: roundIndexParam } = req.params;
+  const roundIndex = Number(roundIndexParam) || 0;
+  const { userId, partnerId, offsetSeconds = 0 } = req.body;
+
+  const round = getSharedRound(eventId, roundIndex, userId, partnerId, true);
+  if (!round) {
+    return res.status(404).json({ success: false, error: 'Round not found' });
+  }
+
+  const shiftMs = (Number(offsetSeconds) || 0) * 1000;
+  round.roundStartedAt -= shiftMs;
+  round.roundExpiresAt -= shiftMs;
+  if (round.breakStartedAt) round.breakStartedAt -= shiftMs;
+  if (round.breakExpiresAt) round.breakExpiresAt -= shiftMs;
+  round.lastUpdated = Date.now();
+  saveSharedRoundsToDisk();
+
+  const now = Date.now();
+  const remainingSeconds = Math.max(0, Math.floor((round.roundExpiresAt - now) / 1000));
+  return res.json({
+    success: true,
+    roundId: round.roundId,
+    roundStartedAt: round.roundStartedAt,
+    roundExpiresAt: round.roundExpiresAt,
+    remainingSeconds,
+    isExpired: now >= round.roundExpiresAt,
   });
 });
 

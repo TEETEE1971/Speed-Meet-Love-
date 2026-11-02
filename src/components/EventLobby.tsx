@@ -62,7 +62,8 @@ export const EventLobby: React.FC = () => {
     (!liveSession.mode || liveSession.mode === appMode) &&
     liveSession.eventId === activeEvent.EventID &&
     liveSession.userId === currentUser.UserID &&
-    !isStagingEvent // Developer staging always displays Begin Matchmaking to initiate fresh LiveKit test
+    liveSession.roundExpiresAt &&
+    Date.now() < liveSession.roundExpiresAt + 120 * 1000
   );
 
   const isLive = isEventLive(activeEvent);
@@ -209,7 +210,9 @@ export const EventLobby: React.FC = () => {
     if (isStagingEvent || !activeEvent.RoundsGenerated) {
       generateRoundsForEvent(activeEvent.EventID);
     }
-    setActiveRoundIndex(0);
+    if (!hasActiveSession) {
+      setActiveRoundIndex(0);
+    }
     startEventLive(activeEvent.EventID);
   };
 

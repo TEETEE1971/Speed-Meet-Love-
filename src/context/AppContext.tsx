@@ -1545,15 +1545,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const targetRoundIdx = uncompletedIdx >= 0 ? uncompletedIdx : 0;
 
-    // Only clear server rounds if starting from round 0 fresh with no prior votes
-    if (targetRoundIdx === 0 && (!eventRounds[0] || (eventRounds[0].UserA_Like === null && eventRounds[0].UserB_Like === null))) {
-      fetch(`/api/events/${eventId}/reset-rounds`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.UserID }),
-      }).catch(() => {});
-    }
-
     setSelectedEventId(eventId);
     setActiveRoundIndex(targetRoundIdx);
     setCurrentView('live');
@@ -1562,22 +1553,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const partnerId = activeRound ? (activeRound.UserA === currentUser.UserID ? activeRound.UserB : activeRound.UserA) : '';
     const initialStage = partnerId ? 'call' : 'waiting_room';
 
+    // Preserve existing roundStartedAt and roundExpiresAt if re-entering an active session
+    const hasActiveRoundTimer = Boolean(
+      liveSession &&
+      liveSession.eventId === eventId &&
+      liveSession.roundIndex === targetRoundIdx &&
+      liveSession.roundExpiresAt &&
+      Date.now() < liveSession.roundExpiresAt
+    );
+
     saveLiveSession({
       userId: currentUser.UserID,
       eventId,
       roundIndex: targetRoundIdx,
-      stage: initialStage,
-      roundStartedAt: Date.now(),
-      breakStartedAt: null,
+      stage: hasActiveRoundTimer ? (liveSession?.stage || initialStage) : initialStage,
+      roundStartedAt: hasActiveRoundTimer ? liveSession!.roundStartedAt : Date.now(),
+      roundExpiresAt: hasActiveRoundTimer ? liveSession!.roundExpiresAt : (Date.now() + 300 * 1000),
+      breakStartedAt: hasActiveRoundTimer ? liveSession?.breakStartedAt || null : null,
+      breakExpiresAt: hasActiveRoundTimer ? liveSession?.breakExpiresAt || null : null,
       roundDurationSeconds: 300,
       breakDurationSeconds: 120,
-      vote: null,
-      notes: '',
+      vote: hasActiveRoundTimer ? liveSession?.vote || null : null,
+      notes: hasActiveRoundTimer ? liveSession?.notes || '' : '',
       partnerId,
       currentView: 'live',
       lastActive: Date.now(),
       mode: appMode,
-      hasEndedEarly: false,
+      hasEndedEarly: hasActiveRoundTimer ? Boolean(liveSession?.hasEndedEarly) : false,
     });
 
     showNotification(

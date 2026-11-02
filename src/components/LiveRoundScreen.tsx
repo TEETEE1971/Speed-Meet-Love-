@@ -222,6 +222,7 @@ export const LiveRoundScreen: React.FC = () => {
     return defaultDuration;
   });
   const [isPaused, setIsPaused] = useState(false);
+  const [isTimerSyncing, setIsTimerSyncing] = useState<boolean>(true);
 
   // Authoritative break timer - strictly preserves original 2-minute deadline on reconnect
   const [breakTimeLeft, setBreakTimeLeft] = useState<number>(() => {
@@ -492,6 +493,7 @@ export const LiveRoundScreen: React.FC = () => {
 
   // Synchronize server-authoritative shared round timer
   const syncServerRoundTimer = useCallback(async (createIfMissing = false) => {
+    setIsTimerSyncing(true);
     try {
       // If user has explicitly advanced to waiting room, never let round timer override it
       if (stageRef.current === 'waiting_room') {
@@ -596,8 +598,8 @@ export const LiveRoundScreen: React.FC = () => {
             return round;
           }
 
-          // Both participants moved to break when 5-minute round has expired on server
-          if (round.status === 'break' || round.isExpired) {
+          // Both participants moved to break when 5-minute round has expired on server or marked completed
+          if (round.status === 'break' || round.isExpired || round.status === 'completed') {
             serverRoundRef.current = {
               roundId: round.roundId,
               roundStartedAt: round.roundStartedAt,
@@ -614,7 +616,9 @@ export const LiveRoundScreen: React.FC = () => {
               streamRef.current.getTracks().forEach(t => t.stop());
               streamRef.current = null;
             }
-            setBreakTimeLeft(round.remainingBreakSeconds);
+            if (round.remainingBreakSeconds !== undefined) {
+              setBreakTimeLeft(round.remainingBreakSeconds);
+            }
 
             saveLiveSession({
               stage: 'break',
@@ -629,44 +633,12 @@ export const LiveRoundScreen: React.FC = () => {
             });
             return round;
           }
-
-          // If the round has completed/expired in the past, start a fresh round when requested
-          if (createIfMissing) {
-            const freshRes = await fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/timer`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userId: currentUser.UserID,
-                partnerId: partnerIdParam,
-                roundDurationSeconds: defaultDuration,
-                breakDurationSeconds: defaultBreak,
-                mode: appMode,
-                forceFresh: false,
-              }),
-            });
-            if (freshRes.ok) {
-              const freshData = await freshRes.json();
-              if (freshData.success && freshData.round) {
-                serverRoundRef.current = {
-                  roundId: freshData.round.roundId,
-                  roundStartedAt: freshData.round.roundStartedAt,
-                  roundExpiresAt: freshData.round.roundExpiresAt,
-                  breakStartedAt: freshData.round.breakStartedAt,
-                  breakExpiresAt: freshData.round.breakExpiresAt,
-                  status: freshData.round.status,
-                };
-                if (stageRef.current === 'call') {
-                  setStage('call');
-                }
-                setTimeLeft(freshData.round.remainingSeconds);
-                return freshData.round;
-              }
-            }
-          }
         }
       }
     } catch (err) {
       console.warn('Server round timer sync failed:', err);
+    } finally {
+      setIsTimerSyncing(false);
     }
     return null;
   }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession]);
@@ -685,6 +657,12 @@ export const LiveRoundScreen: React.FC = () => {
       const synchronizedNow = now + (serverTimeOffset || 0);
       const serverRound = serverRoundRef.current;
 
+      // While initial timer sync is in flight and we don't have authoritative server round yet,
+      // pause local decrement to prevent premature expiry or desynchronization
+      if (isTimerSyncing && !serverRound) {
+        return;
+      }
+
       if (stage === 'call' && !isPaused) {
         // Authoritative expiration calculation:
         // Prioritize server expiration timestamp.
@@ -698,15 +676,20 @@ export const LiveRoundScreen: React.FC = () => {
         const remaining = Math.max(0, Math.floor((expiresAt - synchronizedNow) / 1000));
         setTimeLeft(remaining);
 
-        // Guard: round must have been active on screen for at least 8 seconds before remaining <= 0
-        // can transition to break, preventing initial mount race conditions or stale cached data
+        // Transition to break immediately when server expiration has passed;
+        // require 8s only for freshly initialized fallback timers without server confirmation
         const screenElapsedMs = now - callMountTimeRef.current;
-        if (remaining <= 0 && screenElapsedMs >= 8000) {
+        const canTransitionExpired = serverRound ? (remaining <= 0) : (remaining <= 0 && screenElapsedMs >= 8000);
+        if (canTransitionExpired) {
           // Exactly 5 minutes have elapsed!
           // Server and client automatically end video round, disconnect LiveKit, and show voting screen
           setStage('break');
           setTimeLeft(0);
           setLiveKitToken(null);
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+          }
           setBreakTimeLeft(defaultBreak);
 
           if (serverRound) {
@@ -748,7 +731,7 @@ export const LiveRoundScreen: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [stage, isPaused, breakPaused, liveSession, isEligible, activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession, showNotification, serverTimeOffset]);
+  }, [stage, isPaused, breakPaused, isTimerSyncing, liveSession, isEligible, activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession, showNotification, serverTimeOffset]);
 
   // Periodic server timer resync every 3 seconds to guarantee zero client drift across iOS & Android
   useEffect(() => {
@@ -1454,18 +1437,28 @@ export const LiveRoundScreen: React.FC = () => {
 
             {/* Countdown Clock & Live Reaction Controls */}
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <div
-                className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl border font-mono font-black text-base sm:text-lg transition-colors shadow-2xs ${
-                  timeLeft < 60
-                    ? 'bg-rose-50 border-rose-300 text-rose-600 animate-pulse'
-                    : 'bg-pink-50 border-pink-200 text-[#FF2E93]'
-                }`}
-                title="Shared server-authoritative 5-minute round timer"
-              >
-                <Clock className="w-4 h-4 text-[#FF2E93]" />
-                <span className="tracking-tight">{formatMinutes(timeLeft)}</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Server Synced Timer" />
-              </div>
+              {isTimerSyncing && !serverRoundRef.current ? (
+                <div
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl border font-mono font-bold text-xs sm:text-sm bg-pink-50 border-pink-200 text-[#FF2E93] shadow-2xs"
+                  title="Synchronizing authoritative round timer with server..."
+                >
+                  <span className="w-3.5 h-3.5 border-2 border-[#FF2E93] border-t-transparent rounded-full animate-spin" />
+                  <span className="tracking-tight font-sans font-semibold">Reconnecting…</span>
+                </div>
+              ) : (
+                <div
+                  className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl border font-mono font-black text-base sm:text-lg transition-colors shadow-2xs ${
+                    timeLeft < 60
+                      ? 'bg-rose-50 border-rose-300 text-rose-600 animate-pulse'
+                      : 'bg-pink-50 border-pink-200 text-[#FF2E93]'
+                  }`}
+                  title="Shared server-authoritative 5-minute round timer"
+                >
+                  <Clock className="w-4 h-4 text-[#FF2E93]" />
+                  <span className="tracking-tight">{formatMinutes(timeLeft)}</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Server Synced Timer" />
+                </div>
+              )}
 
               {/* Real-time Heart Reaction Button */}
               <button
