@@ -57,7 +57,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
       RoundsGenerated: false,
       HostID: 'host_speedmeet_01',
       EventType: 'Straight',
-      Description: 'Friday night speed dating for Premium Plus members! Rotate through 5-minute one-on-one video rounds, take a break of up to 2 minutes between dates, and tap Next Date when you are ready.',
+      Description: 'Friday night speed dating for Premium Plus members! Rotate through 5-minute one-on-one video rounds with up to 2-minute breaks between dates, progressing automatically when your vote is confirmed saved.',
       TotalRounds: 5,
       RoundDurationSeconds: 300,
       BreakDurationSeconds: 120,
@@ -351,7 +351,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
               </div>
               <div>
                 <p className="text-xs font-black text-slate-900 font-heading">2-Minute Breaks</p>
-                <p className="text-[11px] text-slate-600 font-semibold">Mutual Next Date consent</p>
+                <p className="text-[11px] text-slate-600 font-semibold">Mutual readiness consent</p>
               </div>
             </div>
 

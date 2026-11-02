@@ -48,6 +48,8 @@ export const EventList: React.FC = () => {
     serverTimeFormattedET,
     setAppMode,
     clearLiveSession,
+    liveSession,
+    setActiveRoundIndex,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'cards' | 'table'>('cards');
@@ -178,7 +180,7 @@ export const EventList: React.FC = () => {
           </h1>
 
           <p className="text-sm sm:text-base text-slate-600 leading-relaxed max-w-2xl">
-            Live online speed dating every <strong>Friday, Saturday, and Sunday at 7:00 PM Eastern Time (America/New_York)</strong>. Daylight saving time is handled automatically. Rotate through 5-minute one-on-one video rounds, take a break of up to 2 minutes between dates, and tap Next Date when you are ready.
+            Live online speed dating every <strong>Friday, Saturday, and Sunday at 7:00 PM Eastern Time (America/New_York)</strong>. Daylight saving time is handled automatically. Rotate through 5-minute one-on-one video rounds with up to 2-minute breaks between dates, progressing automatically when your vote is confirmed saved.
           </p>
 
           {serverTimeFormattedET && (
@@ -198,9 +200,15 @@ export const EventList: React.FC = () => {
                   const regUpcoming = events.find(e => e.ParticipantsList.includes(currentUser.UserID));
                   if (regLive) {
                     setSelectedEventId(regLive.EventID);
-                    setCurrentView('live');
+                    if (liveSession && liveSession.eventId === regLive.EventID && liveSession.lastActive && (Date.now() - liveSession.lastActive < 30 * 60 * 1000)) {
+                      setCurrentView('live');
+                    } else {
+                      setActiveRoundIndex(0);
+                      setCurrentView('lobby');
+                    }
                   } else if (regUpcoming) {
                     setSelectedEventId(regUpcoming.EventID);
+                    setActiveRoundIndex(0);
                     setCurrentView('lobby');
                   } else {
                     // Navigate directly to the next session waiting room so they can register and participate
@@ -209,6 +217,7 @@ export const EventList: React.FC = () => {
                       events.find(e => e.DayOfWeek === 'Friday') ||
                       events[0];
                     setSelectedEventId(targetEvent.EventID);
+                    setActiveRoundIndex(0);
                     setCurrentView('lobby');
                     showNotification(`Welcome to ${targetEvent.EventName}! Tap Register to enter the Waiting Room.`, 'info');
                   }
@@ -260,7 +269,7 @@ export const EventList: React.FC = () => {
           </div>
           <div>
             <div className="text-slate-400">Waiting Room & Consent</div>
-            <div className="text-slate-900 font-bold text-sm">Next Date Button (Consent)</div>
+            <div className="text-slate-900 font-bold text-sm">Automatic Progression (Consent)</div>
             <div className="text-[11px] text-slate-500">No calls auto-start without you</div>
           </div>
           <div>
@@ -865,7 +874,7 @@ export const EventList: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 text-[11px]">
                 <span className="text-[#FF2E93] font-bold">✓</span>
-                <span>Next Date button with consent-based waiting room</span>
+                <span>Automatic progression with consent-based waiting room</span>
               </div>
               <div className="flex items-center gap-2 text-[11px]">
                 <span className="text-[#FF2E93] font-bold">✓</span>

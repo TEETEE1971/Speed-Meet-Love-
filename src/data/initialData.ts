@@ -579,7 +579,7 @@ export const INITIAL_EVENTS: SpeedEvent[] = [
     RoundsGenerated: false,
     HostID: 'host_speedmeet_01',
     EventType: 'Straight',
-    Description: 'Friday night speed dating for Premium Plus members! Rotate through 5-minute one-on-one video rounds, take a break of up to 2 minutes between dates, and tap Next Date when you are ready.',
+    Description: 'Friday night speed dating for Premium Plus members! Rotate through 5-minute one-on-one video rounds with up to 2-minute breaks between dates, progressing automatically when your vote is confirmed saved.',
     TotalRounds: 5,
     RoundDurationSeconds: 300, // Exactly 5 minutes
     BreakDurationSeconds: 120, // Up to 2-minute break
@@ -792,7 +792,7 @@ export const INITIAL_EVENTS: SpeedEvent[] = [
     RoundsGenerated: false,
     HostID: 'host_speedmeet_01',
     EventType: '30 & Older',
-    Description: 'Sunday 7:00 PM speed dating for daters aged 30 and older looking for genuine chemistry and intentional partnerships. 5-minute video dates with consent-based Next Date flow.',
+    Description: 'Sunday 7:00 PM speed dating for daters aged 30 and older looking for genuine chemistry and intentional partnerships. 5-minute video dates with automatic progression and mutual consent.',
     TotalRounds: 5,
     RoundDurationSeconds: 300,
     BreakDurationSeconds: 120,

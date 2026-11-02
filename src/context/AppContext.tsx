@@ -134,6 +134,8 @@ interface AppContextType {
   declineSecondDateInvitation: (sessionId: string) => Promise<{ success: boolean; session?: SecondDateSession }>;
   dismissSecondDateInvitation: (sessionId: string) => void;
   repairEventRounds: (eventId: string) => Round[];
+  createStagingTestSession: () => Promise<{ success: boolean; eventId?: string; joinCode?: string; error?: string }>;
+  joinStagingTestSession: (joinCode: string) => Promise<{ success: boolean; eventId?: string; joinCode?: string; error?: string }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -330,11 +332,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (savedSession) {
       try {
         const parsed: LiveSessionState = JSON.parse(savedSession);
-        if (parsed.mode === initialMode && typeof parsed.roundIndex === 'number') return parsed.roundIndex;
+        const now = Date.now();
+        if (parsed.mode === initialMode && parsed.lastActive && (now - parsed.lastActive < 30 * 60 * 1000) && typeof parsed.roundIndex === 'number') {
+          return parsed.roundIndex;
+        }
       } catch (e) {}
     }
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}activeRoundIndex_${initialMode}`);
-    return saved ? parseInt(saved, 10) : 0;
+    return 0;
   });
 
   const [liveSession, setLiveSessionState] = useState<LiveSessionState | null>(() => {
@@ -344,7 +348,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed: LiveSessionState = JSON.parse(saved);
-        if (parsed.mode === initialMode) return parsed;
+        const now = Date.now();
+        if (parsed.mode === initialMode && parsed.lastActive && (now - parsed.lastActive < 30 * 60 * 1000)) {
+          return parsed;
+        }
       } catch (e) {}
     }
     return null;
@@ -477,7 +484,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isEventLive = (event: SpeedEvent): boolean => {
     // Authorized developer staging test is available on-demand for verified test accounts
-    if (event.EventID === 'evt_staging_dev') {
+    if (event.EventID === 'evt_staging_dev' || event.EventID.startsWith('evt_staging_')) {
       return ['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(currentUser.UserID);
     }
 
@@ -672,6 +679,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem(getSessionStorageKey(appMode, currentUser.UserID));
     localStorage.removeItem(`${STORAGE_KEY_PREFIX}active_live_session`);
     localStorage.removeItem(`${STORAGE_KEY_PREFIX}session_${currentUser.UserID}`);
+    localStorage.removeItem(`${STORAGE_KEY_PREFIX}activeRoundIndex_${appMode}`);
+    setActiveRoundIndexState(0);
     fetch(`/api/session/${currentUser.UserID}?mode=${appMode}`, {
       method: 'DELETE',
     }).catch(() => {});
@@ -684,6 +693,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const data = await res.json();
         if (data.success && data.session) {
           const session = data.session as LiveSessionState;
+          const now = Date.now();
+          // Abandoned or completed sessions older than 30 minutes must not be revived
+          if (session.lastActive && (now - session.lastActive > 30 * 60 * 1000)) {
+            clearLiveSession();
+            return null;
+          }
           if (session.mode === appMode) {
             setLiveSessionState(session);
             localStorage.setItem(getSessionStorageKey(appMode, currentUser.UserID), JSON.stringify(session));
@@ -1134,7 +1149,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const leaveEvent = (eventId: string) => {
+    // 1. Notify server to remove user from matchmaking queue, readiness consent, and active sessions
+    fetch(`/api/events/${eventId}/leave`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.UserID }),
+    }).catch(err => console.warn('Server leave event call error:', err));
+
+    // 2. Clear live session and reset active round index to 0
     clearLiveSession();
+    setActiveRoundIndexState(0);
+    localStorage.removeItem(`${STORAGE_KEY_PREFIX}activeRoundIndex_${appMode}`);
+    localStorage.removeItem(`${STORAGE_KEY_PREFIX}activeRoundIndex_demonstration`);
+    localStorage.removeItem(`${STORAGE_KEY_PREFIX}activeRoundIndex_production`);
+
+    // 3. Clear all session progression and early exit keys
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < window.sessionStorage.length; i++) {
+          const k = window.sessionStorage.key(i);
+          if (k && (k.includes(eventId) || k.startsWith('sml_ended_early_') || k.startsWith('sml_round_completed_') || k.startsWith('sml_auto_adv_'))) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(k => window.sessionStorage.removeItem(k));
+      }
+    } catch (e) {}
+
     const targetEvent = events.find(e => e.EventID === eventId);
     setEvents(prev =>
       prev.map(e =>
@@ -1154,7 +1196,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentView('friday');
     }
     showNotification(
-      `Registration canceled for ${targetEvent?.EventName || 'event'}. Your spot has been released.`,
+      `You left ${targetEvent?.EventName || 'the event'}. Your queue presence and live round were cleared. Your saved votes and matches remain safe!`,
       'info'
     );
   };
@@ -1213,7 +1255,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let candidatePartners: User[] = [];
 
-    if (eventId === 'evt_staging_dev') {
+    if (eventId === 'evt_staging_dev' || eventId.startsWith('evt_staging_')) {
       // Developer Staging: Dedicated two-person test pairing between verified test accounts
       const preferredPartnerId =
         currentUser.UserID === 'usr_kristy'
@@ -1482,7 +1524,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       r => r.EventID === eventId && (r.UserA === currentUser.UserID || r.UserB === currentUser.UserID)
     );
     let eventRounds = myRounds;
-    if (eventId === 'evt_staging_dev' || myRounds.length < 5) {
+    if (eventId === 'evt_staging_dev' || eventId.startsWith('evt_staging_') || myRounds.length < 5) {
       eventRounds = generateRoundsForEvent(eventId);
     }
 
@@ -1982,6 +2024,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
+  const createStagingTestSession = async (): Promise<{ success: boolean; eventId?: string; joinCode?: string; error?: string }> => {
+    try {
+      const res = await fetch('/api/staging/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.UserID }),
+      });
+      const data = await res.json();
+      if (data.success && data.eventId) {
+        const newEvent: SpeedEvent = {
+          EventID: data.eventId,
+          EventName: `Staging Test (Code: ${data.joinCode})`,
+          DayOfWeek: 'Friday',
+          EventDate: new Date().toISOString().split('T')[0],
+          EventStartTime: '19:00',
+          EventEndTime: '23:59',
+          TimeZone: 'On-Demand Staging (America/New_York)',
+          MaxParticipants: 4,
+          ParticipantsList: [currentUser.UserID],
+          EventStatus: 'Upcoming',
+          RoundsGenerated: false,
+          HostID: 'host_speedmeet_01',
+          EventType: 'Straight',
+          Description: `Developer 2-Phone LiveKit Staging Test. Join Code: ${data.joinCode}. 5-minute video rounds with 2-minute breaks.`,
+          TotalRounds: 5,
+          RoundDurationSeconds: 300,
+          BreakDurationSeconds: 120,
+          MinAge: 21,
+          MaxAge: 65,
+          LocationName: `Staging Room ${data.joinCode}`,
+          ThemeIcon: 'Sparkles',
+        };
+        setEvents(prev => [...prev.filter(e => e.EventID !== data.eventId), newEvent]);
+        setSelectedEventIdState(data.eventId);
+        setActiveRoundIndexState(0);
+        showNotification(`Fresh test session created! Join Code: ${data.joinCode}. Enter this code on phone 2.`, 'success');
+        return { success: true, eventId: data.eventId, joinCode: data.joinCode };
+      }
+      return { success: false, error: data.error || 'Failed to create staging session' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  };
+
+  const joinStagingTestSession = async (joinCode: string): Promise<{ success: boolean; eventId?: string; joinCode?: string; error?: string }> => {
+    try {
+      const res = await fetch('/api/staging/join-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ joinCode, userId: currentUser.UserID }),
+      });
+      const data = await res.json();
+      if (data.success && data.eventId) {
+        const newEvent: SpeedEvent = {
+          EventID: data.eventId,
+          EventName: `Staging Test (Code: ${data.joinCode})`,
+          DayOfWeek: 'Friday',
+          EventDate: new Date().toISOString().split('T')[0],
+          EventStartTime: '19:00',
+          EventEndTime: '23:59',
+          TimeZone: 'On-Demand Staging (America/New_York)',
+          MaxParticipants: 4,
+          ParticipantsList: [currentUser.UserID],
+          EventStatus: 'Upcoming',
+          RoundsGenerated: false,
+          HostID: 'host_speedmeet_01',
+          EventType: 'Straight',
+          Description: `Developer 2-Phone LiveKit Staging Test. Join Code: ${data.joinCode}. 5-minute video rounds with 2-minute breaks.`,
+          TotalRounds: 5,
+          RoundDurationSeconds: 300,
+          BreakDurationSeconds: 120,
+          MinAge: 21,
+          MaxAge: 65,
+          LocationName: `Staging Room ${data.joinCode}`,
+          ThemeIcon: 'Sparkles',
+        };
+        setEvents(prev => [...prev.filter(e => e.EventID !== data.eventId), newEvent]);
+        setSelectedEventIdState(data.eventId);
+        setActiveRoundIndexState(0);
+        showNotification(`Connected to staging session ${data.joinCode}! Starting at Round 1.`, 'success');
+        return { success: true, eventId: data.eventId, joinCode: data.joinCode };
+      }
+      return { success: false, error: data.error || 'Session not found or expired' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -2059,6 +2189,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         declineSecondDateInvitation,
         dismissSecondDateInvitation,
         repairEventRounds,
+        createStagingTestSession,
+        joinStagingTestSession,
       }}
     >
       {children}

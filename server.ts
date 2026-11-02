@@ -294,7 +294,15 @@ export function getSharedRound(
   allowCompleted: boolean = false
 ): ServerSharedRound | undefined {
   const now = Date.now();
+  const MAX_ROUND_AGE_MS = 30 * 60 * 1000; // 30 minutes maximum session age
   const isRoundActive = (r: ServerSharedRound) => {
+    // Abandoned or completed sessions older than 30 minutes must never be resurrected as active
+    if (r.roundStartedAt && (now - r.roundStartedAt > MAX_ROUND_AGE_MS)) {
+      return false;
+    }
+    if (r.breakExpiresAt && (now - r.breakExpiresAt > 15 * 60 * 1000)) {
+      return false;
+    }
     if (allowCompleted) return true;
     if (r.status === 'completed') return false;
     return true;
@@ -465,6 +473,158 @@ app.post('/api/events/:eventId/reset-rounds', (req, res) => {
   return res.json({ success: true, clearedCount, message: `Reset ${clearedCount} rounds for event ${eventId}` });
 });
 
+// API: Explicitly leave an event session (Purges queue, readiness, active session on server without deleting votes or matches)
+app.post('/api/events/:eventId/leave', (req, res) => {
+  const { eventId } = req.params;
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  const now = Date.now();
+
+  // 1. Remove from liveEventQueues
+  const queue = liveEventQueues.get(eventId);
+  if (queue) {
+    queue.delete(userId);
+  }
+
+  // 2. Remove readiness from roundConsentStore for this event
+  for (const [rKey, rMap] of roundConsentStore.entries()) {
+    if (rKey.startsWith(`${eventId}_`) || rKey === eventId) {
+      rMap.delete(userId);
+    }
+  }
+  saveConsentToDisk();
+
+  // 3. Remove from liveActiveMatches for this event
+  for (const [mId, match] of liveActiveMatches.entries()) {
+    if (match.eventId === eventId && (match.userA.userId === userId || match.userB.userId === userId)) {
+      liveActiveMatches.delete(mId);
+    }
+  }
+
+  // 4. Remove active session from sessions map
+  for (const [sKey, session] of sessions.entries()) {
+    if (session.userId === userId && session.eventId === eventId) {
+      sessions.delete(sKey);
+    }
+  }
+
+  // 5. If member is in an active sharedRound, mark early exit with timestamp so partner is not blocked
+  for (const [roundKey, round] of sharedRounds.entries()) {
+    if (round.eventId === eventId && round.participants.includes(userId)) {
+      if (!round.earlyExitedParticipants) round.earlyExitedParticipants = [];
+      if (!round.earlyExitedParticipants.includes(userId)) {
+        round.earlyExitedParticipants.push(userId);
+      }
+      if (!round.earlyEndTimestamps) round.earlyEndTimestamps = {};
+      round.earlyEndTimestamps[userId] = now;
+      round.lastUpdated = now;
+    }
+  }
+  saveSharedRoundsToDisk();
+
+  return res.json({
+    success: true,
+    message: `User ${userId} successfully left event ${eventId}. Active queue, readiness, and live session removed. Saved votes and matches preserved safely.`,
+    serverTime: now,
+  });
+});
+
+// Staging Session In-Memory Store for Developer 2-Phone Testing
+interface StagingSessionInfo {
+  eventId: string;
+  joinCode: string;
+  createdAt: number;
+  createdBy: string;
+}
+const activeStagingSessions = new Map<string, StagingSessionInfo>();
+
+function cleanupStagingSessions() {
+  const now = Date.now();
+  for (const [eventId, session] of activeStagingSessions.entries()) {
+    if (now - session.createdAt > 30 * 60 * 1000) {
+      activeStagingSessions.delete(eventId);
+      // Clean up any rounds associated with this expired staging session
+      for (const [rKey, r] of sharedRounds.entries()) {
+        if (r.eventId === eventId) {
+          sharedRounds.delete(rKey);
+        }
+      }
+    }
+  }
+}
+
+// API: Create a unique staging test session for 2 phones to test without colliding with other tests
+app.post('/api/staging/create-session', (req, res) => {
+  cleanupStagingSessions();
+  const { userId = 'usr_me' } = req.body;
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let joinCode = '';
+  for (let i = 0; i < 4; i++) {
+    joinCode += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  const eventId = `evt_staging_${joinCode.toLowerCase()}`;
+  const sessionInfo: StagingSessionInfo = {
+    eventId,
+    joinCode,
+    createdAt: Date.now(),
+    createdBy: userId,
+  };
+  activeStagingSessions.set(eventId, sessionInfo);
+
+  return res.json({
+    success: true,
+    eventId,
+    joinCode,
+    session: sessionInfo,
+    message: `Fresh 2-phone staging session created with code ${joinCode}. Isolated from all other sessions.`,
+  });
+});
+
+// API: List active staging test sessions
+app.get('/api/staging/sessions', (_req, res) => {
+  cleanupStagingSessions();
+  return res.json({
+    success: true,
+    sessions: Array.from(activeStagingSessions.values()),
+  });
+});
+
+// API: Join a staging session by 4-character join code
+app.post('/api/staging/join-session', (req, res) => {
+  cleanupStagingSessions();
+  const { joinCode, userId = 'usr_me' } = req.body;
+  if (!joinCode) {
+    return res.status(400).json({ success: false, error: 'joinCode is required' });
+  }
+
+  const normalized = String(joinCode).trim().toUpperCase();
+  let found: StagingSessionInfo | undefined;
+  for (const s of activeStagingSessions.values()) {
+    if (s.joinCode.toUpperCase() === normalized) {
+      found = s;
+      break;
+    }
+  }
+
+  if (!found) {
+    return res.status(404).json({
+      success: false,
+      error: `Staging session with join code "${normalized}" not found or expired. Staging sessions automatically expire after 30 minutes.`,
+    });
+  }
+
+  return res.json({
+    success: true,
+    eventId: found.eventId,
+    joinCode: found.joinCode,
+    session: found,
+  });
+});
+
 // API: Retrieve authoritative round timer state
 app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
   const { eventId, roundIndex: roundIndexParam } = req.params;
@@ -474,12 +634,6 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
 
   let round = getSharedRound(eventId, roundIndex, userId, partnerId, true);
   const now = Date.now();
-
-  if (!round && userId) {
-    const effectivePartner = partnerId || (userId === 'usr_kristy' ? 'usr_me' : 'usr_kristy');
-    // Auto-create with server-authoritative 5-minute duration
-    round = getOrCreateSharedRound(eventId, roundIndex, userId, effectivePartner, 300, 120, 'production', false);
-  }
 
   if (!round) {
     return res.status(404).json({
@@ -504,18 +658,29 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
   }
 
   const isParticipantEarlyExited = userId ? Boolean(round.earlyExitedParticipants?.includes(userId)) : false;
-  const userBreakStartedAt = isParticipantEarlyExited && userId
-    ? (round.earlyEndTimestamps && round.earlyEndTimestamps[userId]) || round.breakStartedAt || now
-    : round.breakStartedAt;
-  const userBreakExpiresAt = userBreakStartedAt
-    ? userBreakStartedAt + round.breakDurationSeconds * 1000
-    : (round.roundExpiresAt + round.breakDurationSeconds * 1000);
+  let userBreakStartedAt: number | null = null;
+  let userBreakExpiresAt: number | null = null;
+  let remainingBreakSeconds = round.breakDurationSeconds;
 
-  const remainingSeconds = round.status === 'call' && !isParticipantEarlyExited
+  if (isParticipantEarlyExited && userId) {
+    userBreakStartedAt = (round.earlyEndTimestamps && round.earlyEndTimestamps[userId]) || round.breakStartedAt || now;
+    userBreakExpiresAt = userBreakStartedAt + round.breakDurationSeconds * 1000;
+    remainingBreakSeconds = Math.max(0, Math.min(round.breakDurationSeconds, Math.floor((userBreakExpiresAt - now) / 1000)));
+  } else if (round.status === 'break' || round.status === 'completed' || now >= round.roundExpiresAt) {
+    userBreakStartedAt = round.breakStartedAt || round.roundExpiresAt;
+    userBreakExpiresAt = round.breakExpiresAt || (userBreakStartedAt + round.breakDurationSeconds * 1000);
+    remainingBreakSeconds = Math.max(0, Math.min(round.breakDurationSeconds, Math.floor((userBreakExpiresAt - now) / 1000)));
+  } else {
+    // Active 5-minute call in progress; break has not commenced
+    userBreakStartedAt = null;
+    userBreakExpiresAt = null;
+    remainingBreakSeconds = round.breakDurationSeconds;
+  }
+
+  const remainingSeconds = (round.status === 'call' && !isParticipantEarlyExited)
     ? Math.max(0, Math.floor((round.roundExpiresAt - now) / 1000))
     : 0;
 
-  const remainingBreakSeconds = Math.max(0, Math.floor((userBreakExpiresAt - now) / 1000));
   const userStage = isParticipantEarlyExited ? 'break' : round.status;
 
   return res.json({
@@ -656,18 +821,29 @@ app.post('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
   }
 
   const isParticipantEarlyExited = userId ? Boolean(round.earlyExitedParticipants?.includes(userId)) : false;
-  const userBreakStartedAt = isParticipantEarlyExited && userId
-    ? (round.earlyEndTimestamps && round.earlyEndTimestamps[userId]) || round.breakStartedAt || now
-    : round.breakStartedAt;
-  const userBreakExpiresAt = userBreakStartedAt
-    ? userBreakStartedAt + round.breakDurationSeconds * 1000
-    : (round.roundExpiresAt + round.breakDurationSeconds * 1000);
+  let userBreakStartedAt: number | null = null;
+  let userBreakExpiresAt: number | null = null;
+  let remainingBreakSeconds = round.breakDurationSeconds;
 
-  const remainingSeconds = round.status === 'call' && !isParticipantEarlyExited
+  if (isParticipantEarlyExited && userId) {
+    userBreakStartedAt = (round.earlyEndTimestamps && round.earlyEndTimestamps[userId]) || round.breakStartedAt || now;
+    userBreakExpiresAt = userBreakStartedAt + round.breakDurationSeconds * 1000;
+    remainingBreakSeconds = Math.max(0, Math.min(round.breakDurationSeconds, Math.floor((userBreakExpiresAt - now) / 1000)));
+  } else if (round.status === 'break' || round.status === 'completed' || now >= round.roundExpiresAt) {
+    userBreakStartedAt = round.breakStartedAt || round.roundExpiresAt;
+    userBreakExpiresAt = round.breakExpiresAt || (userBreakStartedAt + round.breakDurationSeconds * 1000);
+    remainingBreakSeconds = Math.max(0, Math.min(round.breakDurationSeconds, Math.floor((userBreakExpiresAt - now) / 1000)));
+  } else {
+    // Active 5-minute call in progress; break has not commenced
+    userBreakStartedAt = null;
+    userBreakExpiresAt = null;
+    remainingBreakSeconds = round.breakDurationSeconds;
+  }
+
+  const remainingSeconds = (round.status === 'call' && !isParticipantEarlyExited)
     ? Math.max(0, Math.floor((round.roundExpiresAt - now) / 1000))
     : 0;
 
-  const remainingBreakSeconds = Math.max(0, Math.floor((userBreakExpiresAt - now) / 1000));
   const userStage = isParticipantEarlyExited ? 'break' : round.status;
 
   return res.json({
@@ -1626,6 +1802,7 @@ app.get('/api/time', (_req, res) => {
   });
 
   res.json({
+    success: true,
     serverTime: now,
     serverIso: dateObj.toISOString(),
     timeZone: 'America/New_York',
@@ -1844,7 +2021,7 @@ const handleMatchQueue = (req: express.Request, res: express.Response) => {
   }
 
   // 4. Developer Staging Authorization Check: Restricted to authorized developer/QA accounts
-  const isStagingEvent = eventId === 'evt_staging_dev';
+  const isStagingEvent = eventId === 'evt_staging_dev' || eventId.startsWith('evt_staging_');
   if (isStagingEvent && !AUTHORIZED_STAGING_ACCOUNTS.has(userId)) {
     return res.status(403).json({
       success: false,
@@ -1908,7 +2085,7 @@ const handleMatchQueue = (req: express.Request, res: express.Response) => {
     return res.json({
       success: true,
       status: 'waiting',
-      message: 'Waiting for member to tap Begin Matchmaking / Next Date (I\'m Ready)...',
+      message: 'Waiting for member to complete break and enter queue...',
     });
   }
 
@@ -1985,7 +2162,7 @@ const handleMatchQueue = (req: express.Request, res: express.Response) => {
   return res.json({
     success: true,
     status: 'waiting',
-    message: 'Waiting for partner mutual consent ("Begin Matchmaking / Next Date")...',
+    message: 'Waiting for partner mutual readiness (round break completion)...',
   });
 };
 
@@ -2020,10 +2197,14 @@ app.get('/api/events/:eventId/match-status/:userId', (req, res) => {
     }
   }
 
+  const q = liveEventQueues.get(eventId);
+  const inQueue = q ? q.has(userId) : false;
+
   return res.json({
     success: true,
-    status: 'waiting',
-    message: 'Waiting for partner mutual consent...',
+    status: inQueue ? 'waiting' : 'idle',
+    inQueue,
+    message: inQueue ? 'Waiting for partner mutual readiness...' : 'Not in queue',
   });
 });
 
@@ -2038,7 +2219,7 @@ app.get('/api/livekit/status', (_req, res) => {
       adultAgeRequirement: 'Enforced (18+ general, 30+ for 30 & Older category)',
       eventRegistrationRequirement: 'Enforced (Server-validated event registration)',
       matchingEligibilityRequirement: 'Enforced (Distinct consenting members, category isolation)',
-      mutualConsentRequirement: 'Enforced (Both participants must explicitly tap Next Date / Ready)',
+      mutualConsentRequirement: 'Enforced (Both participants must be ready for pairing)',
       serverStartTimeRequirement: 'Enforced (7:00 PM Eastern Time via America/New_York)',
       developerAuthorizationRequirement: 'Enforced (Developer Staging restricted to server whitelist)',
       tokenTtl: '420 seconds (5 min round + 2 min break grace window)',
@@ -2294,7 +2475,7 @@ app.post('/api/livekit/token', async (req, res) => {
     }
 
     // 5. Security Check: Developer Staging Authorization Check
-    const isStagingEvent = eventId === 'evt_staging_dev' || req.body.isStagingTest;
+    const isStagingEvent = eventId === 'evt_staging_dev' || eventId.startsWith('evt_staging_') || req.body.isStagingTest;
     if (isStagingEvent) {
       if (!AUTHORIZED_STAGING_ACCOUNTS.has(userId) || (partnerId && !AUTHORIZED_STAGING_ACCOUNTS.has(partnerId))) {
         return res.status(403).json({

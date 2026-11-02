@@ -209,7 +209,9 @@ export interface LiveSessionState {
   roundIndex: number;
   stage: 'call' | 'break' | 'waiting_room';
   roundStartedAt: number; // Unix timestamp in ms
+  roundExpiresAt?: number; // Server-authoritative expiration timestamp
   breakStartedAt: number | null; // Unix timestamp in ms
+  breakExpiresAt?: number | null; // Server-authoritative break expiration timestamp
   roundDurationSeconds: number; // e.g. 300
   breakDurationSeconds: number; // e.g. 120
   vote: 'like' | 'pass' | null;

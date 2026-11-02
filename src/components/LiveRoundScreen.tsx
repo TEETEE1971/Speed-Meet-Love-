@@ -65,12 +65,13 @@ export const LiveRoundScreen: React.FC = () => {
     syncLiveSessionFromServer,
     appMode,
     repairEventRounds,
+    serverTimeOffset,
   } = useApp();
 
   const isEligible = canAccessLiveSpeedDating(currentUser);
 
   const activeEvent = events.find(e => e.EventID === selectedEventId) || events[0];
-  const isStaging = activeEvent.EventID === 'evt_staging_dev';
+  const isStaging = activeEvent.EventID === 'evt_staging_dev' || activeEvent.EventID.startsWith('evt_staging_');
   const targetTotalRounds = Math.max(activeEvent.TotalRounds || 5, 5);
 
   // Find rounds for active event that involve the current user
@@ -123,8 +124,13 @@ export const LiveRoundScreen: React.FC = () => {
     liveSession.eventId === activeEvent.EventID
   );
 
-  // Mount wall-clock timestamp reference to guarantee fresh round never prematurely triggers break
-  const callMountTimeRef = useRef<number>(Date.now());
+  // Mount wall-clock timestamp reference to guarantee fresh round never prematurely triggers break.
+  // On reconnect, prioritize existing roundStartedAt so the original 5-minute round deadline is strictly preserved.
+  const callMountTimeRef = useRef<number>(
+    liveSession?.roundStartedAt && (Date.now() - liveSession.roundStartedAt < defaultDuration * 1000)
+      ? liveSession.roundStartedAt
+      : Date.now()
+  );
 
   // Reliable in-memory and storage early exit tracking
   const hasEndedEarlyRef = useRef<boolean>(false);
@@ -145,9 +151,15 @@ export const LiveRoundScreen: React.FC = () => {
     }
   };
 
+  // Duplicate progression guards
+  const isAdvancingRef = useRef<boolean>(false);
+  const hasAutoAdvancedRoundRef = useRef<number | null>(null);
+
   // Reset in-memory early exit and ballot flags when round index changes
   useEffect(() => {
     hasEndedEarlyRef.current = false;
+    isAdvancingRef.current = false;
+    hasAutoAdvancedRoundRef.current = null;
     setVoteSaved(false);
     setSelectedDecision(null);
     setPrivateNotes('');
@@ -187,17 +199,22 @@ export const LiveRoundScreen: React.FC = () => {
   const [isSubmittingVote, setIsSubmittingVote] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [voteError, setVoteError] = useState<string | null>(null);
-  const [voteSaved, setVoteSaved] = useState<boolean>(false);
+  const [voteSaved, setVoteSaved] = useState<boolean>(() => {
+    if (isSessionForCurrentModeAndEvent && liveSession?.roundIndex === activeRoundIndex) {
+      return Boolean(liveSession.vote);
+    }
+    return isUserA ? currentRound?.UserA_Like !== null : currentRound?.UserB_Like !== null;
+  });
 
-  // Calculate actual elapsed wall-clock time
+  // Calculate actual elapsed wall-clock time - strictly preserves original 5-minute deadline on reconnect
   const [timeLeft, setTimeLeft] = useState<number>(() => {
     if (isSessionForCurrentModeAndEvent && liveSession?.roundIndex === activeRoundIndex) {
       if (liveSession.stage === 'call') {
-        const isRecent = Boolean(liveSession.lastActive && Date.now() - liveSession.lastActive < defaultDuration * 1000);
-        if (isRecent) {
-          const elapsed = Math.floor((Date.now() - liveSession.roundStartedAt) / 1000);
-          if (elapsed < defaultDuration) {
-            return Math.max(1, defaultDuration - elapsed);
+        const expiresAt = liveSession.roundExpiresAt || (liveSession.roundStartedAt ? liveSession.roundStartedAt + defaultDuration * 1000 : null);
+        if (expiresAt) {
+          const remaining = Math.floor((expiresAt - Date.now()) / 1000);
+          if (remaining > 0 && remaining <= defaultDuration) {
+            return remaining;
           }
         }
       }
@@ -206,12 +223,15 @@ export const LiveRoundScreen: React.FC = () => {
   });
   const [isPaused, setIsPaused] = useState(false);
 
+  // Authoritative break timer - strictly preserves original 2-minute deadline on reconnect
   const [breakTimeLeft, setBreakTimeLeft] = useState<number>(() => {
     if (isSessionForCurrentModeAndEvent && liveSession?.roundIndex === activeRoundIndex) {
       if (liveSession.stage === 'break') {
-        const breakStart = liveSession.breakStartedAt || Date.now();
-        const elapsed = Math.floor((Date.now() - breakStart) / 1000);
-        return Math.max(0, defaultBreak - elapsed);
+        const breakExpiresAt = liveSession.breakExpiresAt || (liveSession.breakStartedAt ? liveSession.breakStartedAt + defaultBreak * 1000 : null);
+        if (breakExpiresAt) {
+          const remaining = Math.max(0, Math.floor((breakExpiresAt - Date.now()) / 1000));
+          return remaining;
+        }
       }
     }
     return defaultBreak;
@@ -535,7 +555,9 @@ export const LiveRoundScreen: React.FC = () => {
             saveLiveSession({
               stage: 'break',
               roundStartedAt: round.roundStartedAt,
+              roundExpiresAt: round.roundExpiresAt,
               breakStartedAt: round.breakStartedAt || now,
+              breakExpiresAt: round.breakExpiresAt,
               roundDurationSeconds: round.roundDurationSeconds,
               breakDurationSeconds: round.breakDurationSeconds,
               hasEndedEarly: userEndedEarly,
@@ -563,7 +585,9 @@ export const LiveRoundScreen: React.FC = () => {
             saveLiveSession({
               stage: 'call',
               roundStartedAt: round.roundStartedAt,
+              roundExpiresAt: round.roundExpiresAt,
               breakStartedAt: null,
+              breakExpiresAt: null,
               roundDurationSeconds: round.roundDurationSeconds,
               breakDurationSeconds: round.breakDurationSeconds,
               lastActive: now,
@@ -595,7 +619,9 @@ export const LiveRoundScreen: React.FC = () => {
             saveLiveSession({
               stage: 'break',
               roundStartedAt: round.roundStartedAt,
+              roundExpiresAt: round.roundExpiresAt,
               breakStartedAt: round.breakStartedAt || now,
+              breakExpiresAt: round.breakExpiresAt,
               roundDurationSeconds: round.roundDurationSeconds,
               breakDurationSeconds: round.breakDurationSeconds,
               lastActive: now,
@@ -656,6 +682,7 @@ export const LiveRoundScreen: React.FC = () => {
 
     const timer = setInterval(() => {
       const now = Date.now();
+      const synchronizedNow = now + (serverTimeOffset || 0);
       const serverRound = serverRoundRef.current;
 
       if (stage === 'call' && !isPaused) {
@@ -668,7 +695,7 @@ export const LiveRoundScreen: React.FC = () => {
           expiresAt = isRecent ? (liveSession!.roundStartedAt + defaultDuration * 1000) : (callMountTimeRef.current + defaultDuration * 1000);
         }
 
-        const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+        const remaining = Math.max(0, Math.floor((expiresAt - synchronizedNow) / 1000));
         setTimeLeft(remaining);
 
         // Guard: round must have been active on screen for at least 8 seconds before remaining <= 0
@@ -710,14 +737,18 @@ export const LiveRoundScreen: React.FC = () => {
           showNotification('5-minute round concluded! Video date ended. Please cast your confidential vote.', 'pink');
         }
       } else if (stage === 'break' && !breakPaused) {
-        const breakExpiresAt = serverRound?.breakExpiresAt || (liveSession?.breakStartedAt ? liveSession.breakStartedAt + defaultBreak * 1000 : now + defaultBreak * 1000);
-        const remainingBreak = Math.max(0, Math.floor((breakExpiresAt - now) / 1000));
+        const userBreakStarted = serverRound?.breakStartedAt || liveSession?.breakStartedAt;
+        let breakExpiresAt = serverRound?.breakExpiresAt || (userBreakStarted ? userBreakStarted + defaultBreak * 1000 : synchronizedNow + defaultBreak * 1000);
+        if (userBreakStarted && breakExpiresAt > userBreakStarted + defaultBreak * 1000) {
+          breakExpiresAt = userBreakStarted + defaultBreak * 1000;
+        }
+        const remainingBreak = Math.max(0, Math.min(defaultBreak, Math.floor((breakExpiresAt - synchronizedNow) / 1000)));
         setBreakTimeLeft(remainingBreak);
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [stage, isPaused, breakPaused, liveSession, isEligible, activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession, showNotification]);
+  }, [stage, isPaused, breakPaused, liveSession, isEligible, activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession, showNotification, serverTimeOffset]);
 
   // Periodic server timer resync every 3 seconds to guarantee zero client drift across iOS & Android
   useEffect(() => {
@@ -1069,6 +1100,13 @@ export const LiveRoundScreen: React.FC = () => {
       saveLiveSession({ vote: decision, notes: privateNotes, votedAt: Date.now() });
       setVoteSaved(true);
 
+      // If the break has already expired when the vote saves, immediately advance automatically!
+      if (breakTimeLeft <= 0) {
+        setTimeout(() => {
+          handleNextDateClick();
+        }, 150);
+      }
+
       if (decision === 'like') {
         try {
           confetti({
@@ -1102,20 +1140,27 @@ export const LiveRoundScreen: React.FC = () => {
     saveLiveSession({ notes: text });
   };
 
-  const handleNextDateClick = async () => {
-    if (isAdvancing || isSubmittingVote) return;
+  const handleNextDateClick = useCallback(async () => {
+    if (isAdvancing || isAdvancingRef.current || isSubmittingVote) return;
 
     // A locally selected ballot is not enough: the server must confirm the save.
     // If there is an eligible partner, vote must be confirmed by server before advancing.
     if (hasEligiblePartner && partner) {
       if (!selectedDecision || !voteSaved) {
-        setVoteError(`Please save a Like or Pass vote for ${partner.FirstName} before advancing.`);
+        setVoteError(`Please select and save a Like or Pass vote for ${partner.FirstName} before advancing.`);
         return;
       }
     }
 
     const nextIndex = activeRoundIndex + 1;
     const totalEventRounds = Math.max(activeEvent.TotalRounds || 5, eventRounds.length);
+
+    // Prevent duplicate advancement
+    if (hasAutoAdvancedRoundRef.current === activeRoundIndex) return;
+    hasAutoAdvancedRoundRef.current = activeRoundIndex;
+    isAdvancingRef.current = true;
+    setIsAdvancing(true);
+    setVoteError(null);
 
     if (nextIndex < totalEventRounds) {
       let currentRoundsList = eventRounds;
@@ -1125,8 +1170,6 @@ export const LiveRoundScreen: React.FC = () => {
       const nextRound = currentRoundsList[nextIndex];
       const nextPartnerId = nextRound ? (nextRound.UserA === currentUser.UserID ? nextRound.UserB : nextRound.UserA) : '';
 
-      setIsAdvancing(true);
-      setVoteError(null);
       try {
         // Register consent and queue presence *before* leaving the ballot.
         // The member must be able to retry if matchmaking rejects or fails.
@@ -1197,13 +1240,17 @@ export const LiveRoundScreen: React.FC = () => {
         showNotification('Waiting for your next date...', 'info');
       } catch (err: any) {
         console.warn('Failed to enter next date queue:', err);
-        setVoteError(err.message || 'Unable to join the next date. Please try again.');
-        showNotification('Could not join the next date. Your vote is still saved. Please retry.', 'info');
+        // Reset auto-advance ref on queue failure so member can retry, while preserving their saved vote
+        hasAutoAdvancedRoundRef.current = null;
+        isAdvancingRef.current = false;
+        setVoteError(err.message || 'Unable to join the next date waiting room. Your vote is securely saved.');
+        showNotification('Could not join next date. Your vote is still saved. Tap Retry to proceed.', 'info');
       } finally {
         setIsAdvancing(false);
+        isAdvancingRef.current = false;
       }
     } else {
-      // No more scheduled rounds: reveal results rather than waiting forever.
+      // No more scheduled rounds: automatically reveal results rather than waiting forever.
       clearLiveSession();
       try {
         confetti({
@@ -1215,8 +1262,56 @@ export const LiveRoundScreen: React.FC = () => {
       } catch (e) {}
       setCurrentView('results');
       showNotification('Your speed dating rounds are complete! Revealing mutual matches...', 'pink');
+      setIsAdvancing(false);
+      isAdvancingRef.current = false;
     }
-  };
+  }, [
+    isAdvancing,
+    isSubmittingVote,
+    hasEligiblePartner,
+    partner,
+    selectedDecision,
+    voteSaved,
+    activeRoundIndex,
+    activeEvent,
+    eventRounds,
+    repairEventRounds,
+    currentUser,
+    saveLiveSession,
+    clearLiveSession,
+    setCurrentView,
+    showNotification,
+    setActiveRoundIndex,
+  ]);
+
+  // Automatic progression: When break reaches 0 and vote is saved (or no partner), advance automatically!
+  useEffect(() => {
+    if (stage !== 'break') return;
+    if (breakTimeLeft > 0) return;
+    if (isAdvancing || isAdvancingRef.current || isSubmittingVote) return;
+    if (hasAutoAdvancedRoundRef.current === activeRoundIndex) return;
+
+    if (hasEligiblePartner && partner) {
+      if (!selectedDecision || !voteSaved) {
+        // Vote not yet cast or saved - stay on voting screen with clear prompt
+        return;
+      }
+    }
+
+    // Both conditions met: break is at 0 and vote is saved (or no partner to vote on)
+    handleNextDateClick();
+  }, [
+    stage,
+    breakTimeLeft,
+    voteSaved,
+    selectedDecision,
+    hasEligiblePartner,
+    partner,
+    isAdvancing,
+    isSubmittingVote,
+    activeRoundIndex,
+    handleNextDateClick,
+  ]);
 
   const handleSkipRound = () => {
     if (currentRound) {
@@ -1546,7 +1641,7 @@ export const LiveRoundScreen: React.FC = () => {
                             </div>
                             <div className="flex items-center justify-between">
                               <span className="text-slate-400">Mutual Consent:</span>
-                              <span className="text-emerald-400 font-bold">Enforced (Next Date)</span>
+                              <span className="text-emerald-400 font-bold">Enforced (Mutual Readiness)</span>
                             </div>
                             <div className="flex items-center justify-between">
                               <span className="text-slate-400">Status:</span>
@@ -1856,9 +1951,20 @@ export const LiveRoundScreen: React.FC = () => {
               <div className="flex items-center gap-2.5 text-xs font-bold text-slate-700 text-left">
                 <Clock className="w-4 h-4 text-[#FF2E93] shrink-0" />
                 <div>
-                  <div>Break Timer: <span className="font-mono text-[#FF2E93] text-sm">{formatMinutes(breakTimeLeft)}</span> remaining</div>
+                  {breakTimeLeft > 0 ? (
+                    <div>Break Timer: <span className="font-mono text-[#FF2E93] text-sm">{formatMinutes(breakTimeLeft)}</span> remaining</div>
+                  ) : (
+                    <div className="text-[#FF2E93] font-black flex items-center gap-1">
+                      <span>Break Concluded</span>
+                      {voteSaved ? <span>· Automatically advancing to next date...</span> : <span>· Cast your confidential vote above to advance</span>}
+                    </div>
+                  )}
                   <div className="text-[10px] text-slate-500 font-normal">
-                    {breakTimeLeft > 0 ? 'Grab water, take a breath, or write notes.' : 'Break completed! Tap Next Date when ready.'}
+                    {breakTimeLeft > 0
+                      ? 'Grab water, take a breath, or write notes. You will automatically advance when the break ends.'
+                      : voteSaved
+                      ? 'Your vote is confirmed saved! Advancing to the next date waiting room...'
+                      : `Break has ended! Select Like or Pass for ${partner?.FirstName || 'this dater'} above to automatically advance.`}
                   </div>
                 </div>
               </div>
@@ -1886,7 +1992,7 @@ export const LiveRoundScreen: React.FC = () => {
             ) : (
               <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-800 text-xs text-center space-y-1 my-2">
                 <div className="font-bold">No Partner Paired for Round {activeRoundIndex + 1}</div>
-                <div className="text-[11px] text-amber-700">No confidential ballot required. Tap Next Date below to enter the Waiting Room for Round {activeRoundIndex + 2}.</div>
+                <div className="text-[11px] text-amber-700">No confidential ballot required. You will automatically advance to the Waiting Room when the timer ends, or advance now.</div>
               </div>
             )}
 
@@ -1980,11 +2086,11 @@ export const LiveRoundScreen: React.FC = () => {
               />
             </div>
 
-            {/* Consent-Based Next Date Button */}
+            {/* Automatic Progression & Next Date Button */}
             <div className="pt-4 border-t border-pink-100 space-y-3">
               <button
                 type="button"
-                onClick={handleNextDateClick}
+                onClick={() => handleNextDateClick()}
                 disabled={Boolean(hasEligiblePartner && !voteSaved) || isSubmittingVote || isAdvancing}
                 className={`w-full py-4 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                   hasEligiblePartner && !selectedDecision
@@ -1992,15 +2098,27 @@ export const LiveRoundScreen: React.FC = () => {
                     : 'btn-pink-gradient text-white shadow-lg shadow-pink-500/20 hover:scale-[1.01] active:scale-98'
                 }`}
               >
-                <span>{isAdvancing ? 'Joining Next Date...' : !hasEligiblePartner ? "Next Date (I'm Ready)" : !voteSaved ? `Save your vote for ${partner?.FirstName || 'partner'} to continue` : "Next Date (I'm Ready)"}</span>
+                <span>
+                  {isAdvancing
+                    ? (activeRoundIndex + 1 >= Math.max(activeEvent.TotalRounds || 5, eventRounds.length) ? 'Revealing Match Results...' : 'Joining Next Date...')
+                    : !hasEligiblePartner
+                    ? (breakTimeLeft > 0 ? `Advance to Next Date Now (${breakTimeLeft}s remaining)` : 'Advance to Next Date Now')
+                    : !voteSaved
+                    ? `Save your vote for ${partner?.FirstName || 'partner'} to continue`
+                    : activeRoundIndex + 1 >= Math.max(activeEvent.TotalRounds || 5, eventRounds.length)
+                    ? (breakTimeLeft > 0 ? `View Match Results Now (${breakTimeLeft}s or tap)` : 'Revealing Match Results...')
+                    : (breakTimeLeft > 0 ? `Advance to Next Date Now (${breakTimeLeft}s or tap)` : 'Joining Next Date...')}
+                </span>
                 <ChevronRight className="w-5 h-5" />
               </button>
               <p className="text-[11px] text-slate-400">
                 {!hasEligiblePartner
-                  ? 'No ballot required for this slot. Tapping Next Date places you into the waiting room.'
+                  ? 'No ballot required for this slot. You will automatically advance when the break ends, or tap above to advance now.'
                   : !voteSaved
-                  ? `Please select Like or Pass above for ${partner?.FirstName || 'this dater'} and wait for your vote to save before advancing.`
-                  : 'We never automatically start calls without your explicit consent. Tapping Next Date places you into the waiting room.'}
+                  ? `Please select Like or Pass above for ${partner?.FirstName || 'this dater'}. You will automatically advance once your vote is recorded and the break concludes.`
+                  : breakTimeLeft > 0
+                  ? `Your vote is securely recorded. You will automatically advance when the break timer reaches zero, or tap above to advance immediately.`
+                  : `Your vote is recorded! Automatically advancing to the next date waiting room...`}
               </p>
             </div>
 
@@ -2032,7 +2150,7 @@ export const LiveRoundScreen: React.FC = () => {
               <p className="text-xs sm:text-sm text-slate-600 max-w-sm mx-auto">
                 {foundPartnerName
                   ? `Paired with ${foundPartnerName}. Initializing 5-minute video round...`
-                  : `Waiting for the next eligible participant to complete their break and tap Ready.`}
+                  : `Waiting for the next eligible participant to complete their break and enter the waiting room.`}
               </p>
             </div>
 
@@ -2201,7 +2319,7 @@ export const LiveRoundScreen: React.FC = () => {
                   <li><strong>Real Elapsed Wall-Clock Timers:</strong> Timers calculate true elapsed time via epoch timestamps (`roundStartedAt`), eliminating timer drift when mobile phones sleep or tabs are backgrounded.</li>
                   <li><strong>Automatic Screen Restoration:</strong> Leaving the tab or refreshing immediately restores your exact stage (active call, 2-minute break, or waiting room) rather than dumping you into the lobby.</li>
                   <li><strong>Private Ballot & Notes Persistence:</strong> Your private votes and notes are safely committed to memory, localStorage, and the Express `/api/session/:userId` store.</li>
-                  <li><strong>Consent-Based Progression:</strong> Speed Meet Love never forces a video date to begin automatically. Members must tap "Next Date (I'm Ready)" when prepared.</li>
+                  <li><strong>Automatic Progression & Mutual Consent:</strong> Rounds advance automatically once your confidential vote is confirmed saved and the 2-minute break completes. Video dates launch only when both participants are mutually ready.</li>
                   <li><strong>Graceful Waiting Room:</strong> If placed in the waiting room while an eligible partner finishes their break, refreshing keeps you in the queue.</li>
                 </ul>
               </div>

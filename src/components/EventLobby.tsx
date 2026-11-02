@@ -42,13 +42,20 @@ export const EventLobby: React.FC = () => {
     serverTimeFormattedET,
     registerForEvent,
     showNotification,
+    createStagingTestSession,
+    joinStagingTestSession,
+    setActiveRoundIndex,
   } = useApp();
 
   const isEligible = canAccessLiveSpeedDating(currentUser);
   const activeEvent = events.find(e => e.EventID === selectedEventId) || events[0];
   const isRegistered = activeEvent.ParticipantsList.includes(currentUser.UserID);
-  const isStagingEvent = activeEvent.EventID === 'evt_staging_dev';
+  const isStagingEvent = activeEvent.EventID === 'evt_staging_dev' || activeEvent.EventID.startsWith('evt_staging_');
   const isAuthorizedStagingUser = ['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(currentUser.UserID);
+
+  const [stagingJoinCodeInput, setStagingJoinCodeInput] = useState('');
+  const [isCreatingStagingSession, setIsCreatingStagingSession] = useState(false);
+  const [isJoiningStagingSession, setIsJoiningStagingSession] = useState(false);
 
   const hasActiveSession = Boolean(
     liveSession &&
@@ -202,6 +209,7 @@ export const EventLobby: React.FC = () => {
     if (isStagingEvent || !activeEvent.RoundsGenerated) {
       generateRoundsForEvent(activeEvent.EventID);
     }
+    setActiveRoundIndex(0);
     startEventLive(activeEvent.EventID);
   };
 
@@ -265,7 +273,7 @@ export const EventLobby: React.FC = () => {
             </h1>
 
             <p className="text-xs sm:text-sm text-slate-500">
-              {activeEvent.LocationName} · 5-minute one-on-one video rounds · Up to 2-minute breaks · Consent-based Next Date flow
+              {activeEvent.LocationName} · 5-minute one-on-one video rounds · Up to 2-minute breaks · Automatic progression with mutual consent
             </p>
           </div>
 
@@ -390,6 +398,80 @@ export const EventLobby: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* DEVELOPER 2-PHONE FRESH STAGING CONTROLS */}
+      {isAuthorizedStagingUser && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 text-white shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <h3 className="text-sm font-bold text-white font-heading">
+                  Developer 2-Phone Test Session (Unique Instance ID)
+                </h3>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Start a completely fresh staging event with an isolated instance ID (e.g. <code>evt_staging_XXXX</code>). Two phones can join with a 4-character join code starting at Round 1 without interfering with anyone else.
+              </p>
+            </div>
+            {isStagingEvent && activeEvent.EventID.startsWith('evt_staging_') && (
+              <div className="px-3 py-1.5 rounded-xl bg-pink-500/20 border border-pink-500/40 text-pink-300 font-mono text-xs font-bold shrink-0">
+                Active Code: {activeEvent.EventID.replace('evt_staging_', '').toUpperCase()}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-800">
+            {/* Phone 1: Create fresh session */}
+            <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/80 space-y-2.5">
+              <div className="text-xs font-bold text-slate-200">Phone 1: Create New Session</div>
+              <button
+                disabled={isCreatingStagingSession}
+                onClick={async () => {
+                  setIsCreatingStagingSession(true);
+                  try {
+                    await createStagingTestSession();
+                  } finally {
+                    setIsCreatingStagingSession(false);
+                  }
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold text-xs shadow-md transition-transform active:scale-95 cursor-pointer disabled:opacity-50"
+              >
+                {isCreatingStagingSession ? 'Creating Fresh Session...' : 'Create Fresh 2-Phone Session'}
+              </button>
+            </div>
+
+            {/* Phone 2: Join by 4-digit code */}
+            <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/80 space-y-2.5">
+              <div className="text-xs font-bold text-slate-200">Phone 2: Join by 4-Digit Code</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  maxLength={4}
+                  placeholder="CODE (e.g. B4D2)"
+                  value={stagingJoinCodeInput}
+                  onChange={e => setStagingJoinCodeInput(e.target.value.toUpperCase())}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs uppercase placeholder-slate-500 focus:outline-none focus:border-pink-500"
+                />
+                <button
+                  disabled={isJoiningStagingSession || !stagingJoinCodeInput.trim()}
+                  onClick={async () => {
+                    setIsJoiningStagingSession(true);
+                    try {
+                      await joinStagingTestSession(stagingJoinCodeInput.trim());
+                    } finally {
+                      setIsJoiningStagingSession(false);
+                    }
+                  }}
+                  className="py-2 px-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+                >
+                  {isJoiningStagingSession ? 'Joining...' : 'Join'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Device Check & Live Video Preview */}
@@ -545,7 +627,7 @@ export const EventLobby: React.FC = () => {
                 <li><strong>Five-minute one-on-one video dates</strong> with rotating partners.</li>
                 <li>Privately choose <strong>Like ❤️</strong> or <strong>Pass</strong> after each date.</li>
                 <li><strong>Up to a two-minute break</strong> between dates to catch your breath and take notes.</li>
-                <li>Tap <strong>Next Date (I'm Ready)</strong> when prepared — calls never launch without consent!</li>
+                <li><strong>Automatic progression</strong> after the 2-minute break and confirmed vote — video dates launch only when both participants are mutually ready!</li>
                 <li>Mutual likes immediately unlock messaging in your Matches portal.</li>
               </ul>
             </div>
