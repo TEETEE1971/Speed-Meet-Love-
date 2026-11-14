@@ -30,6 +30,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
   const {
     events,
     currentUser,
+    isAuthenticated,
+    openAuthModal,
     setCurrentView,
     setSelectedEventId,
     registerForEvent,
@@ -38,7 +40,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
     isEventLive,
   } = useApp();
 
-  const isEligible = canAccessLiveSpeedDating(currentUser);
+  const isEligible = currentUser ? canAccessLiveSpeedDating(currentUser) : false;
 
   // Exact 4 upcoming weekend speed-dating events (Requirement: "four upcoming event cards")
   const primaryFourEvents: SpeedEvent[] = [
@@ -137,6 +139,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
   ];
 
   const handleRSVP = (evt: SpeedEvent) => {
+    if (!currentUser || !isAuthenticated) {
+      openAuthModal('signin');
+      return;
+    }
     if (!isEligible) {
       showNotification('Speed dating is exclusive to Premium Plus ($14.99/mo). Upgrade to RSVP!', 'pink');
       setCurrentView('pricing');
@@ -157,11 +163,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
   };
 
   const handleEnterEventLobby = (evt: SpeedEvent) => {
+    if (!currentUser || !isAuthenticated) {
+      openAuthModal('signin');
+      return;
+    }
     setSelectedEventId(evt.EventID);
     setCurrentView('lobby');
   };
 
   const handleJoinAnEventClick = () => {
+    if (!currentUser || !isAuthenticated) {
+      openAuthModal('signin');
+      return;
+    }
     const liveOrFirst = primaryFourEvents.find(e => e.EventStatus === 'Live') || primaryFourEvents[0];
     if (liveOrFirst) {
       setSelectedEventId(liveOrFirst.EventID);
@@ -250,9 +264,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
               >
                 <div className="w-48 h-66 sm:w-60 sm:h-84 md:w-72 md:h-100 rounded-3xl overflow-hidden shadow-2xl border-4 sm:border-6 border-white ring-4 ring-rose-500/40 relative group-hover:scale-105 transition-all bg-slate-900">
                   <img
-                    src="/assets/kristy_exact.png"
+                    src="/assets/aistudio/Screenshot_20261109-051148_Facebook_4fd2d1a3.png"
                     alt="Kristy - Founder of Speed Meet Love"
-                    className="w-full h-full object-cover object-[center_20%]"
+                    className="w-full h-full object-cover object-[center_30%]"
                   />
                   {/* Subtle Bottom Vignette Gradient */}
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent p-3 sm:p-4 pb-6 sm:pb-7 text-white text-left">
@@ -400,7 +414,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
         {/* EXACT FOUR UPCOMING EVENT CARDS GRID (2x2 on desktop, stacked on mobile) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {primaryFourEvents.map(evt => {
-            const isUserRegistered = evt.ParticipantsList.includes(currentUser.UserID);
+            const isUserRegistered = currentUser ? evt.ParticipantsList.includes(currentUser.UserID) : false;
             const isLGBTQ = evt.EventType === 'LGBTQ+';
             const isLive = isEventLive(evt) || evt.EventStatus === 'Live';
 

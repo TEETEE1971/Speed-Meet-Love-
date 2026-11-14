@@ -29,6 +29,7 @@ import {
 import { Avatar } from './Avatar';
 import { HomeScreen } from './HomeScreen';
 import { FindMyMatchModal, formatHeightLabel } from './FindMyMatchModal';
+import { AuthGate } from './AuthGate';
 import confetti from 'canvas-confetti';
 
 export const BrowseProfiles: React.FC = () => {
@@ -48,6 +49,10 @@ export const BrowseProfiles: React.FC = () => {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [filterGender, setFilterGender] = useState<string>('All');
+
+  if (!currentUser) {
+    return <AuthGate featureName="Browse Singles" />;
+  }
   const [viewStyle, setViewStyle] = useState<'card' | 'grid'>('card');
   const [editingTargetUser, setEditingTargetUser] = useState<User | null>(null);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -538,7 +543,7 @@ export const BrowseProfiles: React.FC = () => {
                     <img
                       src={activeProfile.ProfilePhoto}
                       alt={activeProfile.FirstName}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover object-[center_30%]"
                     />
                   </div>
                 ) : (
@@ -764,7 +769,7 @@ export const BrowseProfiles: React.FC = () => {
                       <img
                         src={candidate.ProfilePhoto}
                         alt={candidate.FirstName}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover object-[center_30%]"
                       />
                     </div>
                   ) : (

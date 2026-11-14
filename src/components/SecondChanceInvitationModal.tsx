@@ -16,7 +16,7 @@ export const SecondChanceInvitationModal: React.FC = () => {
     currentUser,
   } = useApp();
 
-  if (!incomingSecondDateInvitation) return null;
+  if (!incomingSecondDateInvitation || !currentUser) return null;
 
   const session = incomingSecondDateInvitation;
   const isRequester = session.requestedBy === currentUser.UserID;

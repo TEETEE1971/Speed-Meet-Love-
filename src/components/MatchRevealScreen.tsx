@@ -21,6 +21,7 @@ import {
 import { Avatar } from './Avatar';
 import { FloatingHearts } from './FloatingHearts';
 import { PushNotificationOptIn } from './PushNotificationOptIn';
+import { AuthGate } from './AuthGate';
 import confetti from 'canvas-confetti';
 import { SecondDateSession } from '../types';
 
@@ -46,6 +47,10 @@ export const MatchRevealScreen: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'reveal' | 'all'>('reveal');
   const [requestingPartnerId, setRequestingPartnerId] = useState<string | null>(null);
+
+  if (!currentUser) {
+    return <AuthGate featureName="Match Reveal & Results" />;
+  }
 
   const currentEvent = events.find(e => e.EventID === selectedEventId) || events[0];
 

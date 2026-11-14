@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { PushNotificationOptIn } from './PushNotificationOptIn';
+import { AuthGate } from './AuthGate';
 import confetti from 'canvas-confetti';
 
 export const MatchResults: React.FC = () => {
@@ -27,6 +28,10 @@ export const MatchResults: React.FC = () => {
     blockUser,
     setReportModalTarget,
   } = useApp();
+
+  if (!currentUser) {
+    return <AuthGate featureName="Mutual Matches & Results" />;
+  }
 
   const userMatches = matches.filter(
     m => m.UserA === currentUser.UserID || m.UserB === currentUser.UserID

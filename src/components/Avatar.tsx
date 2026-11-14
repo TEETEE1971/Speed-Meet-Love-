@@ -38,7 +38,7 @@ export const Avatar: React.FC<AvatarProps> = ({
           <img
             src={user.ProfilePhoto}
             alt={fullName}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover object-[center_30%]"
           />
         ) : (
           <span>{initials}</span>

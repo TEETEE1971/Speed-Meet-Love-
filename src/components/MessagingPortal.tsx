@@ -15,6 +15,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { Avatar } from './Avatar';
+import { AuthGate } from './AuthGate';
 
 export const MessagingPortal: React.FC = () => {
   const {
@@ -32,6 +33,10 @@ export const MessagingPortal: React.FC = () => {
     blockUser,
     setReportModalTarget,
   } = useApp();
+
+  if (!currentUser) {
+    return <AuthGate featureName="Direct Messaging" />;
+  }
 
   const userMatches = matches.filter(
     m => m.UserA === currentUser.UserID || m.UserB === currentUser.UserID

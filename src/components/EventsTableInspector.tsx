@@ -257,7 +257,7 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
                     </tr>
                   ) : (
                     filteredEvents.map(evt => {
-                      const isRegistered = evt.ParticipantsList.includes(currentUser.UserID);
+                      const isRegistered = Boolean(currentUser && evt.ParticipantsList.includes(currentUser.UserID));
                       const isFull = evt.ParticipantsList.length >= evt.MaxParticipants;
 
                       return (

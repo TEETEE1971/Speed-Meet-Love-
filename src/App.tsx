@@ -22,10 +22,21 @@ import { ReportModal } from './components/ReportModal';
 import { SecondChanceInvitationModal } from './components/SecondChanceInvitationModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SpeedMeetLoveLogo } from './components/SpeedMeetLoveLogo';
+import { PrivacyPolicy } from './components/PrivacyPolicy';
+import { DeleteAccountPage } from './components/DeleteAccountPage';
+import { ChildSafetyPage } from './components/ChildSafetyPage';
+import { TermsPage } from './components/TermsPage';
+import { AcceptableUsePage } from './components/AcceptableUsePage';
+import { RefundPolicyPage } from './components/RefundPolicyPage';
+import { LawEnforcementPage } from './components/LawEnforcementPage';
+import { ContactPage } from './components/ContactPage';
+import { OwnerReportsView } from './components/OwnerReportsView';
+import { AuthModal } from './components/AuthModal';
+import { AuthGate } from './components/AuthGate';
 import { Heart, Zap, Sparkles } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const { currentView, setCurrentView, notification, clearNotification } = useApp();
+  const { currentView, setCurrentView, notification, clearNotification, isAuthenticated, isOwner, appMode } = useApp();
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FFF8FA] text-[#1E293B]">
@@ -76,17 +87,27 @@ const MainContent: React.FC = () => {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <ErrorBoundary fallbackTitle="Speed Meet Love Lounge">
           {currentView === 'home' && <HomeScreen />}
-          {currentView === 'browse' && <BrowseProfiles />}
-          {currentView === 'matches' && <MatchResults />}
-          {currentView === 'results' && <MatchRevealScreen />}
-          {currentView === 'second_date' && <SecondChanceDateRoom />}
-          {currentView === 'messages' && <MessagingPortal />}
-          {currentView === 'friday' && <EventList />}
-          {currentView === 'lobby' && <EventLobby />}
-          {currentView === 'live' && <LiveRoundScreen />}
+          {currentView === 'browse' && (isAuthenticated ? <BrowseProfiles /> : <AuthGate featureName="Browse Singles" />)}
+          {currentView === 'matches' && (isAuthenticated ? <MatchResults /> : <AuthGate featureName="My Matches" />)}
+          {currentView === 'results' && (isAuthenticated ? <MatchRevealScreen /> : <AuthGate featureName="Date Spark Reveal" />)}
+          {currentView === 'second_date' && (isAuthenticated ? <SecondChanceDateRoom /> : <AuthGate featureName="Second-Chance Date Lounge" />)}
+          {currentView === 'messages' && (isAuthenticated ? <MessagingPortal /> : <AuthGate featureName="Messages" />)}
+          {currentView === 'friday' && (isAuthenticated ? <EventList /> : <AuthGate featureName="Weekend Speed Dating Events" />)}
+          {currentView === 'lobby' && (isAuthenticated ? <EventLobby /> : <AuthGate featureName="Waiting Room & Event Lobby" />)}
+          {currentView === 'live' && (isAuthenticated ? <LiveRoundScreen /> : <AuthGate featureName="Live Speed Dating Video" />)}
           {currentView === 'pricing' && <SubscriptionScreen />}
-          {currentView === 'profile' && <ProfileSetup />}
-          {currentView === 'tables' && <DatabaseViewer />}
+          {currentView === 'profile' && (isAuthenticated ? <ProfileSetup /> : <AuthGate featureName="Profile Settings" />)}
+          {currentView === 'tables' && ((isOwner || appMode === 'demonstration') ? <DatabaseViewer /> : <AuthGate featureName="Platform Settings" />)}
+          {currentView === 'privacy' && <PrivacyPolicy />}
+          {currentView === 'delete_account' && <DeleteAccountPage />}
+          {currentView === 'child_safety' && <ChildSafetyPage />}
+          {currentView === 'terms' && <TermsPage />}
+          {currentView === 'acceptable_use' && <AcceptableUsePage />}
+          {currentView === 'refund_policy' && <RefundPolicyPage />}
+          {currentView === 'law_enforcement' && <LawEnforcementPage />}
+          {currentView === 'contact' && <ContactPage />}
+          {currentView === 'owner_reports' && <OwnerReportsView defaultTab="reports" />}
+          {currentView === 'owner_users' && <OwnerReportsView defaultTab="users" />}
         </ErrorBoundary>
       </main>
 
@@ -96,29 +117,138 @@ const MainContent: React.FC = () => {
       {/* Global In-App Second-Chance Date Notification Modal */}
       <SecondChanceInvitationModal />
 
+      {/* Real Email/Password Authentication Modal */}
+      <AuthModal />
+
       {/* Speed Meet Love Brand Footer */}
       <footer className="border-t-2 border-rose-200 py-8 bg-white text-xs text-slate-700 mt-auto shadow-inner">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-5">
-          <div className="flex items-center gap-3">
-            <SpeedMeetLoveLogo variant="on-light" size="sm" />
-            <span className="text-rose-300 font-bold">·</span>
-            <span className="italic font-bold text-slate-800">“Real People. Real Connections. In Minutes.”</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <SpeedMeetLoveLogo variant="on-light" size="sm" />
+              <span className="text-rose-300 font-bold">·</span>
+              <span className="italic font-bold text-slate-800">“Real People. Real Connections. In Minutes.”</span>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-3 text-slate-700 font-semibold">
+              <span>Friday, Saturday &amp; Sunday at 7 PM EST</span>
+              <span className="text-slate-300 font-bold">·</span>
+              <span>5-Min Video Rounds</span>
+              <span className="text-slate-300 font-bold">·</span>
+              <span>© 2026 Speed Meet Love by TeeTees Creations</span>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-3 text-slate-700 font-semibold">
-            <span>Friday, Saturday & Sunday at 7 PM EST</span>
-            <span className="text-slate-300 font-bold">·</span>
-            <span>5-Min Video Rounds</span>
-            <span className="text-slate-300 font-bold">·</span>
-            <button
-              onClick={() => setCurrentView('tables')}
-              className="font-black text-red-600 hover:underline cursor-pointer"
-            >
-              Inspect Relational Tables
-            </button>
-            <span className="text-slate-300 font-bold">·</span>
-            <span>© 2026 Speed Meet Love</span>
-          </div>
+          <nav
+            aria-label="Legal, pricing, safety, and contact links"
+            className="flex flex-wrap items-center justify-center sm:justify-between gap-x-4 gap-y-2 pt-3 border-t border-rose-100 text-slate-700 font-semibold"
+          >
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5">
+              <a
+                href="/pricing"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCurrentView('pricing');
+                }}
+                className="font-black text-rose-600 hover:text-rose-800 underline cursor-pointer"
+              >
+                Pricing
+              </a>
+              <span className="text-slate-300 font-bold">·</span>
+              <a
+                href="/terms"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCurrentView('terms');
+                }}
+                className="font-black text-rose-600 hover:text-rose-800 underline cursor-pointer"
+              >
+                Terms &amp; Conditions
+              </a>
+              <span className="text-slate-300 font-bold">·</span>
+              <a
+                href="/acceptable-use"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCurrentView('acceptable_use');
+                }}
+                className="font-black text-rose-600 hover:text-rose-800 underline cursor-pointer"
+              >
+                Acceptable Use Policy
+              </a>
+              <span className="text-slate-300 font-bold">·</span>
+              <a
+                href="/privacy"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCurrentView('privacy');
+                }}
+                className="font-black text-rose-600 hover:text-rose-800 underline cursor-pointer"
+              >
+                Privacy Policy
+              </a>
+              <span className="text-slate-300 font-bold">·</span>
+              <a
+                href="/refund-policy"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCurrentView('refund_policy');
+                }}
+                className="font-black text-rose-600 hover:text-rose-800 underline cursor-pointer"
+              >
+                Refund Policy
+              </a>
+              <span className="text-slate-300 font-bold">·</span>
+              <a
+                href="/law-enforcement"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCurrentView('law_enforcement');
+                }}
+                className="font-black text-red-600 hover:text-red-800 underline cursor-pointer"
+              >
+                Law-Enforcement Protocols
+              </a>
+              <span className="text-slate-300 font-bold">·</span>
+              <a
+                href="/child-safety"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCurrentView('child_safety');
+                }}
+                className="font-black text-red-600 hover:text-red-800 underline cursor-pointer"
+              >
+                Child Safety
+              </a>
+              <span className="text-slate-300 font-bold">·</span>
+              <a
+                href="/delete-account"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCurrentView('delete_account');
+                }}
+                className="font-black text-red-600 hover:text-red-800 underline cursor-pointer"
+              >
+                Delete Account
+              </a>
+              <span className="text-slate-300 font-bold">·</span>
+              <a
+                href="/contact"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCurrentView('contact');
+                }}
+                className="font-black text-red-600 hover:text-red-800 underline cursor-pointer"
+              >
+                Contact
+              </a>
+            </div>
+            <div className="text-[11px] text-slate-500">
+              <a href="mailto:speedmeetlove@gmail.com" className="hover:underline font-semibold">
+                speedmeetlove@gmail.com
+              </a>
+            </div>
+          </nav>
         </div>
       </footer>
     </div>

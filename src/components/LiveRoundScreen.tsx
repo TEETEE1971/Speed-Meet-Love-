@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { LiveKitVideoStage } from './LiveKitVideoStage';
+import { AuthGate } from './AuthGate';
 import confetti from 'canvas-confetti';
 
 type RoundStage = 'call' | 'break' | 'waiting_room';
@@ -67,6 +68,10 @@ export const LiveRoundScreen: React.FC = () => {
     repairEventRounds,
     serverTimeOffset,
   } = useApp();
+
+  if (!currentUser) {
+    return <AuthGate featureName="Live Speed Dating Video" />;
+  }
 
   const isEligible = canAccessLiveSpeedDating(currentUser);
 
@@ -2325,7 +2330,7 @@ export const LiveRoundScreen: React.FC = () => {
                 <ul className="list-disc list-inside space-y-1 text-amber-800 text-[11px]">
                   <li><strong>Live Video WebRTC Infrastructure:</strong> Currently using local camera mirroring and simulated remote video streams. Production requires integrating a WebRTC Selective Forwarding Unit (SFU) service (such as LiveKit, Daily.co, Twilio Video, or Agora RTC) for peer streaming, STUN/TURN relays, and noise suppression.</li>
                   <li><strong>Production WebSocket Mesh:</strong> Real-time cross-client event synchronization currently runs via the demo server. Production deployment requires Socket.io, Ably, or Pusher clustering across load-balanced instances.</li>
-                  <li><strong>Payment Gateway:</strong> Subscriptions ($9.99 Premium, $14.99 Premium Plus) are simulated with real-time tier gating. Production requires Stripe Elements & Webhooks.</li>
+                  <li><strong>Payment &amp; Memberships:</strong> Subscriptions ($9.99/month Premium, $14.99/month Premium Plus) integrate with Stripe web checkout and Customer Billing Portal, with sandbox testing fallback when server Stripe keys are not active.</li>
                 </ul>
               </div>
             </div>

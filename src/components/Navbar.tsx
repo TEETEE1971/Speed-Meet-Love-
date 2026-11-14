@@ -16,6 +16,13 @@ import {
   X,
   Settings,
   ChevronRight,
+  ShieldCheck,
+  ShieldAlert,
+  Trash2,
+  LogIn,
+  LogOut,
+  UserPlus,
+  Users,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { SpeedMeetLoveLogo } from './SpeedMeetLoveLogo';
@@ -24,6 +31,9 @@ import { SubscriptionTier, AppView } from '../types';
 export const Navbar: React.FC = () => {
   const {
     currentUser,
+    isAuthenticated,
+    openAuthModal,
+    signOut,
     currentView,
     setCurrentView,
     users,
@@ -36,15 +46,16 @@ export const Navbar: React.FC = () => {
     registerForEvent,
     clearLiveSession,
     pendingSecondDateCount,
+    isOwner,
   } = useApp();
 
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [menuDrawerOpen, setMenuDrawerOpen] = useState(false);
 
   // Count mutual matches for current user
-  const mutualMatchCount = matches.filter(
-    m => m.UserA === currentUser.UserID || m.UserB === currentUser.UserID
-  ).length;
+  const mutualMatchCount = currentUser
+    ? matches.filter(m => m.UserA === currentUser.UserID || m.UserB === currentUser.UserID).length
+    : 0;
 
   const getTierBadge = (tier: SubscriptionTier) => {
     if (tier === 'Premium Plus') {
@@ -65,7 +76,7 @@ export const Navbar: React.FC = () => {
     };
   };
 
-  const badge = getTierBadge(currentUser.SubscriptionTier);
+  const badge = currentUser ? getTierBadge(currentUser.SubscriptionTier) : null;
 
   return (
     <header className="sticky top-0 z-40 bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 text-white shadow-xl border-b-2 border-red-700">
@@ -199,163 +210,247 @@ export const Navbar: React.FC = () => {
             <span className="hidden sm:inline">{appMode === 'demonstration' ? 'Demo Sandbox' : 'Production'}</span>
           </button>
 
-          {/* Tier Badge */}
-          <button
-            onClick={() => setCurrentView('pricing')}
-            className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${badge.style}`}
-          >
-            {currentUser.SubscriptionTier === 'Premium Plus' ? (
-              <Crown className="w-3.5 h-3.5" />
-            ) : currentUser.SubscriptionTier === 'Premium' ? (
-              <Sparkles className="w-3.5 h-3.5" />
-            ) : null}
-            <span>{badge.label}</span>
-          </button>
-
-          {/* User Profile Avatar Button */}
-          <button
-            onClick={() => setProfileDropdownOpen(prev => !prev)}
-            className="flex items-center gap-2 p-1 pl-2 sm:pl-3 rounded-full bg-white/15 hover:bg-white/25 border-2 border-white/40 transition-colors cursor-pointer"
-            aria-expanded={profileDropdownOpen}
-            aria-label="User profile and settings"
-          >
-            <div className="text-right hidden sm:block">
-              <div className="text-xs font-black text-white leading-tight">
-                {currentUser.FirstName}
-              </div>
-              <div className="text-[10px] text-rose-100 font-bold leading-tight">
-                {currentUser.SubscriptionTier}
-              </div>
-            </div>
-            <Avatar user={currentUser} size="sm" showBadge />
-            <ChevronDown className="w-3.5 h-3.5 text-white/80 hidden sm:block" />
-          </button>
-
-          {/* Profile & Demo Dropdown */}
-          {profileDropdownOpen && (
-            <div
-              className="absolute right-0 top-14 w-80 rounded-3xl bg-white border-2 border-rose-200 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-xs text-slate-800"
-              onMouseLeave={() => setProfileDropdownOpen(false)}
-            >
-              <div className="pb-3 border-b border-rose-100 flex items-center gap-3">
-                <Avatar user={currentUser} size="md" showBadge />
-                <div>
-                  <p className="font-black text-slate-900 font-heading text-sm">
-                    {currentUser.LastName ? `${currentUser.FirstName} ${currentUser.LastName}` : currentUser.FirstName}
-                  </p>
-                  <p className="text-[11px] text-slate-600 font-medium">{currentUser.Email}</p>
-                  <span className="inline-block mt-1 text-[11px] font-black text-red-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                    Tier: {currentUser.SubscriptionTier}
-                  </span>
-                </div>
-              </div>
-
-              {/* Instant Tier Switcher */}
-              <div className="py-3 border-b border-rose-100 space-y-1.5">
-                <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider">
-                  Switch Active Tier (Demo Mode)
-                </div>
-                <div className="grid grid-cols-3 gap-1.5 text-[11px]">
-                  <button
-                    onClick={() => setSubscriptionTier('Free')}
-                    className={`py-1.5 px-2 rounded-xl font-bold transition-all cursor-pointer ${
-                      currentUser.SubscriptionTier === 'Free'
-                        ? 'bg-slate-900 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
-                    }`}
-                  >
-                    Free ($0)
-                  </button>
-                  <button
-                    onClick={() => setSubscriptionTier('Premium')}
-                    className={`py-1.5 px-2 rounded-xl font-bold transition-all cursor-pointer ${
-                      currentUser.SubscriptionTier === 'Premium'
-                        ? 'btn-glossy-red-pink text-white shadow-xs'
-                        : 'bg-rose-50 text-red-700 hover:bg-rose-100'
-                    }`}
-                  >
-                    Prem ($9.99)
-                  </button>
-                  <button
-                    onClick={() => setSubscriptionTier('Premium Plus')}
-                    className={`py-1.5 px-2 rounded-xl font-black transition-all cursor-pointer ${
-                      currentUser.SubscriptionTier === 'Premium Plus'
-                        ? 'bg-gradient-to-r from-amber-400 to-red-600 text-white shadow-xs'
-                        : 'bg-amber-50 text-amber-900 hover:bg-amber-100'
-                    }`}
-                  >
-                    Plus ($14.99)
-                  </button>
-                </div>
-              </div>
-
-              {/* Demo Profile Switcher */}
-              <div className="py-2.5 border-b border-rose-100 space-y-1">
-                <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider">
-                  Test As Different Member
-                </div>
-                {users.map(u => (
-                  <button
-                    key={u.UserID}
-                    onClick={() => {
-                      switchUser(u.UserID);
-                      setProfileDropdownOpen(false);
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
-                      u.UserID === currentUser.UserID
-                        ? 'bg-rose-50 text-red-600 font-black'
-                        : 'text-slate-700 hover:bg-rose-50/50'
-                    }`}
-                  >
-                    <span className="font-semibold">{u.FirstName} ({u.Gender}{u.Age && u.Age > 0 ? `, ${u.Age}` : ''})</span>
-                    <span className="text-[10px] text-slate-500 font-mono font-bold">
-                      {u.SubscriptionTier}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Dropdown Links */}
-              <div className="pt-2.5 space-y-1">
+          {/* Authenticated Member Actions OR Guest Sign In Buttons */}
+          {currentUser && isAuthenticated ? (
+            <>
+              {/* Tier Badge */}
+              {badge && (
                 <button
-                  onClick={() => {
-                    setCurrentView('profile');
-                    setProfileDropdownOpen(false);
-                  }}
-                  className="w-full text-left px-2.5 py-2 rounded-xl text-slate-800 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+                  onClick={() => setCurrentView('pricing')}
+                  className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${badge.style}`}
                 >
-                  <UserIcon className="w-4 h-4 text-red-600" />
-                  <span>View & Edit Profile</span>
+                  {currentUser.SubscriptionTier === 'Premium Plus' ? (
+                    <Crown className="w-3.5 h-3.5" />
+                  ) : currentUser.SubscriptionTier === 'Premium' ? (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  ) : null}
+                  <span>{badge.label}</span>
                 </button>
-                <button
-                  onClick={() => {
-                    setCurrentView('pricing');
-                    setProfileDropdownOpen(false);
-                  }}
-                  className="w-full text-left px-2.5 py-2 rounded-xl text-slate-800 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+              )}
+
+              {/* User Profile Avatar Button */}
+              <button
+                onClick={() => setProfileDropdownOpen(prev => !prev)}
+                className="flex items-center gap-2 p-1 pl-2 sm:pl-3 rounded-full bg-white/15 hover:bg-white/25 border-2 border-white/40 transition-colors cursor-pointer"
+                aria-expanded={profileDropdownOpen}
+                aria-label="User profile and settings"
+              >
+                <div className="text-right hidden sm:block">
+                  <div className="text-xs font-black text-white leading-tight">
+                    {currentUser.FirstName}
+                  </div>
+                  <div className="text-[10px] text-rose-100 font-bold leading-tight">
+                    {currentUser.SubscriptionTier}
+                  </div>
+                </div>
+                <Avatar user={currentUser} size="sm" showBadge />
+                <ChevronDown className="w-3.5 h-3.5 text-white/80 hidden sm:block" />
+              </button>
+
+              {/* Profile Dropdown */}
+              {profileDropdownOpen && (
+                <div
+                  className="absolute right-0 top-14 w-80 rounded-3xl bg-white border-2 border-rose-200 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-xs text-slate-800"
+                  onMouseLeave={() => setProfileDropdownOpen(false)}
                 >
-                  <CreditCard className="w-4 h-4 text-red-600" />
-                  <span>Membership Pricing & Perks</span>
-                </button>
-                {['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(currentUser.UserID) && (
-                  <button
-                    onClick={() => {
-                      if (appMode !== 'production') {
-                        setAppMode('production');
-                      }
-                      clearLiveSession();
-                      registerForEvent('evt_staging_dev');
-                      setSelectedEventId('evt_staging_dev');
-                      setCurrentView('lobby');
-                      setProfileDropdownOpen(false);
-                    }}
-                    className="w-full text-left px-2.5 py-2 rounded-xl bg-slate-900 text-rose-300 hover:bg-slate-800 flex items-center gap-2 font-black text-xs shadow-xs cursor-pointer"
-                  >
-                    <Radio className="w-4 h-4 text-red-400 animate-pulse" />
-                    <span>Launch 2-Person Staging Test</span>
-                  </button>
-                )}
-              </div>
+                  <div className="pb-3 border-b border-rose-100 flex items-center gap-3">
+                    <Avatar user={currentUser} size="md" showBadge />
+                    <div>
+                      <p className="font-black text-slate-900 font-heading text-sm">
+                        {currentUser.LastName ? `${currentUser.FirstName} ${currentUser.LastName}` : currentUser.FirstName}
+                      </p>
+                      <p className="text-[11px] text-slate-600 font-medium">{currentUser.Email}</p>
+                      <span className="inline-block mt-1 text-[11px] font-black text-red-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                        Tier: {currentUser.SubscriptionTier}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Demonstration Sandbox Controls (ONLY in Demo Mode, NEVER in Production) */}
+                  {appMode === 'demonstration' && (
+                    <>
+                      {/* Instant Tier Switcher */}
+                      <div className="py-3 border-b border-rose-100 space-y-1.5">
+                        <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                          Switch Active Tier (Demo Mode)
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+                          <button
+                            onClick={() => setSubscriptionTier('Free')}
+                            className={`py-1.5 px-2 rounded-xl font-bold transition-all cursor-pointer ${
+                              currentUser.SubscriptionTier === 'Free'
+                                ? 'bg-slate-900 text-white shadow-xs'
+                                : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
+                            }`}
+                          >
+                            Free ($0)
+                          </button>
+                          <button
+                            onClick={() => setSubscriptionTier('Premium')}
+                            className={`py-1.5 px-2 rounded-xl font-bold transition-all cursor-pointer ${
+                              currentUser.SubscriptionTier === 'Premium'
+                                ? 'btn-glossy-red-pink text-white shadow-xs'
+                                : 'bg-rose-50 text-red-700 hover:bg-rose-100'
+                            }`}
+                          >
+                            Prem ($9.99)
+                          </button>
+                          <button
+                            onClick={() => setSubscriptionTier('Premium Plus')}
+                            className={`py-1.5 px-2 rounded-xl font-black transition-all cursor-pointer ${
+                              currentUser.SubscriptionTier === 'Premium Plus'
+                                ? 'bg-gradient-to-r from-amber-400 to-red-600 text-white shadow-xs'
+                                : 'bg-amber-50 text-amber-900 hover:bg-amber-100'
+                            }`}
+                          >
+                            Plus ($14.99)
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Demo Profile Switcher */}
+                      <div className="py-2.5 border-b border-rose-100 space-y-1">
+                        <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                          Test As Different Member
+                        </div>
+                        {users.map(u => (
+                          <button
+                            key={u.UserID}
+                            onClick={() => {
+                              switchUser(u.UserID);
+                              setProfileDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
+                              u.UserID === currentUser.UserID
+                                ? 'bg-rose-50 text-red-600 font-black'
+                                : 'text-slate-700 hover:bg-rose-50/50'
+                            }`}
+                          >
+                            <span className="font-semibold">{u.FirstName} ({u.Gender}{u.Age && u.Age > 0 ? `, ${u.Age}` : ''})</span>
+                            <span className="text-[10px] text-slate-500 font-mono font-bold">
+                              {u.SubscriptionTier}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Dropdown Links */}
+                  <div className="pt-2.5 space-y-1">
+                    <button
+                      onClick={() => {
+                        setCurrentView('profile');
+                        setProfileDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-slate-800 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+                    >
+                      <UserIcon className="w-4 h-4 text-red-600" />
+                      <span>View & Edit Profile</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCurrentView('pricing');
+                        setProfileDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-slate-800 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+                    >
+                      <CreditCard className="w-4 h-4 text-red-600" />
+                      <span>Membership Pricing & Perks</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCurrentView('privacy');
+                        setProfileDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-slate-800 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-red-600" />
+                      <span>Privacy Policy</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCurrentView('child_safety');
+                        setProfileDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-slate-800 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+                    >
+                      <ShieldAlert className="w-4 h-4 text-red-600" />
+                      <span>Child Safety Standards</span>
+                    </button>
+                    {isOwner && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setCurrentView('owner_reports');
+                            setProfileDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-2.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 flex items-center gap-2 font-black text-xs border border-amber-200 cursor-pointer"
+                        >
+                          <ShieldAlert className="w-4 h-4 text-amber-600" />
+                          <span>Owner Safety &amp; Reports</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setCurrentView('owner_users');
+                            setProfileDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-2.5 py-2 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-950 flex items-center gap-2 font-black text-xs border border-pink-200 cursor-pointer"
+                        >
+                          <Users className="w-4 h-4 text-[#FF2E93]" />
+                          <span>Registered Users (Live)</span>
+                        </button>
+                      </>
+                    )}
+                    {['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(currentUser.UserID) && (
+                      <button
+                        onClick={() => {
+                          if (appMode !== 'production') {
+                            setAppMode('production');
+                          }
+                          clearLiveSession();
+                          registerForEvent('evt_staging_dev');
+                          setSelectedEventId('evt_staging_dev');
+                          setCurrentView('lobby');
+                          setProfileDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-2.5 py-2 rounded-xl bg-slate-900 text-rose-300 hover:bg-slate-800 flex items-center gap-2 font-black text-xs shadow-xs cursor-pointer"
+                      >
+                        <Radio className="w-4 h-4 text-red-400 animate-pulse" />
+                        <span>Launch 2-Person Staging Test</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        signOut();
+                        setProfileDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-red-600 hover:bg-red-50 flex items-center gap-2 font-bold cursor-pointer border-t border-rose-100 mt-1 pt-2"
+                    >
+                      <LogOut className="w-4 h-4 text-red-600" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            /* Guest Visitors: Sign In and Create Account */
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => openAuthModal('signin')}
+                className="px-3 sm:px-4 py-2 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-extrabold text-xs transition-all cursor-pointer flex items-center gap-1.5 border border-white/40 shadow-xs"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign In</span>
+              </button>
+              <button
+                onClick={() => openAuthModal('signup')}
+                className="px-3 sm:px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-red-600 font-extrabold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Create Account</span>
+              </button>
             </div>
           )}
         </div>
@@ -492,19 +587,65 @@ export const Navbar: React.FC = () => {
               </button>
             </div>
 
-            {/* Current User Snapshot */}
-            <div className="p-4 bg-gradient-to-br from-rose-50 to-pink-50 border-b border-rose-100 flex items-center gap-3">
-              <Avatar user={currentUser} size="md" showBadge />
-              <div className="min-w-0 flex-1">
-                <p className="font-extrabold text-slate-900 text-sm truncate font-heading">
-                  {currentUser.LastName ? `${currentUser.FirstName} ${currentUser.LastName}` : currentUser.FirstName}
-                </p>
-                <p className="text-[11px] text-slate-500 truncate">{currentUser.Email}</p>
-                <span className="inline-block mt-0.5 text-[10px] font-black text-red-600 bg-white px-2 py-0.5 rounded-full border border-rose-200 shadow-2xs">
-                  {currentUser.SubscriptionTier}
-                </span>
+            {/* Current User Snapshot or Guest Sign In */}
+            {currentUser && isAuthenticated ? (
+              <div className="p-4 bg-gradient-to-br from-rose-50 to-pink-50 border-b border-rose-100 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar user={currentUser} size="md" showBadge />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-extrabold text-slate-900 text-sm truncate font-heading">
+                      {currentUser.LastName ? `${currentUser.FirstName} ${currentUser.LastName}` : currentUser.FirstName}
+                    </p>
+                    <p className="text-[11px] text-slate-500 truncate">{currentUser.Email}</p>
+                    <span className="inline-block mt-0.5 text-[10px] font-black text-red-600 bg-white px-2 py-0.5 rounded-full border border-rose-200 shadow-2xs">
+                      {currentUser.SubscriptionTier}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    signOut();
+                    setMenuDrawerOpen(false);
+                  }}
+                  className="p-2 rounded-xl text-red-600 hover:bg-rose-100/60 active:scale-95 transition-all cursor-pointer"
+                  title="Sign Out"
+                  aria-label="Sign Out"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
               </div>
-            </div>
+            ) : (
+              <div className="p-4 bg-gradient-to-br from-rose-50 to-pink-50 border-b border-rose-100 space-y-2">
+                <p className="font-extrabold text-slate-900 text-sm font-heading">
+                  Welcome to Speed Meet Love
+                </p>
+                <p className="text-xs text-slate-600">
+                  Sign in or create an account (18+) to access weekend speed dating and mutual matches.
+                </p>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={() => {
+                      openAuthModal('signin');
+                      setMenuDrawerOpen(false);
+                    }}
+                    className="flex-1 py-2 px-3 rounded-xl btn-glossy-red-pink text-white font-extrabold text-xs shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Sign In</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      openAuthModal('signup');
+                      setMenuDrawerOpen(false);
+                    }}
+                    className="flex-1 py-2 px-3 rounded-xl bg-white hover:bg-rose-50 text-red-600 font-extrabold text-xs border border-rose-200 shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Sign Up</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* The 8 Navigation Links */}
             <nav className="flex-1 overflow-y-auto p-3 space-y-1.5 text-sm font-bold">
@@ -655,23 +796,123 @@ export const Navbar: React.FC = () => {
                 </div>
               </button>
 
-              {/* 8. Settings */}
+              {/* 8. Settings / Table Inspector (Owner or Demo Sandbox only) */}
+              {(isOwner || appMode === 'demonstration') && (
+                <button
+                  onClick={() => {
+                    setCurrentView('tables');
+                    setMenuDrawerOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
+                    currentView === 'tables'
+                      ? 'btn-glossy-red-pink text-white shadow-md'
+                      : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Settings className={`w-5 h-5 shrink-0 ${currentView === 'tables' ? 'text-white' : 'text-red-600'}`} />
+                    <span className="text-base font-extrabold">Settings</span>
+                  </div>
+                  <ChevronRight className={`w-4 h-4 ${currentView === 'tables' ? 'text-white' : 'text-slate-400'}`} />
+                </button>
+              )}
+
+              {/* 9. Privacy Policy */}
               <button
                 onClick={() => {
-                  setCurrentView('tables');
+                  setCurrentView('privacy');
                   setMenuDrawerOpen(false);
                 }}
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
-                  currentView === 'tables'
+                  currentView === 'privacy'
                     ? 'btn-glossy-red-pink text-white shadow-md'
                     : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Settings className={`w-5 h-5 shrink-0 ${currentView === 'tables' ? 'text-white' : 'text-red-600'}`} />
-                  <span className="text-base font-extrabold">Settings</span>
+                  <ShieldCheck className={`w-5 h-5 shrink-0 ${currentView === 'privacy' ? 'text-white' : 'text-red-600'}`} />
+                  <span className="text-base font-extrabold">Privacy Policy</span>
                 </div>
-                <ChevronRight className={`w-4 h-4 ${currentView === 'tables' ? 'text-white' : 'text-slate-400'}`} />
+                <ChevronRight className={`w-4 h-4 ${currentView === 'privacy' ? 'text-white' : 'text-slate-400'}`} />
+              </button>
+
+              {/* 10. Child Safety Standards */}
+              <button
+                onClick={() => {
+                  setCurrentView('child_safety');
+                  setMenuDrawerOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
+                  currentView === 'child_safety'
+                    ? 'btn-glossy-red-pink text-white shadow-md'
+                    : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <ShieldAlert className={`w-5 h-5 shrink-0 ${currentView === 'child_safety' ? 'text-white' : 'text-red-600'}`} />
+                  <span className="text-base font-extrabold">Child Safety Standards</span>
+                </div>
+                <ChevronRight className={`w-4 h-4 ${currentView === 'child_safety' ? 'text-white' : 'text-slate-400'}`} />
+              </button>
+
+              {/* Owner Safety & Reports (Owner-Only) */}
+              {isOwner && (
+                <>
+                  <button
+                    onClick={() => {
+                      setCurrentView('owner_reports');
+                      setMenuDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
+                      currentView === 'owner_reports'
+                        ? 'btn-glossy-red-pink text-white shadow-md'
+                        : 'bg-amber-50/70 border border-amber-200 text-amber-950 hover:bg-amber-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <ShieldAlert className="w-5 h-5 shrink-0 text-amber-600" />
+                      <span className="text-base font-black">Owner Safety Reports</span>
+                    </div>
+                    <ChevronRight className={`w-4 h-4 ${currentView === 'owner_reports' ? 'text-white' : 'text-amber-500'}`} />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setCurrentView('owner_users');
+                      setMenuDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
+                      currentView === 'owner_users'
+                        ? 'btn-glossy-red-pink text-white shadow-md'
+                        : 'bg-pink-50/70 border border-pink-200 text-pink-950 hover:bg-pink-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Users className="w-5 h-5 shrink-0 text-[#FF2E93]" />
+                      <span className="text-base font-black">Registered Users (Live)</span>
+                    </div>
+                    <ChevronRight className={`w-4 h-4 ${currentView === 'owner_users' ? 'text-white' : 'text-pink-500'}`} />
+                  </button>
+                </>
+              )}
+
+              {/* 11. Delete Account */}
+              <button
+                onClick={() => {
+                  setCurrentView('delete_account');
+                  setMenuDrawerOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
+                  currentView === 'delete_account'
+                    ? 'btn-glossy-red-pink text-white shadow-md'
+                    : 'text-red-700 hover:bg-red-50 hover:text-red-800'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Trash2 className={`w-5 h-5 shrink-0 ${currentView === 'delete_account' ? 'text-white' : 'text-red-600'}`} />
+                  <span className="text-base font-extrabold">Delete Account</span>
+                </div>
+                <ChevronRight className={`w-4 h-4 ${currentView === 'delete_account' ? 'text-white' : 'text-slate-400'}`} />
               </button>
             </nav>
 

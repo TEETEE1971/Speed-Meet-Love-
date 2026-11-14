@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Server-authoritative user account record with PBKDF2 password authentication and profile data",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Unique user account ID (e.g. usr_...)" },
+        "email": { "type": "string", "format": "email", "description": "Normalized lowercase email address" },
+        "passwordHash": { "type": "string", "description": "PBKDF2-SHA512 password hash with 100,000 iterations" },
+        "passwordSalt": { "type": "string", "description": "Cryptographic random salt" },
+        "firstName": { "type": "string", "description": "First name of member" },
+        "lastName": { "type": "string", "description": "Last name of member" },
+        "age": { "type": "number", "description": "Age of member (enforced 18+)" },
+        "gender": { "type": "string", "description": "Gender identity ('Woman' | 'Man' | 'Non-Binary')" },
+        "interestedIn": { "type": "string", "description": "Dating preference ('Men' | 'Women' | 'Everyone')" },
+        "location": { "type": "string", "description": "City and state of member" },
+        "occupation": { "type": "string", "description": "Occupation or profession" },
+        "bio": { "type": "string", "description": "Short bio or self-introduction" },
+        "profilePhoto": { "type": "string", "description": "Profile photo URL" },
+        "subscriptionTier": { "type": "string", "enum": ["Free", "Premium", "Premium Plus"], "description": "Subscription tier" },
+        "subscriptionStatus": { "type": "string", "enum": ["none", "active", "trialing", "past_due", "canceled", "incomplete", "unpaid"], "description": "Stripe subscription status" },
+        "stripeCustomerId": { "type": "string", "description": "Stripe customer ID (e.g. cus_...)" },
+        "stripeSubscriptionId": { "type": "string", "description": "Stripe subscription ID (e.g. sub_...)" },
+        "stripePriceId": { "type": "string", "description": "Active Stripe price ID" },
+        "subscriptionCurrentPeriodEnd": { "type": "number", "description": "Subscription period expiration timestamp in Unix epoch ms" },
+        "subscriptionCancelAtPeriodEnd": { "type": "boolean", "description": "Whether subscription is scheduled to cancel at period end" },
+        "isTester": { "type": "boolean", "description": "Whether user has free tester access override separate from paid subscription" },
+        "createdAt": { "type": "number", "description": "Account registration timestamp in Unix epoch ms" },
+        "lastSignIn": { "type": "number", "description": "Last sign-in timestamp in Unix epoch ms" },
+        "isBanned": { "type": "boolean", "description": "Whether account is suspended for safety violations" }
+      },
+      "required": ["userId", "email", "passwordHash", "passwordSalt", "firstName", "age", "gender", "createdAt"]
+    },
+    "BannedUser": {
+      "title": "BannedUser",
+      "description": "Record of suspended user IDs and emails for instant access revocation",
+      "type": "object",
+      "properties": {
+        "identifier": { "type": "string", "description": "User ID or normalized email address" },
+        "bannedAt": { "type": "number", "description": "Timestamp when ban was enforced" }
+      },
+      "required": ["identifier", "bannedAt"]
+    },
+    "SafetyReport": {
+      "title": "SafetyReport",
+      "description": "In-app community safety or CSAM report submitted by a member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Report ID" },
+        "reporterId": { "type": "string", "description": "User ID of reporting member" },
+        "reportedUserId": { "type": "string", "description": "User ID of reported offender" },
+        "reason": { "type": "string", "description": "Category of violation" },
+        "notes": { "type": "string", "description": "Detailed incident description" },
+        "timestamp": { "type": "string", "description": "Formatted report timestamp" },
+        "createdAt": { "type": "number", "description": "Creation timestamp in Unix epoch ms" },
+        "status": { "type": "string", "enum": ["pending", "banned", "dismissed", "reviewed"], "description": "Review status" }
+      },
+      "required": ["id", "reporterId", "reportedUserId", "reason", "createdAt", "status"]
+    },
+    "GrantedTester": {
+      "title": "GrantedTester",
+      "description": "Tester account granted free Premium Plus access by the owner",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email", "description": "Normalized tester email address" },
+        "grantedAt": { "type": "number", "description": "Timestamp when tester access was granted in Unix epoch ms" },
+        "grantedBy": { "type": "string", "description": "Owner email address that granted access" },
+        "notes": { "type": "string", "description": "Optional notes from the owner" }
+      },
+      "required": ["email", "grantedAt", "grantedBy"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "Durable collection of registered Speed Meet Love member accounts"
+    },
+    "/banned_users/{userId}": {
+      "schema": "BannedUser",
+      "description": "Durable lookup of accounts banned for community safety violations"
+    },
+    "/reports/{reportId}": {
+      "schema": "SafetyReport",
+      "description": "Durable collection of member safety reports for owner review"
+    },
+    "/granted_testers/{emailDocId}": {
+      "schema": "GrantedTester",
+      "description": "Durable collection of tester accounts granted free Premium Plus access by the owner"
+    }
+  }
+}

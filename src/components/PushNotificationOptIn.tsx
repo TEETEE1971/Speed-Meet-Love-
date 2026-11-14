@@ -5,6 +5,11 @@ import { useApp } from '../context/AppContext';
 
 export const PushNotificationOptIn: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const { currentUser, showNotification } = useApp();
+
+  if (!currentUser) {
+    return null;
+  }
+
   const {
     isSupported,
     permission,

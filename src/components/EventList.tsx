@@ -50,6 +50,7 @@ export const EventList: React.FC = () => {
     clearLiveSession,
     liveSession,
     setActiveRoundIndex,
+    openAuthModal,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'cards' | 'table'>('cards');
@@ -86,7 +87,7 @@ export const EventList: React.FC = () => {
     TotalRounds: 5,
     RoundDurationSeconds: 300,
     BreakDurationSeconds: 120,
-    HostID: currentUser.UserID,
+    HostID: currentUser?.UserID || 'host_speedmeet_01',
   });
 
   const handleCreateSubmit = (e: React.FormEvent) => {
@@ -98,7 +99,7 @@ export const EventList: React.FC = () => {
 
     addEvent({
       ...formData,
-      HostID: currentUser.UserID,
+      HostID: currentUser?.UserID || 'host_speedmeet_01',
     });
 
     setShowCreateModal(false);
@@ -194,6 +195,10 @@ export const EventList: React.FC = () => {
             {isEligibleForSpeedDating ? (
               <button
                 onClick={() => {
+                  if (!currentUser) {
+                    openAuthModal('signin');
+                    return;
+                  }
                   const regLive = events.find(
                     e => e.ParticipantsList.includes(currentUser.UserID) && e.EventStatus === 'Live'
                   );
@@ -276,17 +281,17 @@ export const EventList: React.FC = () => {
             <div className="text-slate-400">Your Membership Tier</div>
             <div className="text-amber-700 font-bold text-sm flex items-center gap-1">
               <Crown className="w-3.5 h-3.5" />
-              {currentUser.SubscriptionTier}
+              {currentUser?.SubscriptionTier || 'Guest'}
             </div>
             <div className="text-[11px] text-slate-500">
-              {isEligibleForSpeedDating ? 'All 3 Nights Unlocked' : 'Upgrade to attend ($14.99/mo)'}
+              {currentUser ? (isEligibleForSpeedDating ? 'All 3 Nights Unlocked' : 'Upgrade to attend ($14.99/mo)') : 'Sign in to register'}
             </div>
           </div>
         </div>
       </div>
 
       {/* DEVELOPER 2-PERSON LIVEKIT STAGING TEST (Restricted to Authorized Accounts) */}
-      {['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(currentUser.UserID) && (
+      {Boolean(currentUser && ['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(currentUser.UserID)) && (
         <div className="p-5 rounded-3xl bg-slate-900 border border-pink-500/30 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-2xl bg-pink-500/20 border border-pink-500/30 flex items-center justify-center text-[#FF2E93] shrink-0">
@@ -360,7 +365,7 @@ export const EventList: React.FC = () => {
         {/* Checkbox selector cards for upcoming weekend sessions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
           {weekendPlannerEvents.map(evt => {
-            const isRegistered = evt.ParticipantsList.includes(currentUser.UserID);
+            const isRegistered = Boolean(currentUser && evt.ParticipantsList.includes(currentUser.UserID));
             const isSelected = multiSelectEventIds.includes(evt.EventID);
 
             return (
@@ -468,7 +473,7 @@ export const EventList: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredEvents.map(evt => {
-            const isRegistered = evt.ParticipantsList.includes(currentUser.UserID);
+            const isRegistered = Boolean(currentUser && evt.ParticipantsList.includes(currentUser.UserID));
             const isFull = evt.ParticipantsList.length >= evt.MaxParticipants;
             const isLive = isEventLive(evt);
             const isSimulated = simulatedLiveEvents.includes(evt.EventID);
@@ -666,7 +671,7 @@ export const EventList: React.FC = () => {
                           <span>{isFull ? 'Event Full' : `Register for ${evt.DayOfWeek} 7 PM`}</span>
                         </button>
                       )}
-                      {(evt.EventType === '30 & Older' || evt.MinAge >= 30) && (!currentUser.Age || currentUser.Age < 30) && (
+                      {(evt.EventType === '30 & Older' || evt.MinAge >= 30) && currentUser && (!currentUser.Age || currentUser.Age < 30) && (
                         <p className="text-[10px] text-amber-700 text-center font-medium">
                           Requires Age 30+ (Your profile: age {currentUser.Age || 'Not set'})
                         </p>

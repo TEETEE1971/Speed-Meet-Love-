@@ -22,6 +22,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Avatar } from './Avatar';
+import { AuthGate } from './AuthGate';
 
 export const EventLobby: React.FC = () => {
   const {
@@ -46,6 +47,10 @@ export const EventLobby: React.FC = () => {
     joinStagingTestSession,
     setActiveRoundIndex,
   } = useApp();
+
+  if (!currentUser) {
+    return <AuthGate featureName="Event Waiting Room & Lobby" />;
+  }
 
   const isEligible = canAccessLiveSpeedDating(currentUser);
   const activeEvent = events.find(e => e.EventID === selectedEventId) || events[0];

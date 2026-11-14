@@ -1,5 +1,24 @@
 export type SubscriptionTier = 'Free' | 'Premium' | 'Premium Plus';
 
+export type SubscriptionStatus =
+  | 'none'
+  | 'active'
+  | 'trialing'
+  | 'past_due'
+  | 'canceled'
+  | 'incomplete'
+  | 'unpaid';
+
+export interface StripePriceConfig {
+  id: string;
+  tier: SubscriptionTier;
+  name: string;
+  amount: number;
+  amountCents: number;
+  currency: 'USD';
+  interval: 'month';
+}
+
 export type AppMode = 'demonstration' | 'production';
 
 export type AppView =
@@ -14,7 +33,17 @@ export type AppView =
   | 'pricing'
   | 'profile'
   | 'tables'
-  | 'second_date';
+  | 'second_date'
+  | 'privacy'
+  | 'delete_account'
+  | 'child_safety'
+  | 'terms'
+  | 'acceptable_use'
+  | 'refund_policy'
+  | 'law_enforcement'
+  | 'contact'
+  | 'owner_reports'
+  | 'owner_users';
 
 export type SecondDateStatus =
   | 'waiting_for_partner'
@@ -124,6 +153,13 @@ export interface User {
   Children?: 'Has children' | 'Wants children' | "Doesn't want children" | 'Open to children';
   DistanceMiles?: number;
   PrivacySettings?: UserPrivacySettings;
+  SubscriptionStatus?: SubscriptionStatus;
+  StripeCustomerId?: string;
+  StripeSubscriptionId?: string;
+  IsTester?: boolean;
+  testerAccessGranted?: boolean;
+  testerAccessGrantedAt?: number;
+  testerAccessGrantedBy?: string;
 }
 
 export interface SpeedEvent {
@@ -198,9 +234,64 @@ export interface UserReport {
   ReportID: string;
   ReportedUserID: string;
   ReporterID: string;
-  Reason: 'Inappropriate behavior' | 'Fake profile' | 'Spam or advertising' | 'Harassment' | 'Other';
+  Reason: 'Inappropriate behavior' | 'Fake profile' | 'Spam or advertising' | 'Harassment' | 'Child safety / Underage / CSAE' | 'Other';
   Notes: string;
   Timestamp: string;
+}
+
+export interface OwnerReportItem {
+  id: string;
+  reporterId: string;
+  reporterEmail?: string;
+  reporterName?: string;
+  reportedUserId: string;
+  reportedUserName?: string;
+  reportedUserEmail?: string;
+  reason: string;
+  notes: string;
+  timestamp: string;
+  createdAt: number;
+  status: 'pending' | 'banned' | 'dismissed' | 'reviewed';
+  actionTaken?: string;
+  actionAt?: number;
+  actionBy?: string;
+}
+
+export interface RegisteredUserSummary {
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  age: number;
+  gender: 'Woman' | 'Man' | 'Non-Binary';
+  location: string;
+  occupation?: string;
+  subscriptionTier: SubscriptionTier;
+  createdAt: number;
+  lastSignIn: number | null; // epoch ms or null if unavailable
+  hasActiveSession: boolean;
+  isBanned: boolean;
+  isOwner: boolean;
+  subscriptionStatus?: SubscriptionStatus;
+  stripeCustomerId?: string;
+  isTester?: boolean;
+  testerAccessGranted?: boolean;
+  testerAccessGrantedAt?: number | null;
+  testerAccessGrantedBy?: string | null;
+}
+
+export interface TesterGrantRecord {
+  email: string;
+  grantedAt: number;
+  grantedBy: string;
+  userId?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  location?: string | null;
+  currentTier?: string;
+  isRegistered?: boolean;
+  notes?: string;
 }
 
 export interface LiveSessionState {

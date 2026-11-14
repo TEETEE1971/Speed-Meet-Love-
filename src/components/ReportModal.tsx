@@ -39,7 +39,7 @@ export const ReportModal: React.FC = () => {
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div className="p-3 rounded-2xl bg-pink-50/60 border border-pink-100 text-slate-700 leading-relaxed">
-            Reporting <strong className="text-slate-900">{reportModalTarget.FirstName} {reportModalTarget.LastName}</strong>. Your report is 100% confidential and reviewed by our trust & safety team.
+            Reporting <strong className="text-slate-900">{reportModalTarget.FirstName} {reportModalTarget.LastName}</strong>. Your report is strictly confidential and reviewed directly by the platform owner (TeeTees Creations).
           </div>
 
           <div>
@@ -52,6 +52,7 @@ export const ReportModal: React.FC = () => {
               className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-800 focus:outline-none focus:border-[#FF2E93] focus:ring-1 focus:ring-[#FF2E93]"
             >
               <option value="Inappropriate behavior">Inappropriate behavior</option>
+              <option value="Child safety / Underage / CSAE">Child safety / Underage / CSAE concern</option>
               <option value="Fake profile">Fake profile / Catfishing</option>
               <option value="Spam or advertising">Spam or advertising</option>
               <option value="Harassment">Harassment or abusive language</option>

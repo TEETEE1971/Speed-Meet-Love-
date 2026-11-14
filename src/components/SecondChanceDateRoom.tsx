@@ -18,6 +18,7 @@ import {
 import { Avatar } from './Avatar';
 import { LiveKitVideoStage } from './LiveKitVideoStage';
 import { FloatingHearts } from './FloatingHearts';
+import { AuthGate } from './AuthGate';
 import confetti from 'canvas-confetti';
 
 export const SecondChanceDateRoom: React.FC = () => {
@@ -34,6 +35,10 @@ export const SecondChanceDateRoom: React.FC = () => {
     showNotification,
     appMode,
   } = useApp();
+
+  if (!currentUser) {
+    return <AuthGate featureName="Second Chance Date Room" />;
+  }
 
   // Find partner for this second-chance date
   const session =
