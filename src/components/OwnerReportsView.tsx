@@ -378,7 +378,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
         </div>
         <h2 className="text-2xl font-black text-slate-900 font-heading">Owner Authorization Required</h2>
         <p className="text-sm text-slate-600 leading-relaxed max-w-md mx-auto">
-          This administration dashboard is strictly restricted to the verified platform owner (<strong>kristylten@gmail.com</strong> / <strong>usr_kristy</strong>).
+          This administration dashboard is strictly restricted to the verified platform owner.
         </p>
         <div className="pt-2">
           <button

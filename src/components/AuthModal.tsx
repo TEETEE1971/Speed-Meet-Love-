@@ -8,8 +8,6 @@ import {
   ShieldCheck,
   AlertTriangle,
   X,
-  Sparkles,
-  Calendar,
   CheckCircle2,
   ArrowLeft,
   KeyRound,
@@ -71,6 +69,7 @@ export const AuthModal: React.FC = () => {
       if (!res.success) {
         setSignInError(res.error || 'Invalid email or password.');
       } else {
+        setSignInPassword('');
         setIsAuthModalOpen(false);
       }
     } catch (err: any) {
@@ -173,12 +172,6 @@ export const AuthModal: React.FC = () => {
     } finally {
       setIsSigningUp(false);
     }
-  };
-
-  const fillQuickCreds = (email: string) => {
-    setSignInEmail(email);
-    setSignInPassword('SpeedMeetLove2026!');
-    setSignInError(null);
   };
 
   return (
@@ -420,30 +413,6 @@ export const AuthModal: React.FC = () => {
                   </>
                 )}
               </button>
-
-              {/* Sample Credentials for Quick Evaluation */}
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1.5">
-                <span className="font-extrabold text-slate-800 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-red-600" />
-                  Existing Account Credentials:
-                </span>
-                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={() => fillQuickCreds('kristylten@gmail.com')}
-                    className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold hover:bg-rose-50 hover:text-red-600 cursor-pointer text-[10px]"
-                  >
-                    Founder: kristylten@gmail.com
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fillQuickCreds('alex.rivera@example.com')}
-                    className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold hover:bg-rose-50 hover:text-red-600 cursor-pointer text-[10px]"
-                  >
-                    Member: alex.rivera@example.com
-                  </button>
-                </div>
-              </div>
 
               <div className="text-center pt-2">
                 <p className="text-xs text-slate-500">
