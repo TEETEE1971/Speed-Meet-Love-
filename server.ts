@@ -32,36 +32,69 @@ const APP_URL = 'https://speedmeetlove.com';
 const STRIPE_WEBHOOK_ROUTE = '/api/stripe/webhook';
 
 // Stripe configuration - Secret keys remain strictly on the server
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
-const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY || process.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || '').trim();
+const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+const RAW_STRIPE_PUBLISHABLE_KEY = (
+  process.env.STRIPE_PUBLISHABLE_KEY ||
+  process.env.VITE_STRIPE_PUBLISHABLE_KEY ||
+  ''
+).trim();
+const STRIPE_PUBLISHABLE_KEY = /^pk_(live|test)_/.test(RAW_STRIPE_PUBLISHABLE_KEY)
+  ? RAW_STRIPE_PUBLISHABLE_KEY
+  : '';
+
+export const SANDBOX_FALLBACK_PRICES = {
+  PREMIUM: 'price_1UZJGCGzWqYTtaSTwzOMdDqO',
+  PREMIUM_PLUS: 'price_1UZJR6GzWqYTtaSTVJCIeJip',
+};
+
+const ENV_STRIPE_PRICE_PREMIUM = (process.env.STRIPE_PRICE_ID_PREMIUM || '').trim();
+const ENV_STRIPE_PRICE_PREMIUM_PLUS = (process.env.STRIPE_PRICE_ID_PREMIUM_PLUS || '').trim();
 
 export const STRIPE_PRICES = {
-  PREMIUM: process.env.STRIPE_PRICE_ID_PREMIUM || 'price_1UZJGCGzWqYTtaSTwzOMdDqO',
-  PREMIUM_PLUS: process.env.STRIPE_PRICE_ID_PREMIUM_PLUS || 'price_1UZJR6GzWqYTtaSTVJCIeJip',
+  PREMIUM: ENV_STRIPE_PRICE_PREMIUM || SANDBOX_FALLBACK_PRICES.PREMIUM,
+  PREMIUM_PLUS: ENV_STRIPE_PRICE_PREMIUM_PLUS || SANDBOX_FALLBACK_PRICES.PREMIUM_PLUS,
 };
 
-export const STRIPE_EXPECTED_AMOUNTS: Record<
-  string,
-  { tier: 'Premium' | 'Premium Plus'; name: string; amount: number; amountCents: number; currency: string; interval: string }
-> = {
-  [STRIPE_PRICES.PREMIUM]: {
-    tier: 'Premium',
-    name: 'Premium',
-    amount: 9.99,
-    amountCents: 999,
-    currency: 'USD',
-    interval: 'month',
-  },
-  [STRIPE_PRICES.PREMIUM_PLUS]: {
-    tier: 'Premium Plus',
-    name: 'Premium Plus',
-    amount: 14.99,
-    amountCents: 1499,
-    currency: 'USD',
-    interval: 'month',
-  },
-};
+export interface StripeExpectedPlanSpec {
+  tier: 'Premium' | 'Premium Plus';
+  name: string;
+  amount: number;
+  amountCents: number;
+  currency: string;
+  interval: string;
+}
+
+export function getStripeExpectedAmounts(): Record<string, StripeExpectedPlanSpec> {
+  return {
+    [STRIPE_PRICES.PREMIUM]: {
+      tier: 'Premium',
+      name: 'Premium',
+      amount: 9.99,
+      amountCents: 999,
+      currency: 'USD',
+      interval: 'month',
+    },
+    [STRIPE_PRICES.PREMIUM_PLUS]: {
+      tier: 'Premium Plus',
+      name: 'Premium Plus',
+      amount: 14.99,
+      amountCents: 1499,
+      currency: 'USD',
+      interval: 'month',
+    },
+  };
+}
+
+export const STRIPE_EXPECTED_AMOUNTS: Record<string, StripeExpectedPlanSpec> =
+  getStripeExpectedAmounts();
+
+function syncStripeExpectedAmountsMap() {
+  for (const key of Object.keys(STRIPE_EXPECTED_AMOUNTS)) {
+    delete STRIPE_EXPECTED_AMOUNTS[key];
+  }
+  Object.assign(STRIPE_EXPECTED_AMOUNTS, getStripeExpectedAmounts());
+}
 
 const STRIPE_IS_LIVE_KEY =
   STRIPE_SECRET_KEY.startsWith('sk_live_') || STRIPE_SECRET_KEY.startsWith('rk_live_');
@@ -79,6 +112,97 @@ const STRIPE_MODE: 'live' | 'sandbox' | 'unconfigured' = !stripe
   : STRIPE_IS_LIVE_KEY
   ? 'live'
   : 'sandbox';
+
+let stripePriceResolutionPromise: Promise<void> | null = null;
+let stripePriceResolutionCompleted = false;
+
+async function ensureStripePricesResolved(forceRefresh = false): Promise<void> {
+  if (!stripe || !STRIPE_IS_LIVE_KEY) return;
+  if (stripePriceResolutionCompleted && !forceRefresh) return;
+  if (stripePriceResolutionPromise && !forceRefresh) {
+    return stripePriceResolutionPromise;
+  }
+
+  stripePriceResolutionPromise = (async () => {
+    try {
+      const checkValidLivePrice = async (
+        priceId: string,
+        expectedCents: number
+      ): Promise<boolean> => {
+        if (!priceId || priceId === SANDBOX_FALLBACK_PRICES.PREMIUM || priceId === SANDBOX_FALLBACK_PRICES.PREMIUM_PLUS) {
+          return false;
+        }
+        try {
+          const p = await stripe.prices.retrieve(priceId);
+          return (
+            p.active !== false &&
+            p.livemode === true &&
+            (p.currency || '').toLowerCase() === 'usd' &&
+            p.recurring?.interval === 'month' &&
+            p.unit_amount === expectedCents
+          );
+        } catch {
+          return false;
+        }
+      };
+
+      const [premiumValid, premiumPlusValid] = await Promise.all([
+        checkValidLivePrice(STRIPE_PRICES.PREMIUM, 999),
+        checkValidLivePrice(STRIPE_PRICES.PREMIUM_PLUS, 1499),
+      ]);
+
+      if (!premiumValid || !premiumPlusValid) {
+        const activePrices = await stripe.prices.list({
+          active: true,
+          limit: 50,
+          expand: ['data.product'],
+        });
+
+        const liveMonthlyUsd = activePrices.data.filter(
+          (p) =>
+            p.active !== false &&
+            p.livemode === true &&
+            (p.currency || '').toLowerCase() === 'usd' &&
+            p.recurring?.interval === 'month'
+        );
+
+        if (!premiumValid) {
+          const match999 = liveMonthlyUsd.find((p) => p.unit_amount === 999);
+          if (match999 && match999.id !== STRIPE_PRICES.PREMIUM) {
+            console.warn(
+              `[Stripe Live Config] Resolved live Premium ($9.99/mo) price ID ${match999.id} (replacing unconfigured/sandbox ID ${STRIPE_PRICES.PREMIUM}).`
+            );
+            STRIPE_PRICES.PREMIUM = match999.id;
+          }
+        }
+
+        if (!premiumPlusValid) {
+          const match1499 = liveMonthlyUsd.find((p) => p.unit_amount === 1499);
+          if (match1499 && match1499.id !== STRIPE_PRICES.PREMIUM_PLUS) {
+            console.warn(
+              `[Stripe Live Config] Resolved live Premium Plus ($14.99/mo) price ID ${match1499.id} (replacing unconfigured/sandbox ID ${STRIPE_PRICES.PREMIUM_PLUS}).`
+            );
+            STRIPE_PRICES.PREMIUM_PLUS = match1499.id;
+          }
+        }
+
+        syncStripeExpectedAmountsMap();
+      }
+
+      stripePriceResolutionCompleted = true;
+    } catch (err: any) {
+      console.warn('[Stripe Live Config] Price resolution check failed:', err?.message || err);
+    } finally {
+      stripePriceResolutionPromise = null;
+    }
+  })();
+
+  return stripePriceResolutionPromise;
+}
+
+if (stripe && STRIPE_IS_LIVE_KEY) {
+  void ensureStripePricesResolved();
+}
 
 // Use raw body specifically for Stripe webhooks signature verification, json for all other routes
 app.use((req, res, next) => {
@@ -3660,7 +3784,8 @@ app.post('/api/owner/testers', async (req, res) => {
 // ============================================================================
 
 // API: Stripe Public Configuration & Price Map
-app.get('/api/stripe/config', (_req, res) => {
+app.get('/api/stripe/config', async (_req, res) => {
+  await ensureStripePricesResolved();
   res.json({
     success: true,
     isConfigured: Boolean(stripe),
@@ -3703,17 +3828,20 @@ app.get('/api/stripe/config', (_req, res) => {
 
 // API: Verify Stripe Prices Against Configured Stripe Account & Mode
 app.get('/api/stripe/verify-prices', async (_req, res) => {
+  await ensureStripePricesResolved();
+  const expectedAmounts = getStripeExpectedAmounts();
   const result: any = {
     success: true,
     allVerified: false,
     mode: STRIPE_MODE,
     isLiveMode: STRIPE_MODE === 'live',
     sandboxMode: STRIPE_MODE === 'sandbox',
-    expectedPrices: STRIPE_EXPECTED_AMOUNTS,
+    expectedPrices: expectedAmounts,
     stripeConfig: {
       hasSecretKey: Boolean(STRIPE_SECRET_KEY),
       hasWebhookSecret: Boolean(STRIPE_WEBHOOK_SECRET),
       hasPublishableKey: Boolean(STRIPE_PUBLISHABLE_KEY),
+      publishableKeyMisconfigured: Boolean(RAW_STRIPE_PUBLISHABLE_KEY && !STRIPE_PUBLISHABLE_KEY),
       isLiveKey: STRIPE_IS_LIVE_KEY,
       isSandboxTestKey: STRIPE_IS_SANDBOX_KEY,
     },
@@ -3758,7 +3886,7 @@ app.get('/api/stripe/verify-prices', async (_req, res) => {
     // Validate each retrieved price against the configured Stripe key's mode
     const expectedLivemode = STRIPE_IS_LIVE_KEY;
 
-    for (const [priceId, expected] of Object.entries(STRIPE_EXPECTED_AMOUNTS)) {
+    for (const [priceId, expected] of Object.entries(expectedAmounts)) {
       try {
         const p = await stripe.prices.retrieve(priceId);
         const amountCents = p.unit_amount;
@@ -3840,8 +3968,33 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
     return res.status(404).json({ success: false, error: 'User account not found' });
   }
 
-  const { priceId } = req.body;
-  if (!priceId || (priceId !== STRIPE_PRICES.PREMIUM && priceId !== STRIPE_PRICES.PREMIUM_PLUS)) {
+  await ensureStripePricesResolved();
+
+  const { priceId: rawPriceId, tier: requestedTier } = req.body || {};
+  let resolvedPriceId = typeof rawPriceId === 'string' ? rawPriceId.trim() : '';
+
+  // If a cached client submits the legacy sandbox price ID (or omits priceId and passes tier)
+  // while the server is in live mode, map it to the verified live price ID for that tier.
+  if (STRIPE_IS_LIVE_KEY) {
+    if (
+      (resolvedPriceId === SANDBOX_FALLBACK_PRICES.PREMIUM ||
+        (!resolvedPriceId && requestedTier === 'Premium')) &&
+      STRIPE_PRICES.PREMIUM !== SANDBOX_FALLBACK_PRICES.PREMIUM
+    ) {
+      resolvedPriceId = STRIPE_PRICES.PREMIUM;
+    } else if (
+      (resolvedPriceId === SANDBOX_FALLBACK_PRICES.PREMIUM_PLUS ||
+        (!resolvedPriceId && requestedTier === 'Premium Plus')) &&
+      STRIPE_PRICES.PREMIUM_PLUS !== SANDBOX_FALLBACK_PRICES.PREMIUM_PLUS
+    ) {
+      resolvedPriceId = STRIPE_PRICES.PREMIUM_PLUS;
+    }
+  }
+
+  if (
+    !resolvedPriceId ||
+    (resolvedPriceId !== STRIPE_PRICES.PREMIUM && resolvedPriceId !== STRIPE_PRICES.PREMIUM_PLUS)
+  ) {
     return res.status(400).json({
       success: false,
       code: 'INVALID_PRICE_ID',
@@ -3849,7 +4002,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
     });
   }
 
-  const expectedPlan = STRIPE_EXPECTED_AMOUNTS[priceId];
+  const expectedPlan = getStripeExpectedAmounts()[resolvedPriceId];
 
   if (!stripe) {
     return res.status(503).json({
@@ -3891,19 +4044,19 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
       mode: 'subscription',
       customer: customerId,
       client_reference_id: user.userId,
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{ price: resolvedPriceId, quantity: 1 }],
       metadata: {
         userId: user.userId,
         email: user.email,
         tier: expectedPlan.tier,
-        priceId,
+        priceId: resolvedPriceId,
       },
       subscription_data: {
         metadata: {
           userId: user.userId,
           email: user.email,
           tier: expectedPlan.tier,
-          priceId,
+          priceId: resolvedPriceId,
         },
       },
       success_url: `${appUrl}/pricing?session_id={CHECKOUT_SESSION_ID}&status=success`,
@@ -3915,6 +4068,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
       url: session.url,
       sessionId: session.id,
       tier: expectedPlan.tier,
+      priceId: resolvedPriceId,
     });
   } catch (err: any) {
     console.error('[Stripe Checkout Error]', err);
@@ -4049,6 +4203,7 @@ async function applySubscriptionUpdate(
 
 // API: Signature-Verified Stripe Webhook Receiver
 app.post('/api/stripe/webhook', async (req, res) => {
+  await ensureStripePricesResolved();
   const sig = req.headers['stripe-signature'];
   let event: Stripe.Event;
 

@@ -171,7 +171,7 @@ export const SubscriptionScreen: React.FC = () => {
     setStripeConfigError(null);
 
     try {
-      const latestConfig = stripeConfig?.prices ? stripeConfig : await fetchStripeConfig();
+      const latestConfig = (await fetchStripeConfig()) || stripeConfig;
       const priceId =
         tier === 'Premium'
           ? latestConfig?.prices?.premium?.id
@@ -191,7 +191,7 @@ export const SubscriptionScreen: React.FC = () => {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ priceId }),
+        body: JSON.stringify({ priceId, tier }),
       });
 
       const data = await res.json();

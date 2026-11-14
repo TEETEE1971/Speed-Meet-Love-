@@ -5,8 +5,8 @@ import fs from 'node:fs';
 const BASE_URL = 'http://localhost:3000';
 
 const EXPECTED_PRICES = {
-  PREMIUM: 'price_1UZJGCGzWqYTtaSTwzOMdDqO',
-  PREMIUM_PLUS: 'price_1UZJR6GzWqYTtaSTVJCIeJip',
+  PREMIUM: '',
+  PREMIUM_PLUS: '',
 };
 
 // Retrieve webhook secret from process or server environment to sign simulated webhooks
@@ -42,7 +42,7 @@ function createWebhookHeaders(bodyString) {
 
 async function runTests() {
   console.log('================================================================');
-  console.log('Starting Stripe Sandbox Subscriptions & Entitlements Test Suite');
+  console.log('Starting Stripe Subscriptions & Entitlements Test Suite');
   console.log('================================================================');
 
   // Test 1: Verify Public Stripe Config
@@ -54,10 +54,27 @@ async function runTests() {
   assert(['live', 'sandbox', 'unconfigured'].includes(config.mode), 'Config must expose dynamic mode');
   assert.strictEqual(typeof config.isLiveMode, 'boolean', 'Config must expose boolean isLiveMode');
   assert.strictEqual(typeof config.sandboxMode, 'boolean', 'Config must expose boolean sandboxMode');
-  assert.strictEqual(config.prices.premium.id, EXPECTED_PRICES.PREMIUM, 'Premium price ID must match');
+  assert(config.prices.premium.id?.startsWith('price_'), 'Premium price ID must be a Stripe price ID');
+  assert(config.prices.premiumPlus.id?.startsWith('price_'), 'Premium Plus price ID must be a Stripe price ID');
+  assert.notStrictEqual(
+    config.prices.premium.id,
+    config.prices.premiumPlus.id,
+    'Premium and Premium Plus price IDs must be distinct'
+  );
+  if (config.isLiveMode) {
+    assert.notStrictEqual(
+      config.prices.premiumPlus.id,
+      'price_1UZJR6GzWqYTtaSTVJCIeJip',
+      'Live mode must not return legacy sandbox Premium Plus price ID'
+    );
+  }
+  if (config.publishableKey) {
+    assert(/^pk_(live|test)_/.test(config.publishableKey), 'Exposed publishableKey must be a pk_ key');
+  }
+  EXPECTED_PRICES.PREMIUM = config.prices.premium.id;
+  EXPECTED_PRICES.PREMIUM_PLUS = config.prices.premiumPlus.id;
   assert.strictEqual(config.prices.premium.amount, 9.99, 'Premium amount must be 9.99');
   assert.strictEqual(config.prices.premium.interval, 'month', 'Premium interval must be month');
-  assert.strictEqual(config.prices.premiumPlus.id, EXPECTED_PRICES.PREMIUM_PLUS, 'Premium Plus price ID must match');
   assert.strictEqual(config.prices.premiumPlus.amount, 14.99, 'Premium Plus amount must be 14.99');
   assert.strictEqual(config.prices.premiumPlus.interval, 'month', 'Premium Plus interval must be month');
   console.log(`✓ /api/stripe/config returns dynamic mode (${config.mode}) and authoritative price IDs`);
@@ -84,8 +101,11 @@ async function runTests() {
   assert.strictEqual(verifyData.expectedPrices[EXPECTED_PRICES.PREMIUM_PLUS].amount, 14.99);
   assert.strictEqual(verifyData.expectedPrices[EXPECTED_PRICES.PREMIUM_PLUS].currency, 'USD');
   assert.strictEqual(verifyData.expectedPrices[EXPECTED_PRICES.PREMIUM_PLUS].interval, 'month');
-  if (verifyData.allVerified) {
+  if (config.isConfigured) {
+    assert.strictEqual(verifyData.allVerified, true, 'Both Premium and Premium Plus prices must verify against Stripe');
+    assert.strictEqual(verifyData.prices[EXPECTED_PRICES.PREMIUM].valid, true);
     assert.strictEqual(verifyData.prices[EXPECTED_PRICES.PREMIUM].modeMatches, true);
+    assert.strictEqual(verifyData.prices[EXPECTED_PRICES.PREMIUM_PLUS].valid, true);
     assert.strictEqual(verifyData.prices[EXPECTED_PRICES.PREMIUM_PLUS].modeMatches, true);
   }
   console.log(`✓ /api/stripe/verify-prices verified specifications (mode=${verifyData.mode}, status=${verifyData.status})`);
