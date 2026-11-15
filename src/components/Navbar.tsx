@@ -201,14 +201,16 @@ export const Navbar: React.FC = () => {
         {/* Right Zone: Controls, Tiers, and User Avatar */}
         <div className="relative flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Mode Switcher */}
-          <button
-            onClick={() => setAppMode(appMode === 'demonstration' ? 'production' : 'demonstration')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all bg-black/25 hover:bg-black/40 text-white border border-white/30 shadow-xs cursor-pointer"
-            title="Click to toggle between Demonstration Mode (Sandbox Testing) and Production Mode"
-          >
-            <span className={`w-2.5 h-2.5 rounded-full ${appMode === 'demonstration' ? 'bg-amber-300 animate-pulse' : 'bg-emerald-400'}`} />
-            <span className="hidden sm:inline">{appMode === 'demonstration' ? 'Demo Sandbox' : 'Production'}</span>
-          </button>
+          {isAuthenticated && isOwner && (
+            <button
+              onClick={() => setAppMode(appMode === 'demonstration' ? 'production' : 'demonstration')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all bg-black/25 hover:bg-black/40 text-white border border-white/30 shadow-xs cursor-pointer"
+              title="Click to toggle between Demonstration Mode (Sandbox Testing) and Production Mode"
+            >
+              <span className={`w-2.5 h-2.5 rounded-full ${appMode === 'demonstration' ? 'bg-amber-300 animate-pulse' : 'bg-emerald-400'}`} />
+              <span className="hidden sm:inline">{appMode === 'demonstration' ? 'Demo Sandbox' : 'Production'}</span>
+            </button>
+          )}
 
           {/* Authenticated Member Actions OR Guest Sign In Buttons */}
           {currentUser && isAuthenticated ? (
@@ -921,12 +923,14 @@ export const Navbar: React.FC = () => {
               <p className="font-extrabold text-slate-800 text-center italic">
                 “Real People. Real Connections. In Minutes.”
               </p>
-              <div className="flex items-center justify-between pt-1">
-                <span>Mode:</span>
-                <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${appMode === 'demonstration' ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-900 border border-emerald-300'}`}>
-                  {appMode === 'demonstration' ? 'Demo Sandbox' : 'Production Live'}
-                </span>
-              </div>
+              {isAuthenticated && isOwner && (
+                <div className="flex items-center justify-between pt-1">
+                  <span>Mode:</span>
+                  <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${appMode === 'demonstration' ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-900 border border-emerald-300'}`}>
+                    {appMode === 'demonstration' ? 'Demo Sandbox' : 'Production Live'}
+                  </span>
+                </div>
+              )}
             </div>
           </aside>
         </div>

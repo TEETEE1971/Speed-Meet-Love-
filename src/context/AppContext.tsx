@@ -421,6 +421,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [secondDateSessions, setSecondDateSessions] = useState<SecondDateSession[]>([]);
 
   const setAppMode = (mode: AppMode) => {
+    // Demo tools belong to the signed-in owner, never ordinary members.
+    if (mode === 'demonstration' && !(isAuthenticated && isOwner)) return;
     const prevMode = appMode;
     setAppModeState(mode);
     localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, mode);
@@ -463,7 +465,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    showNotification(
+    if (isAuthenticated && isOwner) showNotification(
       mode === 'demonstration'
         ? 'Switched to Demonstration Mode (Sandbox Testing).'
         : 'Switched to Production Mode (Live Speed Dating). Real consenting members only.',
@@ -706,6 +708,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentUser.UserID === 'usr_kristy'
     )
   );
+
+  // Clear demo mode left on this browser by an earlier owner/test session.
+  // Use the normal transition to restore the production session without a toast.
+  useEffect(() => {
+    if (!(isAuthenticated && isOwner) && appMode === 'demonstration') {
+      setAppMode('production');
+    }
+  }, [isAuthenticated, isOwner, appMode]);
 
   const setCurrentView = (view: AppView) => {
     setCurrentViewState(view);
