@@ -51,6 +51,8 @@ export const EventList: React.FC = () => {
     liveSession,
     setActiveRoundIndex,
     openAuthModal,
+    isAuthenticated,
+    isOwner,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'cards' | 'table'>('cards');
@@ -250,13 +252,15 @@ export const EventList: React.FC = () => {
               Host New Weekend Mixer
             </button>
 
-            <button
-              onClick={() => setActiveTab(activeTab === 'cards' ? 'table' : 'cards')}
-              className="px-4 py-3 rounded-2xl bg-pink-50 hover:bg-pink-100 text-[#FF2E93] text-xs font-semibold transition-colors flex items-center gap-2 cursor-pointer"
-            >
-              <Table className="w-4 h-4" />
-              {activeTab === 'cards' ? 'Events Relational Table' : 'Card View'}
-            </button>
+            {isAuthenticated && isOwner && (
+              <button
+                onClick={() => setActiveTab(activeTab === 'cards' ? 'table' : 'cards')}
+                className="px-4 py-3 rounded-2xl bg-pink-50 hover:bg-pink-100 text-[#FF2E93] text-xs font-semibold transition-colors flex items-center gap-2 cursor-pointer"
+              >
+                <Table className="w-4 h-4" />
+                {activeTab === 'cards' ? 'Events Relational Table' : 'Card View'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -468,7 +472,7 @@ export const EventList: React.FC = () => {
       </div>
 
       {/* VIEW: TABLE OR CARDS */}
-      {activeTab === 'table' ? (
+      {isAuthenticated && isOwner && activeTab === 'table' ? (
         <EventsTableInspector />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
