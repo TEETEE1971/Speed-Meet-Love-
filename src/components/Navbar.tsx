@@ -28,6 +28,75 @@ import { Avatar } from './Avatar';
 import { SpeedMeetLoveLogo } from './SpeedMeetLoveLogo';
 import { SubscriptionTier, AppView } from '../types';
 
+interface NavHeartTileProps {
+  label: string;
+  accentColor: string;
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  variant: 'desktop' | 'mobile';
+}
+
+const NavHeartTile: React.FC<NavHeartTileProps> = ({
+  label,
+  accentColor,
+  active,
+  onClick,
+  icon,
+  variant,
+}) => {
+  const sizeClass =
+    variant === 'desktop'
+      ? 'w-[62px] h-[54px] xl:w-[66px] xl:h-[58px]'
+      : 'w-full max-w-[58px] sm:max-w-[66px] h-[50px] min-[390px]:h-[54px] sm:h-[58px] mx-auto';
+
+  const labelSizeClass =
+    variant === 'desktop'
+      ? 'text-[9.5px] xl:text-[10px] tracking-[-0.02em]'
+      : 'text-[7.5px] min-[375px]:text-[8.5px] min-[400px]:text-[9px] sm:text-[10px] tracking-[-0.04em]';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      aria-label={label}
+      className={`relative flex flex-col items-center justify-center shrink-0 cursor-pointer transition-transform duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/90 rounded-xl ${sizeClass} ${
+        active ? 'scale-[1.04]' : 'hover:scale-[1.03]'
+      }`}
+    >
+      <svg
+        viewBox="0 0 68 58"
+        className="absolute inset-0 w-full h-full overflow-visible pointer-events-none"
+        style={{
+          filter: active
+            ? `drop-shadow(0 0 5px ${accentColor}77) drop-shadow(0 2px 4px rgba(0,0,0,0.22))`
+            : 'drop-shadow(0 2px 4px rgba(0,0,0,0.16))',
+        }}
+        aria-hidden="true"
+      >
+        <path
+          d="M34 55 C34 55 2.5 37 2.5 18.5 C2.5 8.8 10.6 2.2 19.8 2.2 C25.8 2.2 30.8 5.4 34 10.2 C37.2 5.4 42.2 2.2 48.2 2.2 C57.4 2.2 65.5 8.8 65.5 18.5 C65.5 37 34 55 34 55 Z"
+          fill="#FFFFFF"
+          stroke={accentColor}
+          strokeWidth={active ? '3.4' : '1.4'}
+          strokeLinejoin="round"
+        />
+      </svg>
+
+      <div
+        className="relative z-10 w-full h-full flex flex-col items-center justify-center gap-0.5 pt-[16%] pb-[23%] px-1"
+        style={{ color: accentColor }}
+      >
+        {icon}
+        <span className={`font-extrabold text-black leading-none whitespace-nowrap select-none ${labelSizeClass}`}>
+          {label}
+        </span>
+      </div>
+    </button>
+  );
+};
+
 export const Navbar: React.FC = () => {
   const {
     currentUser,
@@ -80,17 +149,17 @@ export const Navbar: React.FC = () => {
 
   return (
     <header className="sticky top-0 z-40 bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 text-white shadow-xl border-b-2 border-red-700">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-1.5 sm:gap-4">
         
         {/* Upper-Left Corner: Three-Line Menu Button + SPEED MEET Love Brand Logo (FIX 2 Requirement) */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <button
             onClick={() => setMenuDrawerOpen(true)}
-            className="p-2 sm:p-2.5 rounded-2xl bg-white/20 hover:bg-white/30 active:scale-95 text-white transition-all cursor-pointer border border-white/35 shadow-xs flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-white/60"
+            className="p-1.5 sm:p-2.5 rounded-xl sm:rounded-2xl bg-white/20 hover:bg-white/30 active:scale-95 text-white transition-all cursor-pointer border border-white/35 shadow-xs flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-white/60"
             aria-label="Open main navigation menu"
             title="Open navigation menu"
           >
-            <Menu className="w-6 h-6 text-white stroke-[2.75]" />
+            <Menu className="w-5 h-5 sm:w-6 sm:h-6 text-white stroke-[2.75]" />
           </button>
 
           <button
@@ -102,113 +171,99 @@ export const Navbar: React.FC = () => {
           </button>
         </div>
 
-        {/* Desktop Navigation Bar with LARGE WHITE ICONS (Requirement: 1. Home 2. Browse 3. Matches 4. Messages 5. Events 6. Profile) */}
-        <nav className="hidden lg:flex items-center gap-2 font-black text-sm">
-          {/* Home */}
-          <button
+        {/* Desktop Navigation Bar: 6 White Heart Shapes with Colored Icons & Bold Black Labels */}
+        <nav className="hidden lg:flex items-center gap-1.5 xl:gap-2">
+          {/* 1. Home (Blue) */}
+          <NavHeartTile
+            variant="desktop"
+            label="Home"
+            accentColor="#2563EB"
+            active={currentView === 'home'}
             onClick={() => setCurrentView('home')}
-            className={`px-3.5 py-2 rounded-2xl transition-all flex items-center gap-2 cursor-pointer ${
-              currentView === 'home'
-                ? 'bg-white text-red-700 shadow-md font-extrabold'
-                : 'text-white hover:bg-white/20'
-            }`}
-          >
-            <Home className={`w-5 h-5 shrink-0 ${currentView === 'home' ? 'text-red-600' : 'text-white'}`} />
-            <span>Home</span>
-          </button>
+            icon={<Home className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 stroke-[2.4]" />}
+          />
 
-          {/* Browse */}
-          <button
+          {/* 2. Browse (Pink) */}
+          <NavHeartTile
+            variant="desktop"
+            label="Browse"
+            accentColor="#DB2777"
+            active={currentView === 'browse'}
             onClick={() => setCurrentView('browse')}
-            className={`px-3.5 py-2 rounded-2xl transition-all flex items-center gap-2 cursor-pointer ${
-              currentView === 'browse'
-                ? 'bg-white text-red-700 shadow-md font-extrabold'
-                : 'text-white hover:bg-white/20'
-            }`}
-          >
-            <Compass className={`w-5 h-5 shrink-0 ${currentView === 'browse' ? 'text-red-600' : 'text-white'}`} />
-            <span>Browse</span>
-          </button>
+            icon={<Compass className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 stroke-[2.4]" />}
+          />
 
-          {/* Matches */}
-          <button
+          {/* 3. Matches (Red) */}
+          <NavHeartTile
+            variant="desktop"
+            label="Matches"
+            accentColor="#DC2626"
+            active={currentView === 'matches' || currentView === 'results'}
             onClick={() => setCurrentView('matches')}
-            className={`px-3.5 py-2 rounded-2xl transition-all flex items-center gap-2 cursor-pointer ${
-              currentView === 'matches' || currentView === 'results'
-                ? 'bg-white text-red-700 shadow-md font-extrabold'
-                : 'text-white hover:bg-white/20'
-            }`}
-          >
-            <Heart className={`w-5 h-5 shrink-0 ${currentView === 'matches' || currentView === 'results' ? 'text-red-600 fill-red-600' : 'text-white fill-white'}`} />
-            <span>Matches</span>
-            {pendingSecondDateCount > 0 ? (
-              <span
-                title={`${pendingSecondDateCount} Second-Chance Date Invitation${pendingSecondDateCount > 1 ? 's' : ''}`}
-                className="ml-1 px-2 py-0.5 rounded-full text-xs font-mono font-black bg-amber-400 text-slate-950 animate-pulse flex items-center gap-1 shadow-sm"
-              >
-                <Sparkles className="w-3 h-3 text-amber-900 fill-amber-900" />
-                <span>{pendingSecondDateCount}</span>
-              </span>
-            ) : mutualMatchCount > 0 ? (
-              <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-mono font-black ${
-                currentView === 'matches' ? 'bg-red-600 text-white' : 'bg-white text-red-600'
-              }`}>
-                {mutualMatchCount}
-              </span>
-            ) : null}
-          </button>
+            icon={
+              <div className="relative">
+                <Heart className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 fill-[#DC2626] text-[#DC2626]" />
+                {pendingSecondDateCount > 0 ? (
+                  <span
+                    title={`${pendingSecondDateCount} Second-Chance Date Invitation${pendingSecondDateCount > 1 ? 's' : ''}`}
+                    className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full text-[8px] font-mono font-black bg-amber-400 text-slate-950 animate-pulse flex items-center gap-0.5 shadow-xs border border-amber-300 leading-none"
+                  >
+                    <Sparkles className="w-2 h-2 text-amber-900 fill-amber-900" />
+                    <span>{pendingSecondDateCount}</span>
+                  </span>
+                ) : mutualMatchCount > 0 ? (
+                  <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full text-[8px] font-mono font-black bg-[#DC2626] text-white shadow-xs leading-none">
+                    {mutualMatchCount}
+                  </span>
+                ) : null}
+              </div>
+            }
+          />
 
-          {/* Messages */}
-          <button
+          {/* 4. Messages (Turquoise) */}
+          <NavHeartTile
+            variant="desktop"
+            label="Messages"
+            accentColor="#0D9488"
+            active={currentView === 'messages'}
             onClick={() => setCurrentView('messages')}
-            className={`px-3.5 py-2 rounded-2xl transition-all flex items-center gap-2 cursor-pointer ${
-              currentView === 'messages'
-                ? 'bg-white text-red-700 shadow-md font-extrabold'
-                : 'text-white hover:bg-white/20'
-            }`}
-          >
-            <MessageCircle className={`w-5 h-5 shrink-0 ${currentView === 'messages' ? 'text-red-600' : 'text-white'}`} />
-            <span>Messages</span>
-          </button>
+            icon={<MessageCircle className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 stroke-[2.4]" />}
+          />
 
-          {/* Events */}
-          <button
+          {/* 5. Events (Blue) */}
+          <NavHeartTile
+            variant="desktop"
+            label="Events"
+            accentColor="#2563EB"
+            active={currentView === 'friday' || currentView === 'lobby' || currentView === 'live'}
             onClick={() => setCurrentView('friday')}
-            className={`px-3.5 py-2 rounded-2xl transition-all flex items-center gap-2 cursor-pointer ${
-              currentView === 'friday' || currentView === 'lobby' || currentView === 'live'
-                ? 'bg-white text-red-700 shadow-md font-extrabold'
-                : 'text-white hover:bg-white/20'
-            }`}
-          >
-            <Calendar className={`w-5 h-5 shrink-0 ${currentView === 'friday' || currentView === 'lobby' || currentView === 'live' ? 'text-red-600' : 'text-white'}`} />
-            <span>Events</span>
-          </button>
+            icon={<Calendar className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 stroke-[2.4]" />}
+          />
 
-          {/* Profile */}
-          <button
+          {/* 6. Profile (Pink) */}
+          <NavHeartTile
+            variant="desktop"
+            label="Profile"
+            accentColor="#DB2777"
+            active={currentView === 'profile'}
             onClick={() => setCurrentView('profile')}
-            className={`px-3.5 py-2 rounded-2xl transition-all flex items-center gap-2 cursor-pointer ${
-              currentView === 'profile'
-                ? 'bg-white text-red-700 shadow-md font-extrabold'
-                : 'text-white hover:bg-white/20'
-            }`}
-          >
-            <UserIcon className={`w-5 h-5 shrink-0 ${currentView === 'profile' ? 'text-red-600' : 'text-white'}`} />
-            <span>Profile</span>
-          </button>
+            icon={<UserIcon className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 stroke-[2.4]" />}
+          />
         </nav>
 
         {/* Right Zone: Controls, Tiers, and User Avatar */}
-        <div className="relative flex items-center gap-2 sm:gap-3 shrink-0">
-          {/* Mode Switcher */}
-          <button
-            onClick={() => setAppMode(appMode === 'demonstration' ? 'production' : 'demonstration')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all bg-black/25 hover:bg-black/40 text-white border border-white/30 shadow-xs cursor-pointer"
-            title="Click to toggle between Demonstration Mode (Sandbox Testing) and Production Mode"
-          >
-            <span className={`w-2.5 h-2.5 rounded-full ${appMode === 'demonstration' ? 'bg-amber-300 animate-pulse' : 'bg-emerald-400'}`} />
-            <span className="hidden sm:inline">{appMode === 'demonstration' ? 'Demo Sandbox' : 'Production'}</span>
-          </button>
+        <div className="relative flex items-center gap-1.5 sm:gap-3 shrink-0">
+          {/* Mode Switcher (Signed-in Owner only) */}
+          {isOwner && (
+            <button
+              onClick={() => setAppMode(appMode === 'demonstration' ? 'production' : 'demonstration')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all bg-black/25 hover:bg-black/40 text-white border border-white/30 shadow-xs cursor-pointer"
+              title="Click to toggle between Demonstration Mode (Sandbox Testing) and Production Mode"
+            >
+              <span className={`w-2.5 h-2.5 rounded-full ${appMode === 'demonstration' ? 'bg-amber-300 animate-pulse' : 'bg-emerald-400'}`} />
+              <span className="hidden sm:inline">{appMode === 'demonstration' ? 'Demo Sandbox' : 'Production'}</span>
+            </button>
+          )}
 
           {/* Authenticated Member Actions OR Guest Sign In Buttons */}
           {currentUser && isAuthenticated ? (
@@ -250,28 +305,28 @@ export const Navbar: React.FC = () => {
               {/* Profile Dropdown */}
               {profileDropdownOpen && (
                 <div
-                  className="absolute right-0 top-14 w-80 rounded-3xl bg-white border-2 border-rose-200 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-xs text-slate-800"
+                  className="absolute right-0 top-14 w-80 rounded-3xl bg-white border-2 border-rose-200 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-xs text-[#111827]"
                   onMouseLeave={() => setProfileDropdownOpen(false)}
                 >
                   <div className="pb-3 border-b border-rose-100 flex items-center gap-3">
                     <Avatar user={currentUser} size="md" showBadge />
                     <div>
-                      <p className="font-black text-slate-900 font-heading text-sm">
+                      <p className="font-bold text-[#111827] font-heading text-sm">
                         {currentUser.LastName ? `${currentUser.FirstName} ${currentUser.LastName}` : currentUser.FirstName}
                       </p>
-                      <p className="text-[11px] text-slate-600 font-medium">{currentUser.Email}</p>
-                      <span className="inline-block mt-1 text-[11px] font-black text-red-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                      <p className="text-[11px] text-[#111827] font-medium">{currentUser.Email}</p>
+                      <span className="inline-block mt-1 text-[11px] font-bold text-[#B91C1C] bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
                         Tier: {currentUser.SubscriptionTier}
                       </span>
                     </div>
                   </div>
 
-                  {/* Demonstration Sandbox Controls (ONLY in Demo Mode, NEVER in Production) */}
-                  {appMode === 'demonstration' && (
+                  {/* Demonstration Sandbox Controls (Owner in Demo Mode only, NEVER in Production) */}
+                  {isOwner && appMode === 'demonstration' && (
                     <>
                       {/* Instant Tier Switcher */}
                       <div className="py-3 border-b border-rose-100 space-y-1.5">
-                        <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                        <div className="text-[11px] font-bold text-[#111827] uppercase tracking-wider">
                           Switch Active Tier (Demo Mode)
                         </div>
                         <div className="grid grid-cols-3 gap-1.5 text-[11px]">
@@ -280,7 +335,7 @@ export const Navbar: React.FC = () => {
                             className={`py-1.5 px-2 rounded-xl font-bold transition-all cursor-pointer ${
                               currentUser.SubscriptionTier === 'Free'
                                 ? 'bg-slate-900 text-white shadow-xs'
-                                : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
+                                : 'bg-slate-100 text-[#111827] hover:bg-slate-200'
                             }`}
                           >
                             Free ($0)
@@ -290,17 +345,17 @@ export const Navbar: React.FC = () => {
                             className={`py-1.5 px-2 rounded-xl font-bold transition-all cursor-pointer ${
                               currentUser.SubscriptionTier === 'Premium'
                                 ? 'btn-glossy-red-pink text-white shadow-xs'
-                                : 'bg-rose-50 text-red-700 hover:bg-rose-100'
+                                : 'bg-rose-50 text-[#991B1B] hover:bg-rose-100'
                             }`}
                           >
                             Prem ($9.99)
                           </button>
                           <button
                             onClick={() => setSubscriptionTier('Premium Plus')}
-                            className={`py-1.5 px-2 rounded-xl font-black transition-all cursor-pointer ${
+                            className={`py-1.5 px-2 rounded-xl font-bold transition-all cursor-pointer ${
                               currentUser.SubscriptionTier === 'Premium Plus'
                                 ? 'bg-gradient-to-r from-amber-400 to-red-600 text-white shadow-xs'
-                                : 'bg-amber-50 text-amber-900 hover:bg-amber-100'
+                                : 'bg-amber-50 text-[#78350F] hover:bg-amber-100'
                             }`}
                           >
                             Plus ($14.99)
@@ -310,7 +365,7 @@ export const Navbar: React.FC = () => {
 
                       {/* Demo Profile Switcher */}
                       <div className="py-2.5 border-b border-rose-100 space-y-1">
-                        <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                        <div className="text-[11px] font-bold text-[#111827] uppercase tracking-wider">
                           Test As Different Member
                         </div>
                         {users.map(u => (
@@ -322,12 +377,12 @@ export const Navbar: React.FC = () => {
                             }}
                             className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
                               u.UserID === currentUser.UserID
-                                ? 'bg-rose-50 text-red-600 font-black'
-                                : 'text-slate-700 hover:bg-rose-50/50'
+                                ? 'bg-rose-50 text-[#B91C1C] font-bold'
+                                : 'text-[#111827] font-medium hover:bg-rose-50/50'
                             }`}
                           >
                             <span className="font-semibold">{u.FirstName} ({u.Gender}{u.Age && u.Age > 0 ? `, ${u.Age}` : ''})</span>
-                            <span className="text-[10px] text-slate-500 font-mono font-bold">
+                            <span className="text-[10px] text-[#111827] font-mono font-bold">
                               {u.SubscriptionTier}
                             </span>
                           </button>
@@ -343,9 +398,9 @@ export const Navbar: React.FC = () => {
                         setCurrentView('profile');
                         setProfileDropdownOpen(false);
                       }}
-                      className="w-full text-left px-2.5 py-2 rounded-xl text-slate-800 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-[#111827] hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
                     >
-                      <UserIcon className="w-4 h-4 text-red-600" />
+                      <UserIcon className="w-4 h-4 text-[#B91C1C]" />
                       <span>View & Edit Profile</span>
                     </button>
                     <button
@@ -353,9 +408,9 @@ export const Navbar: React.FC = () => {
                         setCurrentView('pricing');
                         setProfileDropdownOpen(false);
                       }}
-                      className="w-full text-left px-2.5 py-2 rounded-xl text-slate-800 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-[#111827] hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
                     >
-                      <CreditCard className="w-4 h-4 text-red-600" />
+                      <CreditCard className="w-4 h-4 text-[#B91C1C]" />
                       <span>Membership Pricing & Perks</span>
                     </button>
                     <button
@@ -363,9 +418,9 @@ export const Navbar: React.FC = () => {
                         setCurrentView('privacy');
                         setProfileDropdownOpen(false);
                       }}
-                      className="w-full text-left px-2.5 py-2 rounded-xl text-slate-800 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-[#111827] hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
                     >
-                      <ShieldCheck className="w-4 h-4 text-red-600" />
+                      <ShieldCheck className="w-4 h-4 text-[#B91C1C]" />
                       <span>Privacy Policy</span>
                     </button>
                     <button
@@ -373,9 +428,9 @@ export const Navbar: React.FC = () => {
                         setCurrentView('child_safety');
                         setProfileDropdownOpen(false);
                       }}
-                      className="w-full text-left px-2.5 py-2 rounded-xl text-slate-800 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-[#111827] hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
                     >
-                      <ShieldAlert className="w-4 h-4 text-red-600" />
+                      <ShieldAlert className="w-4 h-4 text-[#B91C1C]" />
                       <span>Child Safety Standards</span>
                     </button>
                     {isOwner && (
@@ -385,9 +440,9 @@ export const Navbar: React.FC = () => {
                             setCurrentView('owner_reports');
                             setProfileDropdownOpen(false);
                           }}
-                          className="w-full text-left px-2.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 flex items-center gap-2 font-black text-xs border border-amber-200 cursor-pointer"
+                          className="w-full text-left px-2.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#78350F] flex items-center gap-2 font-bold text-xs border border-amber-200 cursor-pointer"
                         >
-                          <ShieldAlert className="w-4 h-4 text-amber-600" />
+                          <ShieldAlert className="w-4 h-4 text-[#B45309]" />
                           <span>Owner Safety &amp; Reports</span>
                         </button>
                         <button
@@ -395,10 +450,20 @@ export const Navbar: React.FC = () => {
                             setCurrentView('owner_users');
                             setProfileDropdownOpen(false);
                           }}
-                          className="w-full text-left px-2.5 py-2 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-950 flex items-center gap-2 font-black text-xs border border-pink-200 cursor-pointer"
+                          className="w-full text-left px-2.5 py-2 rounded-xl bg-pink-50 hover:bg-pink-100 text-[#831843] flex items-center gap-2 font-bold text-xs border border-pink-200 cursor-pointer"
                         >
-                          <Users className="w-4 h-4 text-[#FF2E93]" />
+                          <Users className="w-4 h-4 text-[#BE185D]" />
                           <span>Registered Users (Live)</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setCurrentView('owner_waitlist');
+                            setProfileDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-2.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-[#9D174D] flex items-center gap-2 font-bold text-xs border border-rose-200 cursor-pointer"
+                        >
+                          <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D]" />
+                          <span>Private Event Waitlist</span>
                         </button>
                       </>
                     )}
@@ -425,9 +490,9 @@ export const Navbar: React.FC = () => {
                         signOut();
                         setProfileDropdownOpen(false);
                       }}
-                      className="w-full text-left px-2.5 py-2 rounded-xl text-red-600 hover:bg-red-50 flex items-center gap-2 font-bold cursor-pointer border-t border-rose-100 mt-1 pt-2"
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-[#B91C1C] hover:bg-red-50 flex items-center gap-2 font-bold cursor-pointer border-t border-rose-100 mt-1 pt-2"
                     >
-                      <LogOut className="w-4 h-4 text-red-600" />
+                      <LogOut className="w-4 h-4 text-[#B91C1C]" />
                       <span>Sign Out</span>
                     </button>
                   </div>
@@ -435,20 +500,45 @@ export const Navbar: React.FC = () => {
               )}
             </>
           ) : (
-            /* Guest Visitors: Sign In and Create Account */
-            <div className="flex items-center gap-2">
+            /* Guest Visitors: Pink Heart Sign In & Create Account */
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
               <button
+                type="button"
                 onClick={() => openAuthModal('signin')}
-                className="px-3 sm:px-4 py-2 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-extrabold text-xs transition-all cursor-pointer flex items-center gap-1.5 border border-white/40 shadow-xs"
+                aria-label="Sign In"
+                className="relative group w-[56px] h-[50px] sm:w-[64px] sm:h-[56px] shrink-0 mx-0.5 flex items-center justify-center cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/90 rounded-2xl transition-transform active:scale-95"
               >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Sign In</span>
+                <span className="relative w-full h-full flex items-center justify-center animate-heart-signin group-hover:brightness-105">
+                  <svg
+                    viewBox="0 0 64 56"
+                    className="absolute inset-0 w-full h-full overflow-visible pointer-events-none"
+                    aria-hidden="true"
+                  >
+                    <defs>
+                      <linearGradient id="headerSignInHeartGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#FF77BC" />
+                        <stop offset="45%" stopColor="#EB2A88" />
+                        <stop offset="100%" stopColor="#BE185D" />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M32 52.5 C32 52.5 4 36 4 18.5 C4 9.5 11.2 3 19.5 3 C24.8 3 29.5 5.9 32 10.2 C34.5 5.9 39.2 3 44.5 3 C52.8 3 60 9.5 60 18.5 C60 36 32 52.5 32 52.5 Z"
+                      fill="url(#headerSignInHeartGrad)"
+                      stroke="rgba(255, 241, 247, 0.9)"
+                      strokeWidth="1.75"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span className="relative z-10 pb-1.5 text-white font-extrabold text-[10.5px] sm:text-[11.5px] leading-none tracking-tight whitespace-nowrap select-none [text-shadow:0_1px_2px_rgba(131,24,67,0.8)]">
+                    Sign In
+                  </span>
+                </span>
               </button>
               <button
                 onClick={() => openAuthModal('signup')}
-                className="px-3 sm:px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-red-600 font-extrabold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl bg-white hover:bg-rose-50 text-[#B91C1C] font-extrabold text-[11px] sm:text-xs shadow-md transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0"
               >
-                <UserPlus className="w-3.5 h-3.5" />
+                <UserPlus className="w-3.5 h-3.5 hidden min-[400px]:inline shrink-0" />
                 <span>Create Account</span>
               </button>
             </div>
@@ -456,96 +546,80 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile Navigation Bar with 6 Items (1. Home 2. Browse 3. Matches 4. Messages 5. Events 6. Profile) */}
-      <div className="lg:hidden grid grid-cols-6 items-center bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 border-t-2 border-red-700 px-1 py-1.5 text-white shadow-md">
-        {/* 1. Home */}
-        <button
+      {/* Mobile / Android Navigation Bar: 6 White Heart Shapes with Colored Icons & Bold Black Labels */}
+      <div className="lg:hidden grid grid-cols-6 gap-0.5 sm:gap-1.5 items-center bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 border-t border-white/20 px-1 sm:px-2.5 py-1.5 shadow-md">
+        {/* 1. Home (Blue) */}
+        <NavHeartTile
+          variant="mobile"
+          label="Home"
+          accentColor="#2563EB"
+          active={currentView === 'home'}
           onClick={() => setCurrentView('home')}
-          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl cursor-pointer transition-all ${
-            currentView === 'home'
-              ? 'bg-white text-red-700 font-black shadow-md'
-              : 'text-white/95 hover:text-white'
-          }`}
-        >
-          <Home className="w-5 h-5 shrink-0" />
-          <span className="text-[10px] sm:text-[11px] font-bold tracking-tight mt-0.5 leading-none">Home</span>
-        </button>
+          icon={<Home className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 stroke-[2.4]" />}
+        />
 
-        {/* 2. Browse */}
-        <button
+        {/* 2. Browse (Pink) */}
+        <NavHeartTile
+          variant="mobile"
+          label="Browse"
+          accentColor="#DB2777"
+          active={currentView === 'browse'}
           onClick={() => setCurrentView('browse')}
-          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl cursor-pointer transition-all ${
-            currentView === 'browse'
-              ? 'bg-white text-red-700 font-black shadow-md'
-              : 'text-white/95 hover:text-white'
-          }`}
-        >
-          <Compass className="w-5 h-5 shrink-0" />
-          <span className="text-[10px] sm:text-[11px] font-bold tracking-tight mt-0.5 leading-none">Browse</span>
-        </button>
+          icon={<Compass className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 stroke-[2.4]" />}
+        />
 
-        {/* 3. Matches */}
-        <button
+        {/* 3. Matches (Red) */}
+        <NavHeartTile
+          variant="mobile"
+          label="Matches"
+          accentColor="#DC2626"
+          active={currentView === 'matches' || currentView === 'results'}
           onClick={() => setCurrentView('matches')}
-          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl cursor-pointer transition-all relative ${
-            currentView === 'matches' || currentView === 'results'
-              ? 'bg-white text-red-700 font-black shadow-md'
-              : 'text-white/95 hover:text-white'
-          }`}
-        >
-          <div className="relative">
-            <Heart className={`w-5 h-5 shrink-0 ${currentView === 'matches' || currentView === 'results' ? 'fill-red-600' : 'fill-current'}`} />
-            {pendingSecondDateCount > 0 ? (
-              <span className="absolute -top-1.5 -right-2.5 px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black leading-tight border border-amber-300 animate-pulse flex items-center">
-                !
-              </span>
-            ) : mutualMatchCount > 0 ? (
-              <span className="absolute -top-1.5 -right-2 px-1 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black leading-tight border border-amber-300">
-                {mutualMatchCount}
-              </span>
-            ) : null}
-          </div>
-          <span className="text-[10px] sm:text-[11px] font-bold tracking-tight mt-0.5 leading-none">Matches</span>
-        </button>
+          icon={
+            <div className="relative">
+              <Heart className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 fill-[#DC2626] text-[#DC2626]" />
+              {pendingSecondDateCount > 0 ? (
+                <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[8px] font-black leading-none border border-amber-300 animate-pulse flex items-center">
+                  !
+                </span>
+              ) : mutualMatchCount > 0 ? (
+                <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-[#DC2626] text-white text-[8px] font-black leading-none">
+                  {mutualMatchCount}
+                </span>
+              ) : null}
+            </div>
+          }
+        />
 
-        {/* 4. Messages */}
-        <button
+        {/* 4. Messages (Turquoise) */}
+        <NavHeartTile
+          variant="mobile"
+          label="Messages"
+          accentColor="#0D9488"
+          active={currentView === 'messages'}
           onClick={() => setCurrentView('messages')}
-          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl cursor-pointer transition-all ${
-            currentView === 'messages'
-              ? 'bg-white text-red-700 font-black shadow-md'
-              : 'text-white/95 hover:text-white'
-          }`}
-        >
-          <MessageCircle className="w-5 h-5 shrink-0" />
-          <span className="text-[10px] sm:text-[11px] font-bold tracking-tight mt-0.5 leading-none">Messages</span>
-        </button>
+          icon={<MessageCircle className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 stroke-[2.4]" />}
+        />
 
-        {/* 5. Events */}
-        <button
+        {/* 5. Events (Blue) */}
+        <NavHeartTile
+          variant="mobile"
+          label="Events"
+          accentColor="#2563EB"
+          active={currentView === 'friday' || currentView === 'lobby' || currentView === 'live'}
           onClick={() => setCurrentView('friday')}
-          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl cursor-pointer transition-all ${
-            currentView === 'friday' || currentView === 'lobby' || currentView === 'live'
-              ? 'bg-white text-red-700 font-black shadow-md'
-              : 'text-white/95 hover:text-white'
-          }`}
-        >
-          <Calendar className="w-5 h-5 shrink-0" />
-          <span className="text-[10px] sm:text-[11px] font-bold tracking-tight mt-0.5 leading-none">Events</span>
-        </button>
+          icon={<Calendar className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 stroke-[2.4]" />}
+        />
 
-        {/* 6. Profile */}
-        <button
+        {/* 6. Profile (Pink) */}
+        <NavHeartTile
+          variant="mobile"
+          label="Profile"
+          accentColor="#DB2777"
+          active={currentView === 'profile'}
           onClick={() => setCurrentView('profile')}
-          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl cursor-pointer transition-all ${
-            currentView === 'profile'
-              ? 'bg-white text-red-700 font-black shadow-md'
-              : 'text-white/95 hover:text-white'
-          }`}
-        >
-          <UserIcon className="w-5 h-5 shrink-0" />
-          <span className="text-[10px] sm:text-[11px] font-bold tracking-tight mt-0.5 leading-none">Profile</span>
-        </button>
+          icon={<UserIcon className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 stroke-[2.4]" />}
+        />
       </div>
 
       {/* Sliding Navigation Drawer (FIX 2 Requirement: Three-Line Menu Navigation) */}
@@ -560,7 +634,7 @@ export const Navbar: React.FC = () => {
 
           {/* Drawer Panel */}
           <aside
-            className="relative w-80 sm:w-96 max-w-[85vw] bg-white text-slate-800 h-full shadow-2xl flex flex-col z-10 border-r-2 border-red-200 animate-in slide-in-from-left duration-250 overflow-hidden"
+            className="relative w-80 sm:w-96 max-w-[85vw] bg-white text-[#111827] h-full shadow-2xl flex flex-col z-10 border-r-2 border-red-200 animate-in slide-in-from-left duration-250 overflow-hidden"
             role="dialog"
             aria-label="Main Navigation Menu"
           >
@@ -593,11 +667,11 @@ export const Navbar: React.FC = () => {
                 <div className="flex items-center gap-3 min-w-0">
                   <Avatar user={currentUser} size="md" showBadge />
                   <div className="min-w-0 flex-1">
-                    <p className="font-extrabold text-slate-900 text-sm truncate font-heading">
+                    <p className="font-bold text-[#111827] text-sm truncate font-heading">
                       {currentUser.LastName ? `${currentUser.FirstName} ${currentUser.LastName}` : currentUser.FirstName}
                     </p>
-                    <p className="text-[11px] text-slate-500 truncate">{currentUser.Email}</p>
-                    <span className="inline-block mt-0.5 text-[10px] font-black text-red-600 bg-white px-2 py-0.5 rounded-full border border-rose-200 shadow-2xs">
+                    <p className="text-[11px] text-[#111827] font-medium truncate">{currentUser.Email}</p>
+                    <span className="inline-block mt-0.5 text-[10px] font-bold text-[#B91C1C] bg-white px-2 py-0.5 rounded-full border border-rose-200 shadow-2xs">
                       {currentUser.SubscriptionTier}
                     </span>
                   </div>
@@ -607,7 +681,7 @@ export const Navbar: React.FC = () => {
                     signOut();
                     setMenuDrawerOpen(false);
                   }}
-                  className="p-2 rounded-xl text-red-600 hover:bg-rose-100/60 active:scale-95 transition-all cursor-pointer"
+                  className="p-2 rounded-xl text-[#B91C1C] hover:bg-rose-100/60 active:scale-95 transition-all cursor-pointer"
                   title="Sign Out"
                   aria-label="Sign Out"
                 >
@@ -616,10 +690,10 @@ export const Navbar: React.FC = () => {
               </div>
             ) : (
               <div className="p-4 bg-gradient-to-br from-rose-50 to-pink-50 border-b border-rose-100 space-y-2">
-                <p className="font-extrabold text-slate-900 text-sm font-heading">
+                <p className="font-bold text-[#111827] text-sm font-heading">
                   Welcome to Speed Meet Love
                 </p>
-                <p className="text-xs text-slate-600">
+                <p className="text-xs text-[#111827] font-medium">
                   Sign in or create an account (18+) to access weekend speed dating and mutual matches.
                 </p>
                 <div className="flex items-center gap-2 pt-1">
@@ -638,7 +712,7 @@ export const Navbar: React.FC = () => {
                       openAuthModal('signup');
                       setMenuDrawerOpen(false);
                     }}
-                    className="flex-1 py-2 px-3 rounded-xl bg-white hover:bg-rose-50 text-red-600 font-extrabold text-xs border border-rose-200 shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="flex-1 py-2 px-3 rounded-xl bg-white hover:bg-rose-50 text-[#B91C1C] font-extrabold text-xs border border-rose-200 shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <UserPlus className="w-3.5 h-3.5" />
                     <span>Sign Up</span>
@@ -658,14 +732,14 @@ export const Navbar: React.FC = () => {
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                   currentView === 'home'
                     ? 'btn-glossy-red-pink text-white shadow-md'
-                    : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                    : 'text-[#111827] hover:bg-rose-50 hover:text-[#B91C1C]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Home className={`w-5 h-5 shrink-0 ${currentView === 'home' ? 'text-white' : 'text-red-600'}`} />
+                  <Home className={`w-5 h-5 shrink-0 ${currentView === 'home' ? 'text-white' : 'text-[#B91C1C]'}`} />
                   <span className="text-base font-extrabold">Home</span>
                 </div>
-                <ChevronRight className={`w-4 h-4 ${currentView === 'home' ? 'text-white' : 'text-slate-400'}`} />
+                <ChevronRight className={`w-4 h-4 ${currentView === 'home' ? 'text-white' : 'text-[#111827]'}`} />
               </button>
 
               {/* 2. Browse Singles */}
@@ -677,14 +751,14 @@ export const Navbar: React.FC = () => {
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                   currentView === 'browse'
                     ? 'btn-glossy-red-pink text-white shadow-md'
-                    : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                    : 'text-[#111827] hover:bg-rose-50 hover:text-[#B91C1C]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Compass className={`w-5 h-5 shrink-0 ${currentView === 'browse' ? 'text-white' : 'text-red-600'}`} />
+                  <Compass className={`w-5 h-5 shrink-0 ${currentView === 'browse' ? 'text-white' : 'text-[#B91C1C]'}`} />
                   <span className="text-base font-extrabold">Browse Singles</span>
                 </div>
-                <ChevronRight className={`w-4 h-4 ${currentView === 'browse' ? 'text-white' : 'text-slate-400'}`} />
+                <ChevronRight className={`w-4 h-4 ${currentView === 'browse' ? 'text-white' : 'text-[#111827]'}`} />
               </button>
 
               {/* 3. My Matches */}
@@ -696,22 +770,22 @@ export const Navbar: React.FC = () => {
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                   currentView === 'matches' || currentView === 'results'
                     ? 'btn-glossy-red-pink text-white shadow-md'
-                    : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                    : 'text-[#111827] hover:bg-rose-50 hover:text-[#B91C1C]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Heart className={`w-5 h-5 shrink-0 ${currentView === 'matches' || currentView === 'results' ? 'text-white fill-white' : 'text-red-600 fill-red-600'}`} />
+                  <Heart className={`w-5 h-5 shrink-0 ${currentView === 'matches' || currentView === 'results' ? 'text-white fill-white' : 'text-[#B91C1C] fill-[#B91C1C]'}`} />
                   <span className="text-base font-extrabold">My Matches</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {mutualMatchCount > 0 && (
                     <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-black ${
-                      currentView === 'matches' ? 'bg-white text-red-600' : 'bg-red-600 text-white'
+                      currentView === 'matches' ? 'bg-white text-[#B91C1C]' : 'bg-red-600 text-white'
                     }`}>
                       {mutualMatchCount}
                     </span>
                   )}
-                  <ChevronRight className={`w-4 h-4 ${currentView === 'matches' ? 'text-white' : 'text-slate-400'}`} />
+                  <ChevronRight className={`w-4 h-4 ${currentView === 'matches' ? 'text-white' : 'text-[#111827]'}`} />
                 </div>
               </button>
 
@@ -724,14 +798,14 @@ export const Navbar: React.FC = () => {
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                   currentView === 'messages'
                     ? 'btn-glossy-red-pink text-white shadow-md'
-                    : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                    : 'text-[#111827] hover:bg-rose-50 hover:text-[#B91C1C]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <MessageCircle className={`w-5 h-5 shrink-0 ${currentView === 'messages' ? 'text-white' : 'text-red-600'}`} />
+                  <MessageCircle className={`w-5 h-5 shrink-0 ${currentView === 'messages' ? 'text-white' : 'text-[#B91C1C]'}`} />
                   <span className="text-base font-extrabold">Messages</span>
                 </div>
-                <ChevronRight className={`w-4 h-4 ${currentView === 'messages' ? 'text-white' : 'text-slate-400'}`} />
+                <ChevronRight className={`w-4 h-4 ${currentView === 'messages' ? 'text-white' : 'text-[#111827]'}`} />
               </button>
 
               {/* 5. Speed Dating Events */}
@@ -743,14 +817,14 @@ export const Navbar: React.FC = () => {
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                   currentView === 'friday' || currentView === 'lobby' || currentView === 'live'
                     ? 'btn-glossy-red-pink text-white shadow-md'
-                    : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                    : 'text-[#111827] hover:bg-rose-50 hover:text-[#B91C1C]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Calendar className={`w-5 h-5 shrink-0 ${currentView === 'friday' || currentView === 'lobby' || currentView === 'live' ? 'text-white' : 'text-red-600'}`} />
+                  <Calendar className={`w-5 h-5 shrink-0 ${currentView === 'friday' || currentView === 'lobby' || currentView === 'live' ? 'text-white' : 'text-[#B91C1C]'}`} />
                   <span className="text-base font-extrabold">Speed Dating Events</span>
                 </div>
-                <ChevronRight className={`w-4 h-4 ${currentView === 'friday' ? 'text-white' : 'text-slate-400'}`} />
+                <ChevronRight className={`w-4 h-4 ${currentView === 'friday' ? 'text-white' : 'text-[#111827]'}`} />
               </button>
 
               {/* 6. My Profile */}
@@ -762,14 +836,14 @@ export const Navbar: React.FC = () => {
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                   currentView === 'profile'
                     ? 'btn-glossy-red-pink text-white shadow-md'
-                    : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                    : 'text-[#111827] hover:bg-rose-50 hover:text-[#B91C1C]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <UserIcon className={`w-5 h-5 shrink-0 ${currentView === 'profile' ? 'text-white' : 'text-red-600'}`} />
+                  <UserIcon className={`w-5 h-5 shrink-0 ${currentView === 'profile' ? 'text-white' : 'text-[#B91C1C]'}`} />
                   <span className="text-base font-extrabold">My Profile</span>
                 </div>
-                <ChevronRight className={`w-4 h-4 ${currentView === 'profile' ? 'text-white' : 'text-slate-400'}`} />
+                <ChevronRight className={`w-4 h-4 ${currentView === 'profile' ? 'text-white' : 'text-[#111827]'}`} />
               </button>
 
               {/* 7. Membership */}
@@ -781,23 +855,23 @@ export const Navbar: React.FC = () => {
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                   currentView === 'pricing'
                     ? 'btn-glossy-red-pink text-white shadow-md'
-                    : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                    : 'text-[#111827] hover:bg-rose-50 hover:text-[#B91C1C]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <CreditCard className={`w-5 h-5 shrink-0 ${currentView === 'pricing' ? 'text-white' : 'text-red-600'}`} />
+                  <CreditCard className={`w-5 h-5 shrink-0 ${currentView === 'pricing' ? 'text-white' : 'text-[#B91C1C]'}`} />
                   <span className="text-base font-extrabold">Membership</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-black text-red-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                    $14.99/mo
+                  <span className="text-xs font-bold text-[#B91C1C] bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                    Plans
                   </span>
-                  <ChevronRight className={`w-4 h-4 ${currentView === 'pricing' ? 'text-white' : 'text-slate-400'}`} />
+                  <ChevronRight className={`w-4 h-4 ${currentView === 'pricing' ? 'text-white' : 'text-[#111827]'}`} />
                 </div>
               </button>
 
-              {/* 8. Settings / Table Inspector (Owner or Demo Sandbox only) */}
-              {(isOwner || appMode === 'demonstration') && (
+              {/* 8. Settings / Table Inspector (Signed-in Owner only) */}
+              {isOwner && (
                 <button
                   onClick={() => {
                     setCurrentView('tables');
@@ -806,14 +880,14 @@ export const Navbar: React.FC = () => {
                   className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                     currentView === 'tables'
                       ? 'btn-glossy-red-pink text-white shadow-md'
-                      : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                      : 'text-[#111827] hover:bg-rose-50 hover:text-[#B91C1C]'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <Settings className={`w-5 h-5 shrink-0 ${currentView === 'tables' ? 'text-white' : 'text-red-600'}`} />
+                    <Settings className={`w-5 h-5 shrink-0 ${currentView === 'tables' ? 'text-white' : 'text-[#B91C1C]'}`} />
                     <span className="text-base font-extrabold">Settings</span>
                   </div>
-                  <ChevronRight className={`w-4 h-4 ${currentView === 'tables' ? 'text-white' : 'text-slate-400'}`} />
+                  <ChevronRight className={`w-4 h-4 ${currentView === 'tables' ? 'text-white' : 'text-[#111827]'}`} />
                 </button>
               )}
 
@@ -826,14 +900,14 @@ export const Navbar: React.FC = () => {
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                   currentView === 'privacy'
                     ? 'btn-glossy-red-pink text-white shadow-md'
-                    : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                    : 'text-[#111827] hover:bg-rose-50 hover:text-[#B91C1C]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <ShieldCheck className={`w-5 h-5 shrink-0 ${currentView === 'privacy' ? 'text-white' : 'text-red-600'}`} />
+                  <ShieldCheck className={`w-5 h-5 shrink-0 ${currentView === 'privacy' ? 'text-white' : 'text-[#B91C1C]'}`} />
                   <span className="text-base font-extrabold">Privacy Policy</span>
                 </div>
-                <ChevronRight className={`w-4 h-4 ${currentView === 'privacy' ? 'text-white' : 'text-slate-400'}`} />
+                <ChevronRight className={`w-4 h-4 ${currentView === 'privacy' ? 'text-white' : 'text-[#111827]'}`} />
               </button>
 
               {/* 10. Child Safety Standards */}
@@ -845,14 +919,14 @@ export const Navbar: React.FC = () => {
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                   currentView === 'child_safety'
                     ? 'btn-glossy-red-pink text-white shadow-md'
-                    : 'text-slate-700 hover:bg-rose-50 hover:text-red-600'
+                    : 'text-[#111827] hover:bg-rose-50 hover:text-[#B91C1C]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <ShieldAlert className={`w-5 h-5 shrink-0 ${currentView === 'child_safety' ? 'text-white' : 'text-red-600'}`} />
+                  <ShieldAlert className={`w-5 h-5 shrink-0 ${currentView === 'child_safety' ? 'text-white' : 'text-[#B91C1C]'}`} />
                   <span className="text-base font-extrabold">Child Safety Standards</span>
                 </div>
-                <ChevronRight className={`w-4 h-4 ${currentView === 'child_safety' ? 'text-white' : 'text-slate-400'}`} />
+                <ChevronRight className={`w-4 h-4 ${currentView === 'child_safety' ? 'text-white' : 'text-[#111827]'}`} />
               </button>
 
               {/* Owner Safety & Reports (Owner-Only) */}
@@ -866,14 +940,14 @@ export const Navbar: React.FC = () => {
                     className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                       currentView === 'owner_reports'
                         ? 'btn-glossy-red-pink text-white shadow-md'
-                        : 'bg-amber-50/70 border border-amber-200 text-amber-950 hover:bg-amber-100'
+                        : 'bg-amber-50/70 border border-amber-200 text-[#78350F] hover:bg-amber-100'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <ShieldAlert className="w-5 h-5 shrink-0 text-amber-600" />
-                      <span className="text-base font-black">Owner Safety Reports</span>
+                      <ShieldAlert className={`w-5 h-5 shrink-0 ${currentView === 'owner_reports' ? 'text-white' : 'text-[#B45309]'}`} />
+                      <span className="text-base font-bold">Owner Safety Reports</span>
                     </div>
-                    <ChevronRight className={`w-4 h-4 ${currentView === 'owner_reports' ? 'text-white' : 'text-amber-500'}`} />
+                    <ChevronRight className={`w-4 h-4 ${currentView === 'owner_reports' ? 'text-white' : 'text-[#B45309]'}`} />
                   </button>
 
                   <button
@@ -884,14 +958,32 @@ export const Navbar: React.FC = () => {
                     className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                       currentView === 'owner_users'
                         ? 'btn-glossy-red-pink text-white shadow-md'
-                        : 'bg-pink-50/70 border border-pink-200 text-pink-950 hover:bg-pink-100'
+                        : 'bg-pink-50/70 border border-pink-200 text-[#831843] hover:bg-pink-100'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <Users className="w-5 h-5 shrink-0 text-[#FF2E93]" />
-                      <span className="text-base font-black">Registered Users (Live)</span>
+                      <Users className={`w-5 h-5 shrink-0 ${currentView === 'owner_users' ? 'text-white' : 'text-[#BE185D]'}`} />
+                      <span className="text-base font-bold">Registered Users (Live)</span>
                     </div>
-                    <ChevronRight className={`w-4 h-4 ${currentView === 'owner_users' ? 'text-white' : 'text-pink-500'}`} />
+                    <ChevronRight className={`w-4 h-4 ${currentView === 'owner_users' ? 'text-white' : 'text-[#BE185D]'}`} />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setCurrentView('owner_waitlist');
+                      setMenuDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
+                      currentView === 'owner_waitlist'
+                        ? 'btn-glossy-red-pink text-white shadow-md'
+                        : 'bg-rose-50/70 border border-rose-200 text-[#9D174D] hover:bg-rose-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Heart className={`w-5 h-5 shrink-0 ${currentView === 'owner_waitlist' ? 'text-white fill-white' : 'text-[#BE185D] fill-[#BE185D]'}`} />
+                      <span className="text-base font-bold">Private Event Waitlist</span>
+                    </div>
+                    <ChevronRight className={`w-4 h-4 ${currentView === 'owner_waitlist' ? 'text-white' : 'text-[#BE185D]'}`} />
                   </button>
                 </>
               )}
@@ -905,28 +997,30 @@ export const Navbar: React.FC = () => {
                 className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
                   currentView === 'delete_account'
                     ? 'btn-glossy-red-pink text-white shadow-md'
-                    : 'text-red-700 hover:bg-red-50 hover:text-red-800'
+                    : 'text-[#B91C1C] hover:bg-red-50 hover:text-[#991B1B]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Trash2 className={`w-5 h-5 shrink-0 ${currentView === 'delete_account' ? 'text-white' : 'text-red-600'}`} />
+                  <Trash2 className={`w-5 h-5 shrink-0 ${currentView === 'delete_account' ? 'text-white' : 'text-[#B91C1C]'}`} />
                   <span className="text-base font-extrabold">Delete Account</span>
                 </div>
-                <ChevronRight className={`w-4 h-4 ${currentView === 'delete_account' ? 'text-white' : 'text-slate-400'}`} />
+                <ChevronRight className={`w-4 h-4 ${currentView === 'delete_account' ? 'text-white' : 'text-[#111827]'}`} />
               </button>
             </nav>
 
             {/* Drawer Footer */}
-            <div className="p-4 bg-slate-50 border-t border-rose-100 text-xs space-y-2 text-slate-500">
-              <p className="font-extrabold text-slate-800 text-center italic">
+            <div className="p-4 bg-slate-50 border-t border-rose-100 text-xs space-y-2 text-[#111827] font-medium">
+              <p className="font-bold text-[#111827] text-center italic">
                 “Real People. Real Connections. In Minutes.”
               </p>
-              <div className="flex items-center justify-between pt-1">
-                <span>Mode:</span>
-                <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${appMode === 'demonstration' ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-900 border border-emerald-300'}`}>
-                  {appMode === 'demonstration' ? 'Demo Sandbox' : 'Production Live'}
-                </span>
-              </div>
+              {isOwner && (
+                <div className="flex items-center justify-between pt-1">
+                  <span>Mode:</span>
+                  <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${appMode === 'demonstration' ? 'bg-amber-100 text-[#78350F] border border-amber-300' : 'bg-emerald-100 text-[#064E3B] border border-emerald-300'}`}>
+                    {appMode === 'demonstration' ? 'Demo Sandbox' : 'Production Live'}
+                  </span>
+                </div>
+              )}
             </div>
           </aside>
         </div>

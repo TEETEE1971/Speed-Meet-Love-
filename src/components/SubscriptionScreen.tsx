@@ -6,7 +6,6 @@ import {
   Sparkles,
   Zap,
   Crown,
-  ShieldCheck,
   Heart,
   Calendar,
   MessageCircle,
@@ -26,6 +25,8 @@ interface StripeConfigResponse {
   mode?: 'live' | 'sandbox' | 'unconfigured';
   isLiveMode?: boolean;
   sandboxMode?: boolean;
+  premiumPlusPaused?: boolean;
+  premiumPlusPauseMessage?: string;
   publishableKey: string | null;
   appUrl?: string;
   webhookRoute?: string;
@@ -58,6 +59,12 @@ export const SubscriptionScreen: React.FC = () => {
     openAuthModal,
     authToken,
     syncAuthSession,
+    waitlistJoined,
+    waitlistLoading,
+    joinWaitlist,
+    leaveWaitlist,
+    setCurrentView,
+    confirmedLaunchEvents,
   } = useApp();
 
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
@@ -65,7 +72,7 @@ export const SubscriptionScreen: React.FC = () => {
   const [selectedPlanToCheckout, setSelectedPlanToCheckout] = useState<SubscriptionTier | null>(null);
   const [stripeConfigError, setStripeConfigError] = useState<string | null>(null);
   const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
-  const [loadingConfig, setLoadingConfig] = useState<boolean>(true);
+  const isWaitlistModeActive = confirmedLaunchEvents.length === 0;
 
   const currentTier = currentUser?.SubscriptionTier || 'Free';
   const isTester = Boolean(currentUser?.IsTester || currentUser?.UserID === 'usr_kristy');
@@ -81,8 +88,6 @@ export const SubscriptionScreen: React.FC = () => {
       }
     } catch {
       // Ignore network errors on passive load; handled on action
-    } finally {
-      setLoadingConfig(false);
     }
     return null;
   };
@@ -132,8 +137,6 @@ export const SubscriptionScreen: React.FC = () => {
     }
   }, [showNotification, syncAuthSession]);
 
-  const premiumPriceId = stripeConfig?.prices?.premium?.id || null;
-  const premiumPlusPriceId = stripeConfig?.prices?.premiumPlus?.id || null;
   const serverMode: 'live' | 'sandbox' | 'unconfigured' = stripeConfig?.mode
     ? stripeConfig.mode
     : stripeConfig?.isConfigured
@@ -154,6 +157,12 @@ export const SubscriptionScreen: React.FC = () => {
       // Free downgrades / browsing
       setSubscriptionTier('Free');
       showNotification('Plan switched to Free ($0/mo). Browsing and mutual match viewing active.', 'pink');
+      return;
+    }
+
+    // Pause new paid Premium Plus purchases during launch waiting list
+    if (tier === 'Premium Plus') {
+      showNotification('Event membership coming soon.', 'pink');
       return;
     }
 
@@ -252,90 +261,122 @@ export const SubscriptionScreen: React.FC = () => {
     }
   };
 
+  const comparisonRows: Array<{
+    feature: string;
+    free: { text: string; tone: 'emerald' | 'neutral' };
+    premium: { text: string; tone: 'emerald' | 'pink' | 'neutral' };
+    premiumPlus: { text: string; tone: 'emerald' | 'pink' | 'amber' | 'neutral' };
+  }> = [
+    {
+      feature: 'Create Profile & Browse Members',
+      free: { text: 'Yes (Browsing only)', tone: 'emerald' },
+      premium: { text: 'Yes', tone: 'emerald' },
+      premiumPlus: { text: 'Yes', tone: 'emerald' },
+    },
+    {
+      feature: 'Like or Pass Other Members',
+      free: { text: 'Yes', tone: 'emerald' },
+      premium: { text: 'Yes', tone: 'emerald' },
+      premiumPlus: { text: 'Yes', tone: 'emerald' },
+    },
+    {
+      feature: 'See Mutual Matches',
+      free: { text: 'Yes', tone: 'emerald' },
+      premium: { text: 'Yes', tone: 'emerald' },
+      premiumPlus: { text: 'Yes', tone: 'emerald' },
+    },
+    {
+      feature: 'Private Messaging After Mutual Match',
+      free: { text: 'Locked (Browsing only)', tone: 'neutral' },
+      premium: { text: 'Unlocked (with paid matches)', tone: 'pink' },
+      premiumPlus: { text: 'Unlocked (with paid matches)', tone: 'pink' },
+    },
+    {
+      feature: isWaitlistModeActive
+        ? 'Live Speed Dating Schedule'
+        : 'Speed Dating Schedule (3 Nights Weekly)',
+      free: { text: 'No', tone: 'neutral' },
+      premium: { text: 'No', tone: 'neutral' },
+      premiumPlus: isWaitlistModeActive
+        ? { text: 'First event date coming soon', tone: 'amber' }
+        : { text: 'Fri, Sat & Sun at 7:00 PM EST', tone: 'amber' },
+    },
+    {
+      feature: isWaitlistModeActive
+        ? 'Event Registration & Night Selection'
+        : 'Choose Nights & Multi-Night Registration',
+      free: { text: 'No', tone: 'neutral' },
+      premium: { text: 'No', tone: 'neutral' },
+      premiumPlus: isWaitlistModeActive
+        ? { text: 'First event date coming soon', tone: 'amber' }
+        : { text: 'Included (Attend 1, 2, or all 3)', tone: 'amber' },
+    },
+    {
+      feature: '5-Minute Video Rounds & Up to 2-Min Break',
+      free: { text: 'No', tone: 'neutral' },
+      premium: { text: 'No', tone: 'neutral' },
+      premiumPlus: isWaitlistModeActive
+        ? { text: 'First event date coming soon', tone: 'amber' }
+        : { text: 'Active', tone: 'amber' },
+    },
+    {
+      feature: 'Consent-Based Next Date & Waiting Room',
+      free: { text: 'No', tone: 'neutral' },
+      premium: { text: 'No', tone: 'neutral' },
+      premiumPlus: isWaitlistModeActive
+        ? { text: 'First event date coming soon', tone: 'amber' }
+        : { text: 'Included (No auto-start)', tone: 'amber' },
+    },
+    {
+      feature: 'Round Skip & Replay Perks',
+      free: { text: 'No', tone: 'neutral' },
+      premium: { text: 'No', tone: 'neutral' },
+      premiumPlus: isWaitlistModeActive
+        ? { text: 'First event date coming soon', tone: 'amber' }
+        : { text: 'Included', tone: 'amber' },
+    },
+  ];
+
+  const getToneClass = (tone: 'emerald' | 'pink' | 'amber' | 'neutral') => {
+    switch (tone) {
+      case 'emerald':
+        return 'text-[#047857] font-bold';
+      case 'pink':
+        return 'text-[#BE185D] font-bold';
+      case 'amber':
+        return 'text-[#B45309] font-bold';
+      case 'neutral':
+      default:
+        return 'text-[#111827] font-semibold';
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
-      {/* Stripe Configuration & Google Play Notice Banner */}
-      <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-pink-50 via-rose-50 to-pink-50 border border-pink-200 shadow-xs space-y-2">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-800">
-          <div className="flex items-center gap-2.5">
-            <ShieldCheck className="w-5 h-5 text-[#FF2E93] shrink-0" />
-            <div>
-              <span className="font-extrabold text-slate-900 block font-heading text-sm">
-                {loadingConfig
-                  ? 'Checking Stripe Billing Configuration...'
-                  : serverMode === 'live'
-                  ? 'Stripe Live Subscriptions Active'
-                  : serverMode === 'sandbox'
-                  ? 'Stripe Sandbox Subscriptions Ready'
-                  : 'Stripe Checkout Configuration Pending'}
-              </span>
-              <span className="text-slate-600">
-                Plans: <strong>Premium $9.99 USD/mo</strong>
-                {premiumPriceId && (
-                  <>
-                    {' '}
-                    (<code className="bg-pink-100 text-pink-900 px-1 py-0.5 rounded font-mono text-[10px]">{premiumPriceId}</code>)
-                  </>
-                )}{' '}
-                &amp; <strong>Premium Plus $14.99 USD/mo</strong>
-                {premiumPlusPriceId && (
-                  <>
-                    {' '}
-                    (<code className="bg-pink-100 text-pink-900 px-1 py-0.5 rounded font-mono text-[10px]">{premiumPlusPriceId}</code>)
-                  </>
-                )}
-                .
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {isTester && (
-              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-300">
-                Free Tester Access Active
-              </span>
-            )}
-            <span
-              className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full border ${
-                loadingConfig
-                  ? 'text-slate-600 bg-white border-slate-200'
-                  : serverMode === 'live'
-                  ? 'text-emerald-800 bg-emerald-50 border-emerald-300'
-                  : serverMode === 'sandbox'
-                  ? 'text-[#FF2E93] bg-white border-pink-200'
-                  : 'text-amber-800 bg-amber-50 border-amber-300'
-              }`}
-            >
-              {loadingConfig
-                ? 'Checking...'
-                : serverMode === 'live'
-                ? 'Stripe Live'
-                : serverMode === 'sandbox'
-                ? 'Stripe Sandbox'
-                : 'Stripe Unconfigured'}
-            </span>
-          </div>
-        </div>
-
-        {/* Free Tester Isolation Advisory */}
-        {isTester && (
-          <div className="pt-2 border-t border-pink-200/60 text-[11px] text-slate-600 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+      {/* Free Tester Isolation Advisory (shown only for testers, no Stripe diagnostic banner) */}
+      {isTester && (
+        <div className="p-3.5 sm:p-4 rounded-3xl bg-gradient-to-r from-pink-50 via-rose-50 to-pink-50 border border-pink-200 shadow-xs text-[11px] text-[#111827] font-medium flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-[#B45309] shrink-0" />
             <span>
               <strong>Tester Privilege Notice:</strong> Your free tester access grants all platform features and remains separate from your paid subscription status in Firestore.
             </span>
           </div>
-        )}
-      </div>
+          <span className="text-[10px] font-bold text-[#065F46] bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-300 shrink-0">
+            Free Tester Access Active
+          </span>
+        </div>
+      )}
 
       {/* Google Play App Mode Advisory */}
       {isAndroid && (
-        <div className="p-4 rounded-3xl bg-amber-50 border border-amber-200 flex items-start gap-3 text-xs text-amber-950 shadow-xs">
-          <Smartphone className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="p-4 rounded-3xl bg-amber-50 border border-amber-300 flex items-start gap-3 text-xs text-[#111827] shadow-xs">
+          <Smartphone className="w-5 h-5 text-[#B45309] shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <span className="font-black font-heading text-amber-900 text-sm block">
+            <span className="font-bold font-heading text-[#78350F] text-sm block">
               Google Play In-App Billing Mode
             </span>
-            <p className="text-amber-800 leading-relaxed text-[11px]">
+            <p className="text-[#111827] font-medium leading-relaxed text-[11px]">
               You are currently viewing Speed Meet Love within an Android app container. In compliance with Google Play Store policies, web Stripe checkout is disabled here. Subscriptions on Android will be processed via Google Play In-App Billing upon official release. To subscribe using Stripe web checkout, open <strong>speedmeetlove.com</strong> in your browser.
             </p>
           </div>
@@ -344,20 +385,20 @@ export const SubscriptionScreen: React.FC = () => {
 
       {/* Header */}
       <div className="text-center space-y-3">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-pink-50 border border-pink-200 text-xs font-bold text-[#FF2E93] uppercase tracking-widest font-heading">
-          <Crown className="w-3.5 h-3.5 text-amber-500" />
+        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-pink-50 border border-pink-300 text-xs font-bold text-[#BE185D] uppercase tracking-widest font-heading">
+          <Crown className="w-3.5 h-3.5 text-[#B45309]" />
           <span>Speed Meet Love Membership</span>
         </div>
 
-        <h1 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight font-heading">
+        <h1 className="text-3xl sm:text-5xl font-bold text-[#111827] tracking-tight font-heading">
           Transparent Pricing for{' '}
-          <span className="bg-gradient-to-r from-[#FF2E93] via-[#FF147E] to-[#E11D48] bg-clip-text text-transparent">
+          <span className="bg-gradient-to-r from-[#BE185D] via-[#E11D48] to-[#B91C1C] bg-clip-text text-transparent">
             Real Chemistry
           </span>
         </h1>
 
-        <p className="text-sm sm:text-base text-slate-600 max-w-2xl mx-auto">
-          Free allows browsing only. Upgrade to Premium for private messaging after mutual matches, or join Premium Plus for live Friday, Saturday &amp; Sunday speed dating.
+        <p className="text-sm sm:text-base text-[#111827] font-medium max-w-2xl mx-auto">
+          Free allows browsing and joining the free event waiting list. Upgrade to Premium ($9.99/mo) for private messaging after mutual matches. New Premium Plus event memberships are paused while we welcome our first members.
         </p>
 
         {/* Customer Billing Portal Shortcut if already subscribed */}
@@ -367,11 +408,11 @@ export const SubscriptionScreen: React.FC = () => {
               type="button"
               disabled={loadingPortal}
               onClick={handleOpenCustomerPortal}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-pink-200 text-xs font-bold text-slate-800 hover:bg-rose-50 hover:border-[#FF2E93] transition-all shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-pink-300 text-xs font-bold text-[#111827] hover:bg-rose-50 hover:border-[#BE185D] transition-all shadow-xs cursor-pointer"
             >
-              <CreditCard className="w-4 h-4 text-[#FF2E93]" />
+              <CreditCard className="w-4 h-4 text-[#BE185D]" />
               <span>{loadingPortal ? 'Opening Portal...' : 'Manage Subscription & Invoices (Stripe Portal)'}</span>
-              <ExternalLink className="w-3 h-3 text-slate-400" />
+              <ExternalLink className="w-3 h-3 text-[#111827]" />
             </button>
           </div>
         )}
@@ -383,20 +424,20 @@ export const SubscriptionScreen: React.FC = () => {
         <div
           className={`rounded-3xl p-6 sm:p-7 bg-white border flex flex-col justify-between transition-all ${
             currentTier === 'Free'
-              ? 'border-slate-400 shadow-md ring-1 ring-slate-300'
-              : 'border-pink-100 hover:border-pink-200 shadow-sm'
+              ? 'border-slate-500 shadow-md ring-1 ring-slate-400'
+              : 'border-pink-200 hover:border-pink-300 shadow-sm'
           }`}
         >
           <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-heading">
+                <span className="text-xs font-bold text-[#111827] uppercase tracking-wider font-heading">
                   Tier 1
                 </span>
-                <h3 className="text-2xl font-black text-slate-900 font-heading mt-0.5">FREE</h3>
+                <h3 className="text-2xl font-bold text-[#111827] font-heading mt-0.5">FREE</h3>
               </div>
               {currentTier === 'Free' && (
-                <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-bold">
+                <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-slate-100 text-[#111827] border border-slate-300 font-bold">
                   Active
                 </span>
               )}
@@ -404,35 +445,35 @@ export const SubscriptionScreen: React.FC = () => {
 
             <div>
               <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold text-slate-900 font-heading">$0</span>
-                <span className="text-xs text-slate-500">/ month</span>
+                <span className="text-4xl font-extrabold text-[#111827] font-heading">$0</span>
+                <span className="text-xs text-[#111827] font-medium">/ month</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1">Browse members and uncover mutual sparks</p>
+              <p className="text-xs text-[#111827] font-medium mt-1">Browse members and uncover mutual sparks</p>
             </div>
 
-            <div className="space-y-3 pt-4 border-t border-slate-100 text-xs text-slate-700">
+            <div className="space-y-3 pt-4 border-t border-slate-200 text-xs text-[#111827] font-medium">
               <div className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
                 <span>Create and edit your dating profile</span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
                 <span><strong>Browse dating profiles</strong></span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
                 <span>Like or pass other members</span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
                 <span><strong>See mutual matches</strong> when feelings align</span>
               </div>
-              <div className="flex items-start gap-2.5 text-slate-400 pt-1">
-                <X className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 text-[#111827] font-medium pt-1">
+                <X className="w-4 h-4 text-[#111827] shrink-0 mt-0.5" />
                 <span>No private messaging (Browsing only)</span>
               </div>
-              <div className="flex items-start gap-2.5 text-slate-400">
-                <X className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 text-[#111827] font-medium">
+                <X className="w-4 h-4 text-[#111827] shrink-0 mt-0.5" />
                 <span>No live video speed dating</span>
               </div>
             </div>
@@ -444,8 +485,8 @@ export const SubscriptionScreen: React.FC = () => {
               onClick={() => handleSelectPlan('Free')}
               className={`w-full py-3 rounded-2xl font-bold text-xs transition-colors ${
                 currentTier === 'Free'
-                  ? 'bg-slate-100 text-slate-500 border border-slate-200 cursor-default'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer'
+                  ? 'bg-slate-100 text-[#111827] border border-slate-300 cursor-default'
+                  : 'bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 cursor-pointer'
               }`}
             >
               {currentTier === 'Free' ? 'Current Plan' : 'Select Free ($0)'}
@@ -457,21 +498,21 @@ export const SubscriptionScreen: React.FC = () => {
         <div
           className={`rounded-3xl p-6 sm:p-7 bg-white border flex flex-col justify-between transition-all ${
             currentTier === 'Premium'
-              ? 'border-[#FF2E93] shadow-lg ring-2 ring-[#FF2E93]/20'
-              : 'border-pink-200 hover:border-[#FF2E93]/50 shadow-sm'
+              ? 'border-[#BE185D] shadow-lg ring-2 ring-[#BE185D]/20'
+              : 'border-pink-200 hover:border-[#BE185D]/50 shadow-sm'
           }`}
         >
           <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-xs font-bold text-[#FF2E93] uppercase tracking-wider flex items-center gap-1.5 font-heading">
+                <span className="text-xs font-bold text-[#BE185D] uppercase tracking-wider flex items-center gap-1.5 font-heading">
                   <Sparkles className="w-3.5 h-3.5" />
                   Tier 2
                 </span>
-                <h3 className="text-2xl font-black text-slate-900 font-heading mt-0.5">PREMIUM</h3>
+                <h3 className="text-2xl font-bold text-[#111827] font-heading mt-0.5">PREMIUM</h3>
               </div>
               {currentTier === 'Premium' && (
-                <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-pink-50 text-[#FF2E93] border border-pink-200 font-bold">
+                <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-pink-50 text-[#BE185D] border border-pink-300 font-bold">
                   Active
                 </span>
               )}
@@ -479,38 +520,33 @@ export const SubscriptionScreen: React.FC = () => {
 
             <div>
               <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold text-slate-900 font-heading">$9.99</span>
-                <span className="text-xs text-slate-500">/ month</span>
+                <span className="text-4xl font-extrabold text-[#111827] font-heading">$9.99</span>
+                <span className="text-xs text-[#111827] font-medium">/ month</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1">Private messaging unlocked with mutual matches</p>
-              {premiumPriceId && (
-                <span className="text-[10px] font-mono text-slate-400 mt-0.5 block truncate">
-                  {premiumPriceId}
-                </span>
-              )}
+              <p className="text-xs text-[#111827] font-medium mt-1">Private messaging unlocked with mutual matches</p>
             </div>
 
-            <div className="space-y-3 pt-4 border-t border-slate-100 text-xs text-slate-700">
+            <div className="space-y-3 pt-4 border-t border-slate-200 text-xs text-[#111827] font-medium">
               <div className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-[#FF2E93] shrink-0 mt-0.5" />
-                <span className="font-semibold text-slate-900">Everything in Free</span>
+                <Check className="w-4 h-4 text-[#BE185D] shrink-0 mt-0.5" />
+                <span className="font-semibold text-[#111827]">Everything in Free</span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-[#FF2E93] shrink-0 mt-0.5" />
+                <Check className="w-4 h-4 text-[#BE185D] shrink-0 mt-0.5" />
                 <span>
                   <strong>Private messaging unlocked</strong> after a mutual match with eligible paid members
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-[#FF2E93] shrink-0 mt-0.5" />
+                <Check className="w-4 h-4 text-[#BE185D] shrink-0 mt-0.5" />
                 <span>Icebreaker prompt conversation starters</span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-[#FF2E93] shrink-0 mt-0.5" />
+                <Check className="w-4 h-4 text-[#BE185D] shrink-0 mt-0.5" />
                 <span>Premium Member profile badge</span>
               </div>
-              <div className="flex items-start gap-2.5 text-slate-400 pt-1">
-                <X className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 text-[#111827] font-medium pt-1">
+                <X className="w-4 h-4 text-[#111827] shrink-0 mt-0.5" />
                 <span>No live video speed dating</span>
               </div>
             </div>
@@ -518,7 +554,7 @@ export const SubscriptionScreen: React.FC = () => {
 
           <div className="pt-6">
             {isAndroid ? (
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-center text-[11px] text-slate-600">
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-300 text-center text-[11px] text-[#111827] font-medium">
                 <span>Google Play Billing coming soon</span>
               </div>
             ) : (
@@ -527,7 +563,7 @@ export const SubscriptionScreen: React.FC = () => {
                 onClick={() => handleSelectPlan('Premium')}
                 className={`w-full py-3 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
                   currentTier === 'Premium'
-                    ? 'bg-pink-50 text-[#FF2E93] border border-pink-200 cursor-default'
+                    ? 'bg-pink-50 text-[#BE185D] border border-pink-300 cursor-default'
                     : 'btn-pink-gradient'
                 }`}
               >
@@ -553,26 +589,26 @@ export const SubscriptionScreen: React.FC = () => {
         <div
           className={`relative rounded-3xl p-6 sm:p-7 bg-[#FFF8FA] border flex flex-col justify-between transition-all ${
             currentTier === 'Premium Plus'
-              ? 'border-amber-400 shadow-xl ring-2 ring-amber-400/40'
-              : 'border-pink-300 hover:border-amber-400 shadow-md'
+              ? 'border-amber-500 shadow-xl ring-2 ring-amber-500/40'
+              : 'border-pink-300 hover:border-amber-500 shadow-md'
           }`}
         >
           {/* Ribbon */}
-          <div className="absolute -top-3 right-6 bg-gradient-to-r from-amber-400 to-[#FF2E93] text-white font-black text-[10px] px-3 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-            Fri, Sat &amp; Sun at 7 PM EST
+          <div className="absolute -top-3 right-6 bg-gradient-to-r from-[#B45309] to-[#BE185D] text-white font-bold text-[10px] px-3 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+            {currentTier === 'Premium Plus' ? 'Active Plan' : 'Event membership coming soon.'}
           </div>
 
           <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-xs font-bold text-amber-600 uppercase tracking-wider flex items-center gap-1.5 font-heading">
+                <span className="text-xs font-bold text-[#B45309] uppercase tracking-wider flex items-center gap-1.5 font-heading">
                   <Crown className="w-3.5 h-3.5" />
-                  Tier 3 · Ultimate
+                  Tier 3 · Events
                 </span>
-                <h3 className="text-2xl font-black text-slate-900 font-heading mt-0.5">PREMIUM PLUS</h3>
+                <h3 className="text-2xl font-bold text-[#111827] font-heading mt-0.5">PREMIUM PLUS</h3>
               </div>
               {currentTier === 'Premium Plus' && (
-                <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold">
+                <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-amber-100 text-[#92400E] border border-amber-300 font-bold">
                   Active
                 </span>
               )}
@@ -580,160 +616,203 @@ export const SubscriptionScreen: React.FC = () => {
 
             <div>
               <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold text-slate-900 font-heading">$14.99</span>
-                <span className="text-xs text-slate-500">/ month</span>
+                <span className="text-4xl font-extrabold text-[#111827] font-heading">$14.99</span>
+                <span className="text-xs text-[#111827] font-medium">/ month</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1">Live speed dating 3 nights/week (Fri, Sat, Sun at 7:00 PM EST)</p>
-              {premiumPlusPriceId && (
-                <span className="text-[10px] font-mono text-slate-400 mt-0.5 block truncate">
-                  {premiumPlusPriceId}
-                </span>
-              )}
+              <p className="text-xs text-[#111827] font-medium mt-1">
+                {currentTier === 'Premium Plus'
+                  ? 'Your existing subscriber access remains fully active.'
+                  : 'Event membership coming soon. Join our free launch waiting list in the meantime!'}
+              </p>
             </div>
 
-            <div className="space-y-3 pt-4 border-t border-pink-100 text-xs text-slate-700">
+            <div className="space-y-3 pt-4 border-t border-pink-200 text-xs text-[#111827] font-medium">
               <div className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <span className="font-semibold text-slate-900">Everything in Premium</span>
+                <Check className="w-4 h-4 text-[#B45309] shrink-0 mt-0.5" />
+                <span className="font-semibold text-[#111827]">Everything in Premium</span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Calendar className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                <span className="font-semibold text-slate-900">
-                  <strong>3 nights weekly: Friday, Saturday &amp; Sunday at 7:00 PM EST</strong>
+                <Calendar className="w-4 h-4 text-[#BE123C] shrink-0 mt-0.5" />
+                <span className="font-semibold text-[#111827]">
+                  <strong>Scheduled Live Speed Dating Mixers</strong>
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Choose which nights to attend</strong> and register for multiple nights
-                </span>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <Video className="w-4 h-4 text-[#FF2E93] shrink-0 mt-0.5" />
+                <Video className="w-4 h-4 text-[#BE185D] shrink-0 mt-0.5" />
                 <span>
                   <strong>Five-minute one-on-one video rounds</strong>
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Heart className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                <Heart className="w-4 h-4 text-[#BE123C] shrink-0 mt-0.5" />
                 <span><strong>Privately choose Like or Pass</strong> after each round + up to 2-minute break</span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <Sparkles className="w-4 h-4 text-[#B45309] shrink-0 mt-0.5" />
                 <span><strong>Next Date button &amp; Waiting Room:</strong> No calls auto-start without consent</span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Crown className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <Crown className="w-4 h-4 text-[#B45309] shrink-0 mt-0.5" />
                 <span>VIP Gold badge, Round Skips &amp; Replays</span>
               </div>
             </div>
           </div>
 
-          <div className="pt-6">
-            {isAndroid ? (
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-center text-[11px] text-slate-600">
-                <span>Google Play Billing coming soon</span>
-              </div>
-            ) : (
+          <div className="pt-6 space-y-2.5">
+            {currentTier === 'Premium Plus' ? (
               <button
-                disabled={currentTier === 'Premium Plus' || loadingTier === 'Premium Plus'}
-                onClick={() => handleSelectPlan('Premium Plus')}
-                className={`w-full py-3.5 rounded-2xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  currentTier === 'Premium Plus'
-                    ? 'bg-amber-100 text-amber-900 border border-amber-300 cursor-default'
-                    : 'bg-gradient-to-r from-amber-400 via-pink-500 to-[#FF2E93] text-white hover:brightness-105'
-                }`}
+                disabled
+                className="w-full py-3.5 rounded-2xl font-bold text-xs shadow-sm bg-amber-100 text-[#78350F] border border-amber-300 cursor-default flex items-center justify-center gap-1.5"
               >
-                {loadingTier === 'Premium Plus' ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Connecting Stripe...</span>
-                  </>
-                ) : currentTier === 'Premium Plus' ? (
-                  'Current Plan'
-                ) : (
-                  <>
-                    <Crown className="w-3.5 h-3.5 fill-white" />
-                    <span>Upgrade to Premium Plus ($14.99/mo)</span>
-                  </>
-                )}
+                <Crown className="w-3.5 h-3.5 text-[#B45309]" />
+                <span>Current Plan</span>
               </button>
+            ) : (
+              <>
+                <div className="w-full py-3 px-4 rounded-2xl bg-amber-50 border border-amber-300 text-[#78350F] font-bold text-xs text-center">
+                  Event membership coming soon.
+                </div>
+                <button
+                  type="button"
+                  disabled={waitlistLoading}
+                  onClick={() => {
+                    if (waitlistJoined) {
+                      setCurrentView('friday');
+                    } else {
+                      joinWaitlist();
+                    }
+                  }}
+                  className="w-full py-3 rounded-2xl btn-pink-gradient font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-white" />
+                  <span>
+                    {waitlistLoading
+                      ? 'Saving...'
+                      : waitlistJoined
+                      ? 'On Event Waiting List · View Events'
+                      : 'Join the Event Waiting List (Free)'}
+                  </span>
+                </button>
+                {waitlistJoined && (
+                  <button
+                    type="button"
+                    disabled={waitlistLoading}
+                    onClick={() => leaveWaitlist()}
+                    className="w-full py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-[#BE123C] border border-rose-200 font-bold text-xs transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    Leave Waiting List
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
       </div>
 
       {/* Comparison Matrix */}
-      <div className="rounded-3xl bg-white border border-pink-100 p-6 sm:p-8 space-y-5 shadow-xs">
-        <h3 className="text-lg font-bold text-slate-900 font-heading text-center">
+      <div className="rounded-3xl bg-white border border-pink-200 p-5 sm:p-8 space-y-5 shadow-xs">
+        <h3 className="text-lg sm:text-xl font-bold text-[#111827] font-heading text-center">
           Compare Membership Access Rules
         </h3>
 
-        <div className="overflow-x-auto">
+        {/* Mobile / Android Stacked Plan Cards (prevents cut-off table columns on narrow screens) */}
+        <div className="space-y-4 md:hidden">
+          {[
+            {
+              key: 'free' as const,
+              title: 'Free',
+              price: '$0/mo',
+              subtitle: 'Browsing & mutual match viewing only',
+              borderClass: 'border-slate-300 bg-white',
+              headerBg: 'bg-slate-50 border-slate-200',
+              titleClass: 'text-[#111827]',
+              badgeClass: 'bg-white text-[#111827] border-slate-300',
+            },
+            {
+              key: 'premium' as const,
+              title: 'Premium',
+              price: '$9.99/mo',
+              subtitle: 'Includes private messaging after mutual matches',
+              borderClass: 'border-pink-300 bg-white',
+              headerBg: 'bg-pink-50/70 border-pink-200',
+              titleClass: 'text-[#BE185D]',
+              badgeClass: 'bg-white text-[#BE185D] border-pink-300',
+            },
+            {
+              key: 'premiumPlus' as const,
+              title: 'Premium Plus',
+              price: currentTier === 'Premium Plus' ? '$14.99/mo' : 'Coming Soon',
+              subtitle:
+                currentTier === 'Premium Plus'
+                  ? 'Active subscriber access preserved'
+                  : 'Event membership coming soon.',
+              borderClass: 'border-amber-300 bg-[#FFF8FA]',
+              headerBg: 'bg-amber-50/80 border-amber-200',
+              titleClass: 'text-[#B45309]',
+              badgeClass: 'bg-white text-[#B45309] border-amber-300',
+            },
+          ].map((plan) => (
+            <div
+              key={plan.key}
+              className={`rounded-2xl border ${plan.borderClass} overflow-hidden shadow-xs`}
+            >
+              <div className={`px-4 py-3 border-b ${plan.headerBg} flex items-center justify-between gap-2`}>
+                <div>
+                  <h4 className={`text-base font-bold font-heading ${plan.titleClass}`}>
+                    {plan.title}
+                  </h4>
+                  <p className="text-xs text-[#111827] font-medium">{plan.subtitle}</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full border text-xs font-bold shrink-0 ${plan.badgeClass}`}>
+                  {plan.price}
+                </span>
+              </div>
+
+              <div className="divide-y divide-slate-200 px-4">
+                {comparisonRows.map((row) => {
+                  const cell = row[plan.key];
+                  return (
+                    <div key={row.feature} className="py-3 flex flex-col gap-1">
+                      <span className="text-xs font-semibold text-[#111827] leading-snug">
+                        {row.feature}
+                      </span>
+                      <span className={`text-xs ${getToneClass(cell.tone)} leading-snug`}>
+                        {cell.text}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop / Tablet Comparison Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-pink-100 text-slate-600 font-semibold uppercase tracking-wider font-heading">
-                <th className="py-3 px-4">Feature &amp; Privilege</th>
-                <th className="py-3 px-4 text-center">Free ($0/mo)</th>
-                <th className="py-3 px-4 text-center text-[#FF2E93]">Premium ($9.99/mo)</th>
-                <th className="py-3 px-4 text-center text-amber-600">Premium Plus ($14.99/mo)</th>
+              <tr className="border-b border-pink-200 text-[#111827] font-bold uppercase tracking-wider font-heading">
+                <th className="py-3 px-4 text-[#111827]">Feature &amp; Privilege</th>
+                <th className="py-3 px-4 text-center text-[#111827]">Free ($0/mo)</th>
+                <th className="py-3 px-4 text-center text-[#BE185D]">Premium ($9.99/mo)</th>
+                <th className="py-3 px-4 text-center text-[#B45309]">Premium Plus ($14.99/mo)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700">
-              <tr>
-                <td className="py-3 px-4 font-medium">Create Profile &amp; Browse Members</td>
-                <td className="py-3 px-4 text-center text-emerald-600 font-bold">Yes (Browsing only)</td>
-                <td className="py-3 px-4 text-center text-emerald-600 font-bold">Yes</td>
-                <td className="py-3 px-4 text-center text-emerald-600 font-bold">Yes</td>
-              </tr>
-              <tr>
-                <td className="py-3 px-4 font-medium">Like or Pass Other Members</td>
-                <td className="py-3 px-4 text-center text-emerald-600 font-bold">Yes</td>
-                <td className="py-3 px-4 text-center text-emerald-600 font-bold">Yes</td>
-                <td className="py-3 px-4 text-center text-emerald-600 font-bold">Yes</td>
-              </tr>
-              <tr>
-                <td className="py-3 px-4 font-medium">See Mutual Matches</td>
-                <td className="py-3 px-4 text-center text-emerald-600 font-bold">Yes</td>
-                <td className="py-3 px-4 text-center text-emerald-600 font-bold">Yes</td>
-                <td className="py-3 px-4 text-center text-emerald-600 font-bold">Yes</td>
-              </tr>
-              <tr>
-                <td className="py-3 px-4 font-medium">Private Messaging After Mutual Match</td>
-                <td className="py-3 px-4 text-center text-slate-400">Locked (Browsing only)</td>
-                <td className="py-3 px-4 text-center text-[#FF2E93] font-bold">Unlocked (with paid matches)</td>
-                <td className="py-3 px-4 text-center text-[#FF2E93] font-bold">Unlocked (with paid matches)</td>
-              </tr>
-              <tr>
-                <td className="py-3 px-4 font-medium">Speed Dating Schedule (3 Nights Weekly)</td>
-                <td className="py-3 px-4 text-center text-slate-400">No</td>
-                <td className="py-3 px-4 text-center text-slate-400">No</td>
-                <td className="py-3 px-4 text-center text-amber-600 font-bold">Fri, Sat &amp; Sun at 7:00 PM EST</td>
-              </tr>
-              <tr>
-                <td className="py-3 px-4 font-medium">Choose Nights &amp; Multi-Night Registration</td>
-                <td className="py-3 px-4 text-center text-slate-400">No</td>
-                <td className="py-3 px-4 text-center text-slate-400">No</td>
-                <td className="py-3 px-4 text-center text-amber-600 font-bold">Included (Attend 1, 2, or all 3)</td>
-              </tr>
-              <tr>
-                <td className="py-3 px-4 font-medium">5-Minute Video Rounds &amp; Up to 2-Min Break</td>
-                <td className="py-3 px-4 text-center text-slate-400">No</td>
-                <td className="py-3 px-4 text-center text-slate-400">No</td>
-                <td className="py-3 px-4 text-center text-amber-600 font-bold">Active</td>
-              </tr>
-              <tr>
-                <td className="py-3 px-4 font-medium">Consent-Based Next Date &amp; Waiting Room</td>
-                <td className="py-3 px-4 text-center text-slate-400">No</td>
-                <td className="py-3 px-4 text-center text-slate-400">No</td>
-                <td className="py-3 px-4 text-center text-amber-600 font-bold">Included (No auto-start)</td>
-              </tr>
-              <tr>
-                <td className="py-3 px-4 font-medium">Round Skip &amp; Replay Perks</td>
-                <td className="py-3 px-4 text-center text-slate-400">No</td>
-                <td className="py-3 px-4 text-center text-slate-400">No</td>
-                <td className="py-3 px-4 text-center text-amber-600 font-bold">Included</td>
-              </tr>
+            <tbody className="divide-y divide-slate-200 text-[#111827]">
+              {comparisonRows.map((row) => (
+                <tr key={row.feature}>
+                  <td className="py-3 px-4 font-medium text-[#111827]">{row.feature}</td>
+                  <td className={`py-3 px-4 text-center ${getToneClass(row.free.tone)}`}>
+                    {row.free.text}
+                  </td>
+                  <td className={`py-3 px-4 text-center ${getToneClass(row.premium.tone)}`}>
+                    {row.premium.text}
+                  </td>
+                  <td className={`py-3 px-4 text-center ${getToneClass(row.premiumPlus.tone)}`}>
+                    {row.premiumPlus.text}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -742,45 +821,43 @@ export const SubscriptionScreen: React.FC = () => {
       {/* Fallback Simulation Modal for Development without STRIPE_SECRET_KEY */}
       {selectedPlanToCheckout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-3xl bg-white border border-pink-100 shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150">
+          <div className="w-full max-w-md rounded-3xl bg-white border border-pink-200 shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-pink-100 pb-3">
               <div className="flex items-center gap-2">
-                <Crown className="w-5 h-5 text-amber-500" />
-                <h3 className="text-base font-bold text-slate-900 font-heading">
+                <Crown className="w-5 h-5 text-[#B45309]" />
+                <h3 className="text-base font-bold text-[#111827] font-heading">
                   Stripe Checkout Setup Diagnostic
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedPlanToCheckout(null)}
-                className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800 flex items-center justify-center cursor-pointer"
+                className="w-7 h-7 rounded-full bg-slate-100 text-[#111827] hover:bg-slate-200 flex items-center justify-center cursor-pointer font-bold"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-4 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-2 text-xs">
-              <div className="flex items-center justify-between text-slate-900 font-bold text-sm font-heading">
+            <div className="p-4 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-2 text-xs">
+              <div className="flex items-center justify-between text-[#111827] font-bold text-sm font-heading">
                 <span>{selectedPlanToCheckout} Membership</span>
-                <span className="font-mono text-[#FF2E93]">
+                <span className="font-mono text-[#BE185D]">
                   {selectedPlanToCheckout === 'Premium Plus' ? '$14.99 / month' : '$9.99 / month'}
                 </span>
               </div>
-              <p className="text-slate-600">
+              <p className="text-[#111827] font-medium">
                 {selectedPlanToCheckout === 'Premium Plus'
-                  ? 'Unlocks Friday, Saturday & Sunday live speed dating (5-minute video rounds) and private messaging.'
+                  ? isWaitlistModeActive
+                    ? 'First event date coming soon. Includes live 5-minute video rounds and private messaging once events begin.'
+                    : 'Unlocks scheduled live speed dating (5-minute video rounds) and private messaging.'
                   : 'Unlocks private messaging after mutual likes with other paid members.'}
               </p>
-              <div className="text-[10px] font-mono text-slate-500 pt-1">
-                Stripe Price ID:{' '}
-                {(selectedPlanToCheckout === 'Premium Plus' ? premiumPlusPriceId : premiumPriceId) || 'Configured on server'}
-              </div>
             </div>
 
             {stripeConfigError && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 space-y-1">
-                <span className="font-bold flex items-center gap-1.5 text-amber-950">
-                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-[11px] text-[#111827] font-medium space-y-1">
+                <span className="font-bold flex items-center gap-1.5 text-[#78350F]">
+                  <AlertCircle className="w-4 h-4 text-[#B45309] shrink-0" />
                   Stripe Checkout Configuration Notice
                 </span>
                 <p>
@@ -793,7 +870,7 @@ export const SubscriptionScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedPlanToCheckout(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200 transition-colors cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-[#111827] text-xs font-semibold hover:bg-slate-200 transition-colors cursor-pointer"
               >
                 Close
               </button>

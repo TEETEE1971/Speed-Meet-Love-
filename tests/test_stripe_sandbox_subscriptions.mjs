@@ -205,6 +205,7 @@ async function runTests() {
   console.log('\n[Test 5] Simulating Stripe Webhook: checkout.session.completed for Premium ($9.99/mo)...');
   const premiumWebhookPayload = {
     id: `evt_test_checkout_${Date.now()}`,
+    livemode: false,
     type: 'checkout.session.completed',
     data: {
       object: {
@@ -238,7 +239,7 @@ async function runTests() {
   const meData = await meRes.json();
   assert.strictEqual(meData.user.subscriptionTier, 'Premium', 'User tier must now be Premium');
   assert.strictEqual(meData.user.subscriptionStatus, 'active', 'Subscription status must be active');
-  assert.strictEqual(meData.user.stripeCustomerId, `cus_test_${freeUserId}`, 'Stripe customer ID must be stored');
+  assert.strictEqual(meData.user.stripeCustomerIdTest, `cus_test_${freeUserId}`, 'Test Stripe customer ID must be stored separately');
   console.log('✓ Webhook successfully upgraded user to Premium ($9.99/mo) and persisted to Firestore');
 
   // Premium member can now send messages!
@@ -284,6 +285,7 @@ async function runTests() {
   console.log('\n[Test 6] Simulating Stripe Webhook: customer.subscription.updated to Premium Plus ($14.99/mo)...');
   const premiumPlusWebhookPayload = {
     id: `evt_test_sub_update_${Date.now()}`,
+    livemode: false,
     type: 'customer.subscription.updated',
     data: {
       object: {
@@ -326,6 +328,7 @@ async function runTests() {
   console.log('\n[Test 7] Simulating Stripe Webhook: customer.subscription.deleted...');
   const cancelWebhookPayload = {
     id: `evt_test_cancel_${Date.now()}`,
+    livemode: false,
     type: 'customer.subscription.deleted',
     data: {
       object: {

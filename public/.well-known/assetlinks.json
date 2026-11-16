@@ -1,0 +1,16 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.teeteescreations.speedmeetlove",
+      "sha256_cert_fingerprints": [
+        "8C:50:A3:7B:24:9E:DD:94:9E:DC:09:90:6D:2E:6B:86:DF:4B:27:D1:08:CF:FD:F1:1C:C0:3F:80:ED:8D:2E:1F",
+        "92:B8:14:27:FE:C5:7F:A1:22:7A:C6:A5:70:D7:0D:B9:0C:27:F6:F3:5C:8F:ED:B6:A5:67:8C:81:62:06:7F:F5",
+        "F2:2C:D9:53:34:2A:2E:D6:71:CC:FF:AD:8D:8B:0D:B6:BD:AD:33:B3:61:BF:66:54:07:AB:35:89:72:BB:1A:A8"
+      ]
+    }
+  }
+]

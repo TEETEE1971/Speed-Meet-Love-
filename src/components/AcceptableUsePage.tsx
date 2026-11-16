@@ -29,13 +29,13 @@ export const AcceptableUsePage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
         <button
           onClick={() => setCurrentView('home')}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-slate-700 hover:text-red-600 font-bold text-xs border border-rose-200 shadow-xs transition-all cursor-pointer active:scale-95"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-[#111827] hover:text-[#B91C1C] font-bold text-xs border border-rose-300 shadow-xs transition-all cursor-pointer active:scale-95"
         >
-          <ArrowLeft className="w-4 h-4 text-red-600" />
+          <ArrowLeft className="w-4 h-4 text-[#B91C1C]" />
           <span>Back to Speed Meet Love</span>
         </button>
 
-        <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold">
+        <div className="flex items-center gap-2 text-xs text-[#111827] font-semibold">
           <span>Speed Meet Love · Acceptable Use Policy</span>
           <span>·</span>
           <span>Zero-Tolerance Safety Rules</span>
@@ -60,17 +60,17 @@ export const AcceptableUsePage: React.FC = () => {
         </div>
       </div>
 
-      <div className="space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed">
+      <div className="space-y-6 text-xs sm:text-sm text-[#111827] font-medium leading-relaxed">
         {/* Core Severe Prohibitions */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-red-50/50 border-2 border-red-200 shadow-xs space-y-4">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-red-900 font-heading">
-            <Ban className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-red-50/60 border-2 border-red-300 shadow-xs space-y-4">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#7F1D1D] font-heading">
+            <Ban className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>1. Zero-Tolerance Exploitation, Trafficking &amp; Abuse Rules</h2>
           </div>
-          <p className="font-semibold text-red-950">
+          <p className="font-bold text-[#7F1D1D]">
             The following conduct is strictly prohibited on Speed Meet Love and results in immediate permanent banning upon verification and escalation to appropriate authorities where required:
           </p>
-          <ul className="space-y-2.5 list-disc pl-5 text-slate-800">
+          <ul className="space-y-2.5 list-disc pl-5 text-[#111827]">
             <li>
               <strong>Human Trafficking:</strong> Any attempt to recruit, transport, harbor, advertise, solicit, or profit from human trafficking, forced labor, or commercial sex trafficking.
             </li>
@@ -87,9 +87,9 @@ export const AcceptableUsePage: React.FC = () => {
         </section>
 
         {/* Member Conduct Rules */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-4">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-4">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <AlertTriangle className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>2. Harassment, Scams, Impersonation &amp; Illegal Content</h2>
           </div>
           <ul className="space-y-2.5 list-disc pl-5">
@@ -109,46 +109,46 @@ export const AcceptableUsePage: React.FC = () => {
         </section>
 
         {/* Reporting & Verified Enforcement */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-4">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Flag className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-4">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Flag className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>3. Reporting Violations &amp; Verified Enforcement</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1.5">
-              <div className="flex items-center gap-2 font-extrabold text-slate-900 text-xs">
-                <UserX className="w-4 h-4 text-red-600 shrink-0" />
+            <div className="p-4 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1.5">
+              <div className="flex items-center gap-2 font-bold text-[#111827] text-xs">
+                <UserX className="w-4 h-4 text-[#B91C1C] shrink-0" />
                 <span>In-App Blocking &amp; Reporting</span>
               </div>
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-[#111827] font-medium">
                 Use the <strong>Report Member</strong> button on browse profiles, mutual match chat threads, or inside live speed dating rounds to report any violation immediately, or block a user to hide them from browse, matches, and messaging.
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1.5">
-              <div className="flex items-center gap-2 font-extrabold text-slate-900 text-xs">
-                <ShieldCheck className="w-4 h-4 text-red-600 shrink-0" />
+            <div className="p-4 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1.5">
+              <div className="flex items-center gap-2 font-bold text-[#111827] text-xs">
+                <ShieldCheck className="w-4 h-4 text-[#B91C1C] shrink-0" />
                 <span>Owner Review &amp; Enforcement</span>
               </div>
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-[#111827] font-medium">
                 Reports are persisted on the server and reviewed directly by the platform owner (TeeTees Creations). Confirmed violators receive a permanent account ban, immediate revocation of active sessions, and removal from event queues and active rounds.
               </p>
             </div>
           </div>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-[#111827] font-medium">
             Note: Speed Meet Love relies on server-side 18+ age validation at signup, member reports, and manual owner review; it does not use automated AI scanning or government ID verification.
           </p>
         </section>
 
         {/* Contact */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-200 shadow-xs space-y-2">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Mail className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-300 shadow-xs space-y-2">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Mail className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>4. Report Violations by Email</h2>
           </div>
           <p>
             To report urgent safety concerns, human trafficking, exploitation, underage users, or scams outside the app, email{' '}
-            <a href="mailto:speedmeetlove@gmail.com" className="text-red-600 font-bold underline font-mono">
+            <a href="mailto:speedmeetlove@gmail.com" className="text-[#B91C1C] font-bold underline font-mono">
               speedmeetlove@gmail.com
             </a>{' '}
             with any relevant usernames, dates, and details.
@@ -159,23 +159,23 @@ export const AcceptableUsePage: React.FC = () => {
       {/* Footer Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-rose-200 text-xs">
         <div className="flex flex-wrap items-center gap-3">
-          <a href="/terms" onClick={(e) => handleNav(e, 'terms')} className="text-red-600 font-bold hover:underline">
+          <a href="/terms" onClick={(e) => handleNav(e, 'terms')} className="text-[#B91C1C] font-bold hover:underline">
             Terms &amp; Conditions
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/child-safety" onClick={(e) => handleNav(e, 'child_safety')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/child-safety" onClick={(e) => handleNav(e, 'child_safety')} className="text-[#111827] font-bold hover:underline">
             Child Safety Standards
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/law-enforcement" onClick={(e) => handleNav(e, 'law_enforcement')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/law-enforcement" onClick={(e) => handleNav(e, 'law_enforcement')} className="text-[#111827] font-bold hover:underline">
             Law-Enforcement Protocols
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-[#111827] font-bold hover:underline">
             Privacy Policy
           </a>
         </div>
-        <div className="text-slate-500 font-medium">© 2026 Speed Meet Love by TeeTees Creations</div>
+        <div className="text-[#111827] font-medium">© 2026 Speed Meet Love by TeeTees Creations</div>
       </div>
     </div>
   );

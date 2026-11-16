@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { OwnerReportItem, RegisteredUserSummary, SubscriptionTier, TesterGrantRecord } from '../types';
+import {
+  OwnerReportItem,
+  RegisteredUserSummary,
+  SubscriptionTier,
+  TesterGrantRecord,
+  OwnerWaitlistMember,
+  OwnerWaitlistSummary,
+} from '../types';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -30,16 +37,17 @@ import {
   UserMinus,
   Crown,
   Award,
+  Heart,
 } from 'lucide-react';
 
 interface OwnerReportsViewProps {
-  defaultTab?: 'reports' | 'users';
+  defaultTab?: 'reports' | 'users' | 'waitlist';
 }
 
 export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab = 'reports' }) => {
   const { isOwner, setCurrentView, authToken, showNotification } = useApp();
 
-  const [activeDashboardTab, setActiveDashboardTab] = useState<'reports' | 'users'>(defaultTab);
+  const [activeDashboardTab, setActiveDashboardTab] = useState<'reports' | 'users' | 'waitlist'>(defaultTab);
 
   // Safety Reports state
   const [reports, setReports] = useState<OwnerReportItem[]>([]);
@@ -83,6 +91,14 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
   const [testerNotesInput, setTesterNotesInput] = useState<string>('');
   const [processingTesterEmail, setProcessingTesterEmail] = useState<string | null>(null);
   const [loadingTesters, setLoadingTesters] = useState<boolean>(false);
+
+  // Private Event Waitlist state (Founder/Admin only)
+  const [waitlistMembers, setWaitlistMembers] = useState<OwnerWaitlistMember[]>([]);
+  const [waitlistSummary, setWaitlistSummary] = useState<OwnerWaitlistSummary | null>(null);
+  const [loadingWaitlist, setLoadingWaitlist] = useState<boolean>(false);
+  const [waitlistSearch, setWaitlistSearch] = useState<string>('');
+  const [waitlistGenderFilter, setWaitlistGenderFilter] = useState<'all' | 'Woman' | 'Man' | 'Non-Binary'>('all');
+  const [waitlistError, setWaitlistError] = useState<string | null>(null);
 
   // Sync tab if defaultTab changes
   useEffect(() => {
@@ -190,14 +206,44 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
     }
   }, [authToken]);
 
+  // Fetch Private Event Waitlist (Owner-Only)
+  const fetchWaitlistMembers = useCallback(async () => {
+    setLoadingWaitlist(true);
+    setWaitlistError(null);
+    try {
+      const token = authToken || localStorage.getItem('sml_brand_v6_authToken');
+      const res = await fetch('/api/owner/waitlist', {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const rows = Array.isArray(data.entries) ? data.entries : Array.isArray(data.members) ? data.members : null;
+        if (data.success && rows) {
+          setWaitlistMembers(rows);
+          setWaitlistSummary(data.summary || null);
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setWaitlistError(errData.error || 'Failed to load waiting list.');
+      }
+    } catch (e: any) {
+      setWaitlistError(e?.message || 'Network error while loading waiting list.');
+    } finally {
+      setLoadingWaitlist(false);
+    }
+  }, [authToken]);
+
   // Initial load
   useEffect(() => {
     if (isOwner) {
       fetchReports();
       fetchRegisteredUsers();
       fetchGrantedTesters();
+      fetchWaitlistMembers();
     }
-  }, [isOwner, fetchReports, fetchRegisteredUsers, fetchGrantedTesters]);
+  }, [isOwner, fetchReports, fetchRegisteredUsers, fetchGrantedTesters, fetchWaitlistMembers]);
 
   // Grant or Revoke Free Premium Plus Tester Access
   const handleToggleTesterAccess = async (email: string, action: 'grant' | 'remove', notes?: string) => {
@@ -370,14 +416,32 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
     });
   }, [registeredUsers, usersSearch, usersTierFilter, usersStatusFilter]);
 
+  const filteredWaitlist = useMemo(() => {
+    return waitlistMembers.filter(m => {
+      if (waitlistSearch.trim()) {
+        const q = waitlistSearch.trim().toLowerCase();
+        const hit =
+          (m.fullName || '').toLowerCase().includes(q) ||
+          (m.email || '').toLowerCase().includes(q) ||
+          (m.location || '').toLowerCase().includes(q) ||
+          (m.relationshipIntent || '').toLowerCase().includes(q);
+        if (!hit) return false;
+      }
+      if (waitlistGenderFilter !== 'all' && m.gender !== waitlistGenderFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [waitlistMembers, waitlistSearch, waitlistGenderFilter]);
+
   if (!isOwner) {
     return (
       <div className="max-w-2xl mx-auto p-8 rounded-3xl bg-white border border-rose-200 shadow-xl text-center space-y-4 my-8">
-        <div className="w-14 h-14 mx-auto rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-red-50 border border-red-300 flex items-center justify-center text-[#B91C1C]">
           <Lock className="w-7 h-7" />
         </div>
-        <h2 className="text-2xl font-black text-slate-900 font-heading">Owner Authorization Required</h2>
-        <p className="text-sm text-slate-600 leading-relaxed max-w-md mx-auto">
+        <h2 className="text-2xl font-bold text-[#111827] font-heading">Owner Authorization Required</h2>
+        <p className="text-sm text-[#111827] font-medium leading-relaxed max-w-md mx-auto">
           This administration dashboard is strictly restricted to the verified platform owner.
         </p>
         <div className="pt-2">
@@ -408,54 +472,70 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
         <button
           onClick={() => setCurrentView('profile')}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-slate-700 hover:text-red-600 font-bold text-xs border border-rose-200 shadow-xs transition-all cursor-pointer active:scale-95"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-[#111827] hover:text-[#B91C1C] font-bold text-xs border border-rose-300 shadow-xs transition-all cursor-pointer active:scale-95"
         >
-          <ArrowLeft className="w-4 h-4 text-red-600" />
+          <ArrowLeft className="w-4 h-4 text-[#B91C1C]" />
           <span>Back to Profile</span>
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold font-mono">
-            <Lock className="w-3.5 h-3.5 text-emerald-600" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-[#065F46] text-xs font-bold font-mono">
+            <Lock className="w-3.5 h-3.5 text-[#047857]" />
             <span>Owner Authenticated: kristylten@gmail.com</span>
           </span>
           <button
             onClick={() => {
               if (activeDashboardTab === 'reports') {
                 fetchReports();
-              } else {
+              } else if (activeDashboardTab === 'users') {
                 fetchRegisteredUsers(true);
+              } else {
+                fetchWaitlistMembers();
               }
             }}
-            disabled={activeDashboardTab === 'reports' ? loadingReports : (loadingUsers || isRefreshingUsers)}
-            className="p-2 rounded-xl bg-white border border-rose-200 text-slate-700 hover:text-red-600 hover:bg-rose-50 shadow-xs transition-colors cursor-pointer"
+            disabled={
+              activeDashboardTab === 'reports'
+                ? loadingReports
+                : activeDashboardTab === 'users'
+                ? loadingUsers || isRefreshingUsers
+                : loadingWaitlist
+            }
+            className="p-2 rounded-xl bg-white border border-rose-300 text-[#111827] hover:text-[#B91C1C] hover:bg-rose-50 shadow-xs transition-colors cursor-pointer"
             title="Refresh current dashboard data"
           >
             <RefreshCw
-              className={`w-4 h-4 ${(activeDashboardTab === 'reports' ? loadingReports : (loadingUsers || isRefreshingUsers)) ? 'animate-spin text-red-600' : ''}`}
+              className={`w-4 h-4 ${
+                (activeDashboardTab === 'reports'
+                  ? loadingReports
+                  : activeDashboardTab === 'users'
+                  ? loadingUsers || isRefreshingUsers
+                  : loadingWaitlist)
+                  ? 'animate-spin text-[#B91C1C]'
+                  : ''
+              }`}
             />
           </button>
         </div>
       </div>
 
       {/* Main Top Navigation Tabs */}
-      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-white border border-rose-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 rounded-2xl bg-white border border-rose-300 shadow-xs">
         <button
           type="button"
           onClick={() => setActiveDashboardTab('reports')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
             activeDashboardTab === 'reports'
               ? 'bg-slate-900 text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-rose-50/60'
+              : 'text-[#111827] hover:text-[#B91C1C] hover:bg-rose-50/60'
           }`}
         >
-          <ShieldAlert className={`w-4 h-4 ${activeDashboardTab === 'reports' ? 'text-amber-400' : 'text-red-500'}`} />
-          <span>Community Safety &amp; In-App Reports</span>
+          <ShieldAlert className={`w-4 h-4 ${activeDashboardTab === 'reports' ? 'text-amber-400' : 'text-[#B91C1C]'}`} />
+          <span>Safety Reports</span>
           <span
-            className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
+            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
               activeDashboardTab === 'reports'
                 ? 'bg-white/20 text-white'
-                : 'bg-rose-100 text-red-700'
+                : 'bg-rose-100 text-[#991B1B]'
             }`}
           >
             {reports.length}
@@ -465,22 +545,44 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
         <button
           type="button"
           onClick={() => setActiveDashboardTab('users')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
             activeDashboardTab === 'users'
               ? 'bg-slate-900 text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-rose-50/60'
+              : 'text-[#111827] hover:text-[#BE185D] hover:bg-rose-50/60'
           }`}
         >
-          <Users className={`w-4 h-4 ${activeDashboardTab === 'users' ? 'text-[#FF2E93]' : 'text-slate-600'}`} />
-          <span>Registered Users (Live Server)</span>
+          <Users className={`w-4 h-4 ${activeDashboardTab === 'users' ? 'text-pink-300' : 'text-[#111827]'}`} />
+          <span>Registered Users</span>
           <span
-            className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
+            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
               activeDashboardTab === 'users'
                 ? 'bg-white/20 text-white'
-                : 'bg-pink-100 text-[#FF2E93]'
+                : 'bg-pink-100 text-[#BE185D]'
             }`}
           >
             {totalRegistrations !== null ? totalRegistrations : registeredUsers.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveDashboardTab('waitlist')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+            activeDashboardTab === 'waitlist'
+              ? 'bg-slate-900 text-white shadow-md'
+              : 'text-[#111827] hover:text-[#BE185D] hover:bg-rose-50/60'
+          }`}
+        >
+          <Heart className={`w-4 h-4 ${activeDashboardTab === 'waitlist' ? 'text-pink-300 fill-pink-300' : 'text-[#BE185D] fill-[#BE185D]'}`} />
+          <span>Private Waiting List</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+              activeDashboardTab === 'waitlist'
+                ? 'bg-white/20 text-white'
+                : 'bg-pink-100 text-[#BE185D]'
+            }`}
+          >
+            {waitlistSummary?.totalWaitlisted ?? waitlistMembers.length}
           </span>
         </button>
       </div>
@@ -530,31 +632,31 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
 
           {/* Mandatory Child Safety (CSAE/CSAM) Escalation Protocol Guide */}
           <div className="p-5 sm:p-6 rounded-3xl bg-amber-50/90 border-2 border-amber-300 shadow-sm space-y-3">
-            <div className="flex items-center gap-2.5 text-amber-950 font-black font-heading text-sm sm:text-base">
-              <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />
+            <div className="flex items-center gap-2.5 text-[#78350F] font-bold font-heading text-sm sm:text-base">
+              <ShieldAlert className="w-5 h-5 text-[#B45309] shrink-0" />
               <span>Owner Responsibilities: Handling CSAE / CSAM Allegations</span>
             </div>
-            <p className="text-xs text-amber-900 leading-relaxed">
+            <p className="text-xs text-[#78350F] font-medium leading-relaxed">
               If any report involves alleged <strong>Child Sexual Abuse Material (CSAM)</strong>, grooming, or child exploitation:
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-xs text-amber-950">
-              <div className="p-3 rounded-2xl bg-white border border-amber-200 space-y-1">
-                <span className="font-extrabold text-red-700 block">Step 1: Ban &amp; Terminate</span>
-                <p className="text-slate-700 text-[11px]">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-xs text-[#111827]">
+              <div className="p-3 rounded-2xl bg-white border border-amber-300 space-y-1">
+                <span className="font-bold text-[#991B1B] block">Step 1: Ban &amp; Terminate</span>
+                <p className="text-[#111827] font-medium text-[11px]">
                   Tap <strong>Ban User &amp; Revoke Access</strong> below. This immediately revokes their session tokens, evicts them from matchmaking queues, and prevents account recreation.
                 </p>
               </div>
-              <div className="p-3 rounded-2xl bg-white border border-amber-200 space-y-1">
-                <span className="font-extrabold text-red-700 block">Step 2: Do Not Share Material</span>
-                <p className="text-slate-700 text-[11px]">
+              <div className="p-3 rounded-2xl bg-white border border-amber-300 space-y-1">
+                <span className="font-bold text-[#991B1B] block">Step 2: Do Not Share Material</span>
+                <p className="text-[#111827] font-medium text-[11px]">
                   Never download, screenshot, forward, or distribute abusive photos or videos. Retain only account identifiers and technical logs on the server.
                 </p>
               </div>
-              <div className="p-3 rounded-2xl bg-white border border-amber-200 space-y-1">
-                <span className="font-extrabold text-red-700 block">Step 3: File CyberTipline Report</span>
-                <p className="text-slate-700 text-[11px]">
+              <div className="p-3 rounded-2xl bg-white border border-amber-300 space-y-1">
+                <span className="font-bold text-[#991B1B] block">Step 3: File CyberTipline Report</span>
+                <p className="text-[#111827] font-medium text-[11px]">
                   Promptly report the incident to the <strong>National Center for Missing &amp; Exploited Children (NCMEC)</strong> at{' '}
-                  <a href="https://report.cybertip.org" target="_blank" rel="noopener noreferrer" className="font-bold underline text-red-600">
+                  <a href="https://report.cybertip.org" target="_blank" rel="noopener noreferrer" className="font-bold underline text-[#B91C1C]">
                     report.cybertip.org
                   </a>{' '}
                   or call 1-800-843-5678.
@@ -564,66 +666,66 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
           </div>
 
           {/* Filter Tabs */}
-          <div className="flex items-center justify-between border-b border-rose-100 pb-3">
+          <div className="flex items-center justify-between border-b border-rose-200 pb-3">
             <div className="flex items-center gap-1.5 overflow-x-auto">
               <button
                 onClick={() => setReportsFilter('all')}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   reportsFilter === 'all'
                     ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:bg-rose-50 border border-slate-200'
+                    : 'bg-white text-[#111827] hover:bg-rose-50 border border-slate-300'
                 }`}
               >
                 All Reports ({reports.length})
               </button>
               <button
                 onClick={() => setReportsFilter('pending')}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   reportsFilter === 'pending'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:bg-rose-50 border border-slate-200'
+                    ? 'bg-amber-700 text-white shadow-xs'
+                    : 'bg-white text-[#111827] hover:bg-rose-50 border border-slate-300'
                 }`}
               >
                 Pending Review ({pendingCount})
               </button>
               <button
                 onClick={() => setReportsFilter('banned')}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   reportsFilter === 'banned'
-                    ? 'bg-red-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:bg-rose-50 border border-slate-200'
+                    ? 'bg-red-700 text-white shadow-xs'
+                    : 'bg-white text-[#111827] hover:bg-rose-50 border border-slate-300'
                 }`}
               >
                 Banned Members ({bannedCount})
               </button>
               <button
                 onClick={() => setReportsFilter('dismissed')}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   reportsFilter === 'dismissed'
-                    ? 'bg-slate-700 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:bg-rose-50 border border-slate-200'
+                    ? 'bg-slate-800 text-white shadow-xs'
+                    : 'bg-white text-[#111827] hover:bg-rose-50 border border-slate-300'
                 }`}
               >
                 Dismissed ({reports.filter(r => r.status === 'dismissed').length})
               </button>
             </div>
 
-            <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
+            <span className="text-xs text-[#111827] font-semibold hidden sm:inline">
               Showing {filteredReports.length} of {reports.length}
             </span>
           </div>
 
           {/* Reports List */}
           {loadingReports ? (
-            <div className="p-12 text-center text-slate-500 space-y-2 bg-white rounded-3xl border border-rose-100">
-              <RefreshCw className="w-6 h-6 mx-auto animate-spin text-red-600" />
+            <div className="p-12 text-center text-[#111827] space-y-2 bg-white rounded-3xl border border-rose-200">
+              <RefreshCw className="w-6 h-6 mx-auto animate-spin text-[#B91C1C]" />
               <p className="text-xs font-bold">Loading persistent reports from server storage...</p>
             </div>
           ) : filteredReports.length === 0 ? (
-            <div className="p-12 text-center text-slate-500 space-y-2 bg-white rounded-3xl border border-rose-100">
-              <ShieldCheck className="w-8 h-8 mx-auto text-emerald-500" />
-              <p className="text-sm font-extrabold text-slate-800">No reports found under this filter</p>
-              <p className="text-xs text-slate-500">All member reports submitted in-app will show here for your action.</p>
+            <div className="p-12 text-center text-[#111827] space-y-2 bg-white rounded-3xl border border-rose-200">
+              <ShieldCheck className="w-8 h-8 mx-auto text-[#047857]" />
+              <p className="text-sm font-bold text-[#111827]">No reports found under this filter</p>
+              <p className="text-xs text-[#111827] font-medium">All member reports submitted in-app will show here for your action.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -635,80 +737,80 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                     key={report.id}
                     className={`p-5 sm:p-6 rounded-3xl bg-white border transition-all shadow-xs space-y-4 ${
                       report.status === 'pending'
-                        ? 'border-amber-300 ring-2 ring-amber-100'
+                        ? 'border-amber-400 ring-2 ring-amber-100'
                         : report.status === 'banned'
-                        ? 'border-red-200 bg-red-50/20'
-                        : 'border-slate-200'
+                        ? 'border-red-300 bg-red-50/20'
+                        : 'border-slate-300'
                     }`}
                   >
                     {/* Header row */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold text-slate-500">{report.id}</span>
+                        <span className="text-xs font-mono font-bold text-[#111827]">{report.id}</span>
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
                             report.status === 'pending'
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                              ? 'bg-amber-100 text-[#78350F] border border-amber-300'
                               : report.status === 'banned'
-                              ? 'bg-red-100 text-red-800 border border-red-300'
-                              : 'bg-slate-100 text-slate-700'
+                              ? 'bg-red-100 text-[#991B1B] border border-red-300'
+                              : 'bg-slate-100 text-[#111827] border border-slate-300'
                           }`}
                         >
                           {report.status}
                         </span>
                         {report.reason === 'Child safety / Underage / CSAE' && (
-                          <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-extrabold animate-pulse">
+                          <span className="px-2 py-0.5 rounded-full bg-red-700 text-white text-[10px] font-bold animate-pulse">
                             CSAE / CHILD SAFETY PRIORITY
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <div className="flex items-center gap-2 text-xs text-[#111827] font-medium">
+                        <Clock className="w-3.5 h-3.5 text-[#111827]" />
                         <span>{report.timestamp}</span>
                       </div>
                     </div>
 
                     {/* Reported & Reporter info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                      <div className="p-3.5 rounded-2xl bg-rose-50/60 border border-rose-100 space-y-1">
-                        <span className="text-[10px] font-bold uppercase text-red-600 tracking-wider block">
+                      <div className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 space-y-1">
+                        <span className="text-[10px] font-bold uppercase text-[#B91C1C] tracking-wider block">
                           Reported Offender
                         </span>
-                        <div className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                          <UserIcon className="w-4 h-4 text-red-600" />
+                        <div className="font-bold text-[#111827] text-sm flex items-center gap-2">
+                          <UserIcon className="w-4 h-4 text-[#B91C1C]" />
                           <span>{report.reportedUserName || 'Unknown Member'}</span>
                         </div>
-                        <div className="text-slate-600 font-mono text-[11px]">
-                          User ID: <span className="font-bold text-slate-800">{report.reportedUserId}</span>
+                        <div className="text-[#111827] font-mono text-[11px]">
+                          User ID: <span className="font-bold text-[#111827]">{report.reportedUserId}</span>
                         </div>
                         {report.reportedUserEmail && (
-                          <div className="text-slate-600 text-[11px] flex items-center gap-1">
-                            <Mail className="w-3 h-3 text-slate-400" />
+                          <div className="text-[#111827] font-medium text-[11px] flex items-center gap-1">
+                            <Mail className="w-3 h-3 text-[#111827]" />
                             <span>{report.reportedUserEmail}</span>
                           </div>
                         )}
                         {isUserBanned && (
-                          <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-red-600 text-white font-extrabold text-[10px]">
+                          <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-red-700 text-white font-bold text-[10px]">
                             Account Banned
                           </span>
                         )}
                       </div>
 
-                      <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                        <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">
+                      <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-300 space-y-1">
+                        <span className="text-[10px] font-bold uppercase text-[#111827] tracking-wider block">
                           Reporting Member
                         </span>
-                        <div className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                          <UserIcon className="w-4 h-4 text-slate-500" />
+                        <div className="font-bold text-[#111827] text-sm flex items-center gap-2">
+                          <UserIcon className="w-4 h-4 text-[#111827]" />
                           <span>{report.reporterName || 'Anonymous Member'}</span>
                         </div>
-                        <div className="text-slate-600 font-mono text-[11px]">
-                          User ID: <span className="font-bold text-slate-800">{report.reporterId}</span>
+                        <div className="text-[#111827] font-mono text-[11px]">
+                          User ID: <span className="font-bold text-[#111827]">{report.reporterId}</span>
                         </div>
                         {report.reporterEmail && (
-                          <div className="text-slate-600 text-[11px] flex items-center gap-1">
-                            <Mail className="w-3 h-3 text-slate-400" />
+                          <div className="text-[#111827] font-medium text-[11px] flex items-center gap-1">
+                            <Mail className="w-3 h-3 text-[#111827]" />
                             <span>{report.reporterEmail}</span>
                           </div>
                         )}
@@ -716,18 +818,18 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                     </div>
 
                     {/* Report Reason & Notes */}
-                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2 text-xs">
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-600 uppercase text-[10px]">Reason:</span>
-                        <span className="font-extrabold text-slate-900 px-2 py-0.5 rounded-md bg-white border border-slate-200">
+                        <span className="font-bold text-[#111827] uppercase text-[10px]">Reason:</span>
+                        <span className="font-bold text-[#111827] px-2 py-0.5 rounded-md bg-white border border-slate-300">
                           {report.reason}
                         </span>
                       </div>
                       <div>
-                        <span className="font-bold text-slate-600 uppercase text-[10px] block mb-1">
+                        <span className="font-bold text-[#111827] uppercase text-[10px] block mb-1">
                           Reporter Description:
                         </span>
-                        <p className="text-slate-800 font-medium bg-white p-3 rounded-xl border border-slate-200 whitespace-pre-wrap leading-relaxed">
+                        <p className="text-[#111827] font-medium bg-white p-3 rounded-xl border border-slate-300 whitespace-pre-wrap leading-relaxed">
                           {report.notes || 'No additional details provided by reporter.'}
                         </p>
                       </div>
@@ -735,15 +837,15 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
 
                     {/* Action resolution summary if already acted on */}
                     {report.actionTaken && (
-                      <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 flex items-center justify-between">
+                      <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-300 text-xs text-[#064E3B] font-medium flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <CheckCircle2 className="w-4 h-4 text-[#047857] shrink-0" />
                           <span>
                             <strong>Action:</strong> {report.actionTaken}
                           </span>
                         </div>
                         {report.actionAt && (
-                          <span className="text-[11px] text-emerald-700 font-mono">
+                          <span className="text-[11px] text-[#065F46] font-mono font-bold">
                             {new Date(report.actionAt).toLocaleDateString()}
                           </span>
                         )}
@@ -751,13 +853,13 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                     )}
 
                     {/* Action Buttons */}
-                    <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                    <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2 border-t border-slate-200">
                       {isUserBanned ? (
                         <button
                           type="button"
                           disabled={processingId === report.reportedUserId}
                           onClick={() => handleUnbanUser(report.reportedUserId)}
-                          className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                          className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold text-xs transition-colors cursor-pointer"
                         >
                           {processingId === report.reportedUserId ? 'Unbanning...' : 'Unban Account'}
                         </button>
@@ -765,7 +867,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                         <button
                           type="button"
                           onClick={() => setActionModal({ report, action: 'ban_user' })}
-                          className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                          className="px-4 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
                         >
                           <UserX className="w-3.5 h-3.5" />
                           <span>Ban User &amp; Revoke Access</span>
@@ -776,7 +878,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                         <button
                           type="button"
                           onClick={() => setActionModal({ report, action: 'dismiss' })}
-                          className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                          className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold text-xs transition-colors cursor-pointer"
                         >
                           Dismiss Report
                         </button>
@@ -853,50 +955,50 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
           {/* Important Advisories */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             {/* Google Play Closed Testing Distinction */}
-            <div className="p-4 sm:p-5 rounded-3xl bg-sky-50 border border-sky-200 space-y-2 shadow-xs">
-              <div className="flex items-center gap-2 text-sky-950 font-black font-heading text-xs sm:text-sm">
-                <Info className="w-4 h-4 text-sky-600 shrink-0" />
+            <div className="p-4 sm:p-5 rounded-3xl bg-sky-50 border border-sky-300 space-y-2 shadow-xs">
+              <div className="flex items-center gap-2 text-[#0C4A6E] font-bold font-heading text-xs sm:text-sm">
+                <Info className="w-4 h-4 text-[#0369A1] shrink-0" />
                 <span>Google Play Testing Distinction</span>
               </div>
-              <p className="text-[11px] text-sky-900 leading-relaxed">
+              <p className="text-[11px] text-[#111827] font-medium leading-relaxed">
                 In-app registered users shown here represent real accounts created through the Speed Meet Love application. <strong>App registration is separate from Google Play Closed Testing enrollment</strong>. Creating an account in this app does not automatically enroll a tester into Google Play internal or closed tracks.
               </p>
             </div>
 
             {/* Storage Architecture & Persistence Guarantee Advisory */}
             <div className="p-4 sm:p-5 rounded-3xl bg-emerald-50 border border-emerald-300 space-y-2 shadow-xs">
-              <div className="flex items-center gap-2 text-emerald-950 font-black font-heading text-xs sm:text-sm">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <div className="flex items-center gap-2 text-[#064E3B] font-bold font-heading text-xs sm:text-sm">
+                <ShieldCheck className="w-4 h-4 text-[#047857] shrink-0" />
                 <span>Durable Database Persistence: Active</span>
               </div>
-              <p className="text-[11px] text-emerald-900 leading-relaxed">
-                User accounts, sign-ins, and bans are connected to <strong>Cloud Firestore</strong> (collection <code className="bg-emerald-100 px-1 py-0.5 rounded font-mono font-bold text-emerald-950">users</code>) with local mirror backups. <strong>Registrations survive container redeployments, image builds, and multi-instance scaling</strong>. Passwords, hashes, and secrets are strictly redacted.
+              <p className="text-[11px] text-[#111827] font-medium leading-relaxed">
+                User accounts, sign-ins, and bans are connected to <strong>Cloud Firestore</strong> (collection <code className="bg-emerald-100 px-1 py-0.5 rounded font-mono font-bold text-[#064E3B]">users</code>) with local mirror backups. <strong>Registrations survive container redeployments, image builds, and multi-instance scaling</strong>. Passwords, hashes, and secrets are strictly redacted.
               </p>
             </div>
           </div>
 
           {/* Tester Privileges Management (Owner Exclusive) */}
-          <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-amber-50/70 via-rose-50/40 to-white border-2 border-amber-200 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-200/60 pb-3">
+          <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-amber-50/70 via-rose-50/40 to-white border-2 border-amber-300 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-200/80 pb-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-xl bg-gradient-to-r from-amber-500 to-[#FF2E93] text-white flex items-center justify-center shadow-xs">
+                  <div className="w-7 h-7 rounded-xl bg-gradient-to-r from-amber-600 to-[#BE185D] text-white flex items-center justify-center shadow-xs">
                     <Sparkles className="w-4 h-4" />
                   </div>
-                  <h2 className="text-base sm:text-lg font-black text-slate-900 font-heading">
+                  <h2 className="text-base sm:text-lg font-bold text-[#111827] font-heading">
                     Tester Accounts &amp; Free Premium Plus Access
                   </h2>
                 </div>
-                <p className="text-xs text-slate-600 max-w-2xl leading-relaxed">
+                <p className="text-xs text-[#111827] font-medium max-w-2xl leading-relaxed">
                   Grant or remove full <strong>Premium Plus</strong> access for individual testers by entering their email address. Authorized testers unlock all features—including <strong>messaging after mutual matches</strong>, <strong>live speed-dating events</strong>, and VIP Plus privileges—without entering a payment card or creating a Stripe subscription. Access is strictly enforced and verified on the server.
                 </p>
               </div>
 
               <div className="flex items-center gap-1.5 self-start sm:self-center shrink-0">
-                <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-black uppercase tracking-wider flex items-center gap-1">
-                  <Lock className="w-3 h-3 text-amber-700" /> Owner Only
+                <span className="px-2.5 py-1 rounded-full bg-amber-100 text-[#78350F] border border-amber-300 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-[#92400E]" /> Owner Only
                 </span>
-                <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-[11px] font-bold">
+                <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-[#065F46] border border-emerald-300 text-[11px] font-bold">
                   {grantedTesters.length} Granted
                 </span>
               </div>
@@ -913,14 +1015,14 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
               className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-1"
             >
               <div className="sm:col-span-5 relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Mail className="w-4 h-4 text-[#111827] absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   required
                   value={testerEmailInput}
                   onChange={(e) => setTesterEmailInput(e.target.value)}
                   placeholder="Enter tester email address (e.g. tester@gmail.com)..."
-                  className="w-full pl-9 pr-4 py-2.5 rounded-2xl bg-white border border-amber-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#FF2E93] focus:ring-2 focus:ring-rose-200/50 transition-all font-medium"
+                  className="w-full pl-9 pr-4 py-2.5 rounded-2xl bg-white border border-amber-300 text-xs text-[#111827] placeholder-slate-500 focus:outline-none focus:border-[#BE185D] focus:ring-2 focus:ring-rose-200/50 transition-all font-medium"
                 />
               </div>
 
@@ -930,7 +1032,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                   value={testerNotesInput}
                   onChange={(e) => setTesterNotesInput(e.target.value)}
                   placeholder="Optional note (e.g., Google Play closed tester)..."
-                  className="w-full px-4 py-2.5 rounded-2xl bg-white border border-amber-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#FF2E93] focus:ring-2 focus:ring-rose-200/50 transition-all"
+                  className="w-full px-4 py-2.5 rounded-2xl bg-white border border-amber-300 text-xs text-[#111827] font-medium placeholder-slate-500 focus:outline-none focus:border-[#BE185D] focus:ring-2 focus:ring-rose-200/50 transition-all"
                 />
               </div>
 
@@ -938,7 +1040,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                 <button
                   type="submit"
                   disabled={!testerEmailInput.trim() || processingTesterEmail === testerEmailInput.toLowerCase().trim()}
-                  className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-[#FF2E93] hover:from-amber-600 hover:to-rose-600 text-white font-extrabold text-xs shadow-md shadow-pink-500/20 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-600 to-[#BE185D] hover:from-amber-700 hover:to-rose-700 text-white font-bold text-xs shadow-md shadow-pink-500/20 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>{processingTesterEmail === testerEmailInput.toLowerCase().trim() ? 'Granting...' : 'Grant Premium Plus'}</span>
@@ -947,20 +1049,20 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
             </form>
 
             {/* Active Granted Testers List / Chips */}
-            <div className="space-y-2 pt-1 border-t border-amber-200/50">
+            <div className="space-y-2 pt-1 border-t border-amber-200/60">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <span className="text-[11px] font-bold text-[#111827] uppercase tracking-wider">
                   Currently Authorized Tester Accounts ({grantedTesters.length}):
                 </span>
                 {loadingTesters && (
-                  <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                    <RefreshCw className="w-3 h-3 animate-spin text-red-600" /> Syncing...
+                  <span className="text-[11px] text-[#111827] font-medium flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3 animate-spin text-[#B91C1C]" /> Syncing...
                   </span>
                 )}
               </div>
 
               {grantedTesters.length === 0 ? (
-                <div className="p-3.5 rounded-2xl bg-white/80 border border-dashed border-amber-200 text-center text-xs text-slate-500">
+                <div className="p-3.5 rounded-2xl bg-white/90 border border-dashed border-amber-300 text-center text-xs text-[#111827] font-medium">
                   No custom tester emails currently granted. Use the form above to grant free Premium Plus to any tester email, or click <strong>Grant Free Premium Plus</strong> on any member in the table below.
                 </div>
               ) : (
@@ -970,24 +1072,24 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                     return (
                       <div
                         key={tester.email}
-                        className="p-2.5 rounded-2xl bg-white border border-amber-200 shadow-xs flex items-center justify-between gap-2"
+                        className="p-2.5 rounded-2xl bg-white border border-amber-300 shadow-xs flex items-center justify-between gap-2"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span
                               className={`w-2 h-2 rounded-full shrink-0 ${
-                                tester.isRegistered ? 'bg-emerald-500' : 'bg-amber-400'
+                                tester.isRegistered ? 'bg-[#047857]' : 'bg-amber-600'
                               }`}
                               title={tester.isRegistered ? 'Registered Account' : 'Pending Signup'}
                             />
-                            <span className="text-xs font-bold text-slate-900 truncate block">
+                            <span className="text-xs font-bold text-[#111827] truncate block">
                               {tester.email}
                             </span>
                           </div>
-                          <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                          <div className="text-[10px] text-[#111827] font-medium flex items-center gap-1.5 mt-0.5">
                             <span>{tester.isRegistered ? (tester.firstName || 'Registered') : 'Pending Signup'}</span>
                             <span>·</span>
-                            <span className="text-emerald-700 font-semibold">Premium Plus</span>
+                            <span className="text-[#047857] font-bold">Premium Plus</span>
                           </div>
                         </div>
 
@@ -995,7 +1097,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                           type="button"
                           disabled={isProcessingThis}
                           onClick={() => handleToggleTesterAccess(tester.email, 'remove')}
-                          className="p-1.5 rounded-xl bg-slate-50 hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-red-50 text-[#111827] hover:text-[#B91C1C] transition-colors cursor-pointer shrink-0 disabled:opacity-50"
                           title={`Revoke free tester access for ${tester.email}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1009,17 +1111,17 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
           </div>
 
           {/* Controls: Search, Filters & Export */}
-          <div className="p-4 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
+          <div className="p-4 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               {/* Search input */}
               <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-[#111827] absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={usersSearch}
                   onChange={e => setUsersSearch(e.target.value)}
                   placeholder="Search real members by name, email, User ID, or city..."
-                  className="w-full pl-9 pr-4 py-2 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF2E93] focus:bg-white transition-all"
+                  className="w-full pl-9 pr-4 py-2 rounded-2xl bg-slate-50 border border-slate-300 text-xs text-[#111827] font-medium placeholder-slate-500 focus:outline-none focus:border-[#BE185D] focus:bg-white transition-all"
                 />
               </div>
 
@@ -1029,7 +1131,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                   type="button"
                   onClick={exportRegisteredUsers}
                   disabled={!registeredUsers.length}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-pink-50 hover:bg-pink-100 border border-pink-200 text-xs font-bold text-[#FF2E93] transition-colors cursor-pointer disabled:opacity-50 active:scale-95 whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-pink-50 hover:bg-pink-100 border border-pink-300 text-xs font-bold text-[#BE185D] transition-colors cursor-pointer disabled:opacity-50 active:scale-95 whitespace-nowrap"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Export JSON</span>
@@ -1038,18 +1140,18 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                   type="button"
                   onClick={() => fetchRegisteredUsers(true)}
                   disabled={loadingUsers || isRefreshingUsers}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] text-xs font-bold transition-colors cursor-pointer"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${(loadingUsers || isRefreshingUsers) ? 'animate-spin text-red-600' : ''}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${(loadingUsers || isRefreshingUsers) ? 'animate-spin text-[#B91C1C]' : ''}`} />
                   <span>{isRefreshingUsers ? 'Refreshing...' : 'Refresh'}</span>
                 </button>
               </div>
             </div>
 
             {/* Filter pills */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 text-xs">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold text-slate-400 uppercase mr-1">Tier:</span>
+                <span className="text-[11px] font-bold text-[#111827] uppercase mr-1">Tier:</span>
                 {(['all', 'Free', 'Premium', 'Premium Plus'] as const).map(tier => (
                   <button
                     key={tier}
@@ -1058,7 +1160,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                     className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
                       usersTierFilter === tier
                         ? 'bg-slate-900 text-white shadow-xs'
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        : 'bg-slate-50 text-[#111827] hover:bg-slate-100 border border-slate-300'
                     }`}
                   >
                     {tier === 'all' ? 'All Tiers' : tier}
@@ -1067,14 +1169,14 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold text-slate-400 uppercase mr-1">Status:</span>
+                <span className="text-[11px] font-bold text-[#111827] uppercase mr-1">Status:</span>
                 <button
                   type="button"
                   onClick={() => setUsersStatusFilter('all')}
                   className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
                     usersStatusFilter === 'all'
                       ? 'bg-slate-900 text-white shadow-xs'
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                      : 'bg-slate-50 text-[#111827] hover:bg-slate-100 border border-slate-300'
                   }`}
                 >
                   All
@@ -1085,7 +1187,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                   className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
                     usersStatusFilter === 'active_session'
                       ? 'bg-emerald-700 text-white shadow-xs'
-                      : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                      : 'bg-emerald-50 text-[#065F46] hover:bg-emerald-100 border border-emerald-300'
                   }`}
                 >
                   Active Session
@@ -1096,7 +1198,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                   className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
                     usersStatusFilter === 'banned'
                       ? 'bg-red-700 text-white shadow-xs'
-                      : 'bg-red-50 text-red-800 hover:bg-red-100 border border-red-200'
+                      : 'bg-red-50 text-[#991B1B] hover:bg-red-100 border border-red-300'
                   }`}
                 >
                   Banned
@@ -1107,38 +1209,38 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
 
           {/* Loading, Error, Zero Registrations, or Users Table */}
           {loadingUsers && registeredUsers.length === 0 ? (
-            <div className="p-12 text-center text-slate-500 space-y-2 bg-white rounded-3xl border border-rose-100 shadow-xs">
-              <RefreshCw className="w-6 h-6 mx-auto animate-spin text-red-600" />
+            <div className="p-12 text-center text-[#111827] space-y-2 bg-white rounded-3xl border border-rose-200 shadow-xs">
+              <RefreshCw className="w-6 h-6 mx-auto animate-spin text-[#B91C1C]" />
               <p className="text-xs font-bold">Loading real registered accounts from production server...</p>
             </div>
           ) : usersError && registeredUsers.length === 0 ? (
-            <div className="p-8 text-center text-red-600 space-y-3 bg-red-50 rounded-3xl border border-red-200">
-              <AlertTriangle className="w-8 h-8 mx-auto text-red-600" />
-              <p className="text-sm font-black">Error loading registered accounts</p>
-              <p className="text-xs text-red-700 max-w-md mx-auto">{usersError}</p>
+            <div className="p-8 text-center text-[#991B1B] space-y-3 bg-red-50 rounded-3xl border border-red-300">
+              <AlertTriangle className="w-8 h-8 mx-auto text-[#B91C1C]" />
+              <p className="text-sm font-bold">Error loading registered accounts</p>
+              <p className="text-xs text-[#991B1B] font-medium max-w-md mx-auto">{usersError}</p>
               <button
                 type="button"
                 onClick={() => fetchRegisteredUsers(false)}
-                className="px-4 py-2 rounded-xl bg-red-600 text-white font-extrabold text-xs hover:bg-red-700 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-red-700 text-white font-bold text-xs hover:bg-red-800 cursor-pointer"
               >
                 Retry
               </button>
             </div>
           ) : totalRegistrations === 0 ? (
-            <div className="p-12 text-center text-slate-500 space-y-3 bg-white rounded-3xl border border-rose-200 shadow-xs">
-              <div className="w-14 h-14 mx-auto rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+            <div className="p-12 text-center text-[#111827] space-y-3 bg-white rounded-3xl border border-rose-200 shadow-xs">
+              <div className="w-14 h-14 mx-auto rounded-full bg-slate-100 flex items-center justify-center text-[#111827]">
                 <Users className="w-7 h-7" />
               </div>
-              <p className="text-lg font-black text-slate-900 font-heading">Zero Registrations</p>
-              <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
+              <p className="text-lg font-bold text-[#111827] font-heading">Zero Registrations</p>
+              <p className="text-xs text-[#111827] font-medium max-w-md mx-auto leading-relaxed">
                 No real member accounts are currently recorded in the server database. All demo profiles (Alex Rivera, test seeds) have been filtered out.
               </p>
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="p-10 text-center text-slate-500 space-y-2 bg-white rounded-3xl border border-rose-100">
-              <Filter className="w-6 h-6 mx-auto text-slate-400" />
-              <p className="text-sm font-extrabold text-slate-800">No members match your search or filter</p>
-              <p className="text-xs text-slate-500">Try adjusting your search query or reset filter pills above.</p>
+            <div className="p-10 text-center text-[#111827] space-y-2 bg-white rounded-3xl border border-rose-200">
+              <Filter className="w-6 h-6 mx-auto text-[#111827]" />
+              <p className="text-sm font-bold text-[#111827]">No members match your search or filter</p>
+              <p className="text-xs text-[#111827] font-medium">Try adjusting your search query or reset filter pills above.</p>
               <button
                 type="button"
                 onClick={() => {
@@ -1146,26 +1248,26 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                   setUsersTierFilter('all');
                   setUsersStatusFilter('all');
                 }}
-                className="mt-2 text-xs font-bold text-[#FF2E93] hover:underline"
+                className="mt-2 text-xs font-bold text-[#BE185D] hover:underline"
               >
                 Clear all filters
               </button>
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+              <div className="flex items-center justify-between text-xs text-[#111827] font-medium px-1">
                 <span className="flex items-center gap-2">
                   <span>
                     Showing <strong>{filteredUsers.length}</strong> of <strong>{totalRegistrations}</strong> real registered accounts
                   </span>
                   {isRefreshingUsers && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-500">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#BE123C]">
                       <RefreshCw className="w-3 h-3 animate-spin" />
                       <span>Updating...</span>
                     </span>
                   )}
                 </span>
-                <span className="font-mono text-[11px] text-slate-400">
+                <span className="font-mono text-[11px] text-[#111827] font-semibold">
                   Authoritative: Cloud Firestore / Durable Server Storage
                 </span>
               </div>
@@ -1183,46 +1285,46 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                         user.isOwner
                           ? 'border-amber-300 ring-2 ring-amber-100/60 bg-amber-50/15'
                           : user.isBanned
-                          ? 'border-red-200 bg-red-50/20'
-                          : 'border-rose-100 hover:border-pink-200'
+                          ? 'border-red-300 bg-red-50/20'
+                          : 'border-rose-200 hover:border-pink-300'
                       }`}
                     >
                       {/* Top Header Row */}
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-500 to-rose-400 text-white font-extrabold flex items-center justify-center text-sm shadow-xs">
+                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-600 to-rose-500 text-white font-bold flex items-center justify-center text-sm shadow-xs">
                             {user.firstName ? user.firstName.charAt(0).toUpperCase() : 'U'}
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h3 className="text-base font-black text-slate-900 font-heading">
+                              <h3 className="text-base font-bold text-[#111827] font-heading">
                                 {user.fullName || user.firstName}
                               </h3>
                               {user.isOwner && (
-                                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black uppercase tracking-wider">
+                                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-[#78350F] border border-amber-300 text-[10px] font-bold uppercase tracking-wider">
                                   Platform Owner
                                 </span>
                               )}
                               {user.hasActiveSession && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-[#065F46] border border-emerald-300 text-[10px] font-bold">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#047857] animate-pulse" />
                                   Active Session
                                 </span>
                               )}
                               {user.isBanned && (
-                                <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-extrabold">
+                                <span className="px-2 py-0.5 rounded-full bg-red-700 text-white text-[10px] font-bold">
                                   Suspended
                                 </span>
                               )}
                             </div>
-                            <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
-                              <span className="font-mono text-[11px] text-slate-400">{user.userId}</span>
+                            <div className="text-xs text-[#111827] font-medium flex items-center gap-2 mt-0.5">
+                              <span className="font-mono text-[11px] text-[#111827] font-semibold">{user.userId}</span>
                               <span>·</span>
-                              <span className="font-medium text-slate-700">{user.gender}</span>
+                              <span className="font-semibold text-[#111827]">{user.gender}</span>
                               <span>·</span>
-                              <span className="font-medium text-slate-700">{user.age > 0 ? `${user.age} yrs` : 'Age 18+'}</span>
+                              <span className="font-semibold text-[#111827]">{user.age > 0 ? `${user.age} yrs` : 'Age 18+'}</span>
                               <span>·</span>
-                              <span className="text-slate-600">{user.location}</span>
+                              <span className="text-[#111827]">{user.location}</span>
                             </div>
                           </div>
                         </div>
@@ -1230,23 +1332,23 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                         {/* Tier & Subscription Status Badges */}
                         <div className="flex flex-wrap items-center gap-1.5 justify-end">
                           <span
-                            className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                            className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
                               user.subscriptionTier === 'Premium Plus'
-                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                ? 'bg-amber-100 text-[#78350F] border border-amber-300'
                                 : user.subscriptionTier === 'Premium'
-                                ? 'bg-pink-100 text-[#FF2E93] border border-pink-200'
-                                : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                ? 'bg-pink-100 text-[#9D174D] border border-pink-300'
+                                : 'bg-slate-100 text-[#111827] border border-slate-300'
                             }`}
                           >
                             {user.subscriptionTier}
                           </span>
                           {user.isTester && (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-[#065F46] border border-emerald-300 text-[10px] font-bold">
                               Free Tester
                             </span>
                           )}
                           {user.subscriptionStatus && user.subscriptionStatus !== 'none' && (
-                            <span className="px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200 text-[10px] font-mono font-bold">
+                            <span className="px-2 py-0.5 rounded-full bg-sky-50 text-[#0C4A6E] border border-sky-300 text-[10px] font-mono font-bold">
                               Stripe: {user.subscriptionStatus}
                             </span>
                           )}
@@ -1256,36 +1358,36 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                       {/* Detail Metrics Grid: Email, Signup Date, Last Sign-In */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                         {/* Email */}
-                        <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Registered Email</span>
-                          <div className="flex items-center gap-1.5 text-slate-800 font-semibold break-all">
-                            <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                          <span className="text-[10px] font-bold text-[#111827] uppercase block">Registered Email</span>
+                          <div className="flex items-center gap-1.5 text-[#111827] font-semibold break-all">
+                            <Mail className="w-3.5 h-3.5 text-[#111827] shrink-0" />
                             <span>{user.email}</span>
                           </div>
                         </div>
 
                         {/* Signup Date */}
-                        <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Signup Date &amp; Time</span>
-                          <div className="flex items-center gap-1.5 text-slate-800 font-semibold">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                          <span className="text-[10px] font-bold text-[#111827] uppercase block">Signup Date &amp; Time</span>
+                          <div className="flex items-center gap-1.5 text-[#111827] font-semibold">
+                            <Calendar className="w-3.5 h-3.5 text-[#111827] shrink-0" />
                             <span>{signupDateET || 'Recorded'}</span>
                           </div>
                         </div>
 
                         {/* Last Sign-In */}
-                        <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Last Sign-In</span>
+                        <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                          <span className="text-[10px] font-bold text-[#111827] uppercase block">Last Sign-In</span>
                           {lastSignInET ? (
-                            <div className="flex items-center gap-1.5 text-emerald-800 font-semibold">
-                              <Clock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <div className="flex items-center gap-1.5 text-[#065F46] font-semibold">
+                              <Clock className="w-3.5 h-3.5 text-[#047857] shrink-0" />
                               <span>{lastSignInET}</span>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-1.5 text-slate-500 font-medium">
-                              <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span className="italic text-slate-400">— Unavailable</span>
-                              <span className="text-[10px] text-slate-400">(Not recorded yet)</span>
+                            <div className="flex items-center gap-1.5 text-[#111827] font-medium">
+                              <Clock className="w-3.5 h-3.5 text-[#111827] shrink-0" />
+                              <span className="italic text-[#111827]">— Unavailable</span>
+                              <span className="text-[10px] text-[#111827]">(Not recorded yet)</span>
                             </div>
                           )}
                         </div>
@@ -1293,28 +1395,28 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
 
                       {/* Extra info row: occupation & actions */}
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1">
-                        <div className="text-slate-500 text-[11px]">
+                        <div className="text-[#111827] font-medium text-[11px]">
                           {user.occupation ? (
-                            <span>Occupation: <strong className="text-slate-700">{user.occupation}</strong></span>
+                            <span>Occupation: <strong className="text-[#111827]">{user.occupation}</strong></span>
                           ) : (
-                            <span className="text-slate-400">Profile complete · Adult verified (18+)</span>
+                            <span className="text-[#111827]">Profile complete · Adult verified (18+)</span>
                           )}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
                           {user.isOwner ? (
-                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl flex items-center gap-1">
-                              <Crown className="w-3 h-3 text-amber-600" /> Platform Owner
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#92400E] bg-amber-50 border border-amber-300 px-2.5 py-1 rounded-xl flex items-center gap-1">
+                              <Crown className="w-3 h-3 text-[#B45309]" /> Platform Owner
                             </span>
                           ) : (user.isTester || user.testerAccessGranted) ? (
                             <button
                               type="button"
                               disabled={processingTesterEmail === user.email.toLowerCase().trim()}
                               onClick={() => handleToggleTesterAccess(user.email, 'remove')}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 border border-slate-200 hover:border-red-200 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100 hover:bg-red-50 text-[#111827] hover:text-[#991B1B] border border-slate-300 hover:border-red-300 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
                               title="Revoke free tester access"
                             >
-                              <UserMinus className="w-3.5 h-3.5 text-red-500" />
+                              <UserMinus className="w-3.5 h-3.5 text-[#B91C1C]" />
                               <span>{processingTesterEmail === user.email.toLowerCase().trim() ? 'Updating...' : 'Revoke Tester Access'}</span>
                             </button>
                           ) : (
@@ -1322,7 +1424,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                               type="button"
                               disabled={processingTesterEmail === user.email.toLowerCase().trim()}
                               onClick={() => handleToggleTesterAccess(user.email, 'grant')}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-gradient-to-r from-amber-500 to-[#FF2E93] hover:from-amber-600 hover:to-rose-600 text-white font-bold text-xs shadow-xs transition-all cursor-pointer disabled:opacity-50 active:scale-95"
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-gradient-to-r from-amber-600 to-[#BE185D] hover:from-amber-700 hover:to-rose-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer disabled:opacity-50 active:scale-95"
                               title="Grant free Premium Plus tester access"
                             >
                               <Sparkles className="w-3.5 h-3.5 text-white" />
@@ -1335,7 +1437,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                               type="button"
                               disabled={processingId === user.userId}
                               onClick={() => handleUnbanUser(user.userId)}
-                              className="px-3 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                              className="px-3 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold text-xs transition-colors cursor-pointer"
                             >
                               {processingId === user.userId ? 'Unbanning...' : 'Unban Member'}
                             </button>
@@ -1351,20 +1453,245 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
         </div>
       )}
 
+      {/* ==================================================================== */}
+      {/* TAB 3: PRIVATE LAUNCH EVENT WAITING LIST (FOUNDER/ADMIN ONLY)       */}
+      {/* ==================================================================== */}
+      {activeDashboardTab === 'waitlist' && (
+        <div className="space-y-6 animate-in fade-in duration-150">
+          {/* Hero Summary Banner */}
+          <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-rose-950 to-slate-900 text-white p-6 sm:p-8 shadow-xl border border-rose-900/40 space-y-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pink-500/20 text-pink-200 text-xs font-bold uppercase tracking-wider border border-pink-500/30">
+              <Lock className="w-3.5 h-3.5 text-amber-300" />
+              <span>Founder-Only Private Waiting List</span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-black font-heading tracking-tight">
+                  Launch Event Waiting List &amp; Compatibility Pool
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-200 max-w-2xl font-medium leading-relaxed mt-1">
+                  Review interested singles privately before announcing your launch event. Invitations and notifications are paused until you manually schedule and confirm an event date.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCurrentView('friday')}
+                className="px-4 py-2.5 rounded-2xl btn-pink-gradient font-bold text-xs shadow-md cursor-pointer shrink-0"
+              >
+                Schedule Launch Event
+              </button>
+            </div>
+
+            {/* Pool Breakdown Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-2">
+              <div className="p-3 rounded-2xl bg-white/10 border border-white/15">
+                <span className="text-[10px] font-bold text-slate-200 uppercase block">Total Waitlisted</span>
+                <span className="text-2xl font-black text-white font-heading">
+                  {waitlistSummary?.totalWaitlisted ?? waitlistMembers.length}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-pink-500/20 border border-pink-400/30">
+                <span className="text-[10px] font-bold text-pink-100 uppercase block">Women Seeking Men</span>
+                <span className="text-2xl font-black text-pink-200 font-heading">
+                  {waitlistSummary?.womenSeekingMen ?? 0}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-sky-500/20 border border-sky-400/30">
+                <span className="text-[10px] font-bold text-sky-100 uppercase block">Men Seeking Women</span>
+                <span className="text-2xl font-black text-sky-200 font-heading">
+                  {waitlistSummary?.menSeekingWomen ?? 0}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-purple-500/20 border border-purple-400/30">
+                <span className="text-[10px] font-bold text-purple-100 uppercase block">LGBTQ+ / Everyone</span>
+                <span className="text-2xl font-black text-purple-200 font-heading">
+                  {waitlistSummary?.lgbtqOrEveryone ?? 0}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-400/30">
+                <span className="text-[10px] font-bold text-amber-100 uppercase block">Age 30+</span>
+                <span className="text-2xl font-black text-amber-200 font-heading">
+                  {waitlistSummary?.thirtyPlusCount ?? 0}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-emerald-500/20 border border-emerald-400/30">
+                <span className="text-[10px] font-bold text-emerald-100 uppercase block">Compatible Pairs</span>
+                <span className="text-2xl font-black text-emerald-200 font-heading">
+                  {waitlistSummary?.compatiblePairsCount ?? 0}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Search & Gender Filters */}
+          <div className="p-4 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-[#111827] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={waitlistSearch}
+                  onChange={e => setWaitlistSearch(e.target.value)}
+                  placeholder="Search waitlisted singles by name, email, location, or intent..."
+                  className="w-full pl-9 pr-4 py-2 rounded-2xl bg-slate-50 border border-slate-300 text-xs text-[#111827] font-medium placeholder-slate-500 focus:outline-none focus:border-[#BE185D] focus:bg-white transition-all"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!waitlistMembers.length) return;
+                    const dataStr =
+                      'data:text/json;charset=utf-8,' +
+                      encodeURIComponent(JSON.stringify({ summary: waitlistSummary, members: waitlistMembers }, null, 2));
+                    const a = document.createElement('a');
+                    a.setAttribute('href', dataStr);
+                    a.setAttribute('download', `speed_meet_love_waitlist_${Date.now()}.json`);
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                  }}
+                  disabled={!waitlistMembers.length}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-pink-50 hover:bg-pink-100 border border-pink-300 text-xs font-bold text-[#BE185D] transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export Waitlist JSON</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={fetchWaitlistMembers}
+                  disabled={loadingWaitlist}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingWaitlist ? 'animate-spin text-[#B91C1C]' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-200 text-xs">
+              <span className="text-[11px] font-bold text-[#111827] uppercase mr-1">Filter Gender:</span>
+              {(['all', 'Woman', 'Man', 'Non-Binary'] as const).map(g => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setWaitlistGenderFilter(g)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                    waitlistGenderFilter === g
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-50 text-[#111827] hover:bg-slate-100 border border-slate-300'
+                  }`}
+                >
+                  {g === 'all' ? 'All Genders' : g}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {loadingWaitlist && waitlistMembers.length === 0 ? (
+            <div className="p-12 text-center text-[#111827] space-y-2 bg-white rounded-3xl border border-rose-200">
+              <RefreshCw className="w-6 h-6 mx-auto animate-spin text-[#B91C1C]" />
+              <p className="text-xs font-bold">Loading private waiting list from server...</p>
+            </div>
+          ) : waitlistError ? (
+            <div className="p-8 text-center text-[#991B1B] space-y-3 bg-red-50 rounded-3xl border border-red-300">
+              <AlertTriangle className="w-8 h-8 mx-auto text-[#B91C1C]" />
+              <p className="text-sm font-bold">{waitlistError}</p>
+            </div>
+          ) : filteredWaitlist.length === 0 ? (
+            <div className="p-10 text-center text-[#111827] space-y-2 bg-white rounded-3xl border border-rose-200">
+              <Heart className="w-7 h-7 mx-auto text-[#BE185D]" />
+              <p className="text-sm font-bold">No members on the Event Waiting List yet</p>
+              <p className="text-xs font-medium">
+                As signed-in singles click “Join the Event Waiting List”, they will appear privately here with compatibility matching.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredWaitlist.map(member => (
+                <div
+                  key={member.userId}
+                  className="p-5 rounded-3xl bg-white border border-rose-200 hover:border-pink-300 shadow-xs space-y-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-bold text-[#111827] font-heading">{member.fullName}</h3>
+                        <span className="px-2.5 py-0.5 rounded-full bg-pink-50 text-[#BE185D] border border-pink-200 text-[11px] font-bold">
+                          {member.gender} · Seeking {member.interestedIn}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[#111827] border border-slate-300 text-[11px] font-bold">
+                          Age {member.age || '18+'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-[#111827] font-medium mt-1 flex flex-wrap items-center gap-2">
+                        <span>{member.email}</span>
+                        <span>·</span>
+                        <span>{member.location}</span>
+                        <span>·</span>
+                        <span>Intent: <strong>{member.relationshipIntent}</strong></span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                          member.compatibleCount > 0
+                            ? 'bg-emerald-50 text-[#065F46] border-emerald-300'
+                            : 'bg-amber-50 text-[#78350F] border-amber-300'
+                        }`}
+                      >
+                        {member.compatibleCount} Compatible Partner{member.compatibleCount === 1 ? '' : 's'}
+                      </span>
+                      <span className="text-[10px] text-[#111827] font-mono font-semibold">
+                        Joined: {formatEasternDate(member.joinedAt) || 'Recorded'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-bold text-[#111827]">Compatible Matches in Waitlist:</span>
+                      {member.compatibleWithNames.length > 0 ? (
+                        member.compatibleWithNames.map((name, idx) => (
+                          <span
+                            key={`${member.userId}_${idx}`}
+                            className="px-2 py-0.5 rounded-full bg-emerald-50 text-[#065F46] border border-emerald-200 font-bold text-[11px]"
+                          >
+                            {name}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[#92400E] font-medium">None yet (still gathering compatible singles)</span>
+                      )}
+                    </div>
+                    <span className="text-[11px] font-bold text-[#111827]">
+                      Tier: {member.subscriptionTier}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Action Confirmation Modal (for Safety Reports) */}
       {actionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-3xl bg-white border border-rose-200 shadow-2xl p-6 space-y-4">
-            <div className="flex items-center gap-3 text-red-600 font-bold font-heading text-lg">
+          <div className="w-full max-w-md rounded-3xl bg-white border border-rose-300 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3 text-[#B91C1C] font-bold font-heading text-lg">
               <AlertTriangle className="w-6 h-6" />
               <span>Confirm Owner Action</span>
             </div>
 
-            <p className="text-xs text-slate-700 leading-relaxed">
+            <p className="text-xs text-[#111827] font-medium leading-relaxed">
               {actionModal.action === 'ban_user' ? (
                 <>
                   You are about to permanently ban user{' '}
-                  <strong>{actionModal.report.reportedUserName}</strong> (ID: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">{actionModal.report.reportedUserId}</code>).
+                  <strong>{actionModal.report.reportedUserName}</strong> (ID: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold">{actionModal.report.reportedUserId}</code>).
                   This will revoke their active session tokens, evict them from speed dating queues, and block them from signing in.
                 </>
               ) : (
@@ -1375,7 +1702,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
             </p>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label className="block text-xs font-bold text-[#111827] mb-1">
                 Owner Review Notes (recorded on server):
               </label>
               <textarea
@@ -1383,15 +1710,15 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                 value={ownerNote}
                 onChange={e => setOwnerNote(e.target.value)}
                 placeholder={actionModal.action === 'ban_user' ? 'E.g., In-call harassment verified; account suspended.' : 'E.g., No violation found upon inspection.'}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-red-500"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-[#111827] font-medium focus:outline-none focus:border-red-600"
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 text-xs">
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-200 text-xs">
               <button
                 type="button"
                 onClick={() => setActionModal(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1399,10 +1726,10 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                 type="button"
                 disabled={processingId === actionModal.report.id}
                 onClick={() => handleTakeAction(actionModal.report.id, actionModal.action, ownerNote)}
-                className={`px-4 py-2 rounded-xl font-extrabold text-white transition-all cursor-pointer ${
+                className={`px-4 py-2 rounded-xl font-bold text-white transition-all cursor-pointer ${
                   actionModal.action === 'ban_user'
-                    ? 'bg-red-600 hover:bg-red-700 shadow-md shadow-red-600/30'
-                    : 'bg-slate-800 hover:bg-slate-900'
+                    ? 'bg-red-700 hover:bg-red-800 shadow-md shadow-red-600/30'
+                    : 'bg-slate-900 hover:bg-slate-950'
                 }`}
               >
                 {processingId === actionModal.report.id

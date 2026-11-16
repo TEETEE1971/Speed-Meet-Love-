@@ -7,8 +7,7 @@
         </trust-anchors>
     </base-config>
     <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">speed-meet-love.ai.studio</domain>
-        <domain includeSubdomains="true">ai.studio</domain>
+        <domain includeSubdomains="true">speedmeetlove.com</domain>
     </domain-config>
     <!-- Allow development loopback for testing -->
     <domain-config cleartextTrafficPermitted="true">

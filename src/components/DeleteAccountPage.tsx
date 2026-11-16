@@ -26,13 +26,13 @@ export const DeleteAccountPage: React.FC = () => {
       <div className="flex items-center justify-between gap-4">
         <button
           onClick={() => setCurrentView('home')}
-          className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-rose-700 hover:text-rose-900 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-[#9F1239] hover:text-[#881337] transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Return to Speed Meet Love Home</span>
         </button>
 
-        <span className="text-xs font-bold text-slate-500 bg-rose-50 px-3 py-1 rounded-full border border-rose-200">
+        <span className="text-xs font-bold text-[#111827] bg-rose-50 px-3 py-1 rounded-full border border-rose-300">
           Public Deletion Instructions
         </span>
       </div>
@@ -64,29 +64,29 @@ export const DeleteAccountPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Method 1: In-App Self-Serve */}
-        <div className="p-6 sm:p-8 rounded-3xl bg-white border-2 border-red-200 shadow-md space-y-4 flex flex-col justify-between">
+        <div className="p-6 sm:p-8 rounded-3xl bg-white border-2 border-red-300 shadow-md space-y-4 flex flex-col justify-between">
           <div className="space-y-3">
-            <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-              <div className="w-8 h-8 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+              <div className="w-8 h-8 rounded-xl bg-red-100 text-[#B91C1C] flex items-center justify-center shrink-0">
                 <User className="w-4 h-4" />
               </div>
               <h2>Option 1: In-App Self-Serve Deletion</h2>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-[#111827] font-medium leading-relaxed">
               If you have access to your account, you can permanently delete your profile and personal data instantly from within the application:
             </p>
-            <ol className="list-decimal pl-5 text-xs text-slate-700 space-y-2 pt-1 font-medium">
+            <ol className="list-decimal pl-5 text-xs text-[#111827] space-y-2 pt-1 font-medium">
               <li>
                 Sign in to your Speed Meet Love account.
               </li>
               <li>
-                Open the menu and navigate to <strong className="text-slate-900">My Profile</strong> (Profile Settings).
+                Open the menu and navigate to <strong className="text-[#111827]">My Profile</strong> (Profile Settings).
               </li>
               <li>
-                Scroll down to the <strong className="text-red-600">Danger Zone: Permanent Account Deletion</strong> section.
+                Scroll down to the <strong className="text-[#B91C1C]">Danger Zone: Permanent Account Deletion</strong> section.
               </li>
               <li>
-                Tap <strong className="text-red-600">Delete My Account</strong>.
+                Tap <strong className="text-[#B91C1C]">Delete My Account</strong>.
               </li>
               <li>
                 Type your registered email address to verify account ownership.
@@ -97,47 +97,47 @@ export const DeleteAccountPage: React.FC = () => {
             </ol>
           </div>
 
-          <div className="pt-2 border-t border-slate-100">
+          <div className="pt-2 border-t border-slate-200">
             <button
               onClick={() => setCurrentView('profile')}
-              className="w-full py-3 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-red-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3 rounded-2xl bg-red-700 hover:bg-red-800 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-red-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <User className="w-4 h-4" />
               <span>Go to Profile Settings Now</span>
             </button>
-            <p className="text-[11px] text-slate-400 text-center mt-2">
+            <p className="text-[11px] text-[#111827] font-medium text-center mt-2">
               Requires active session sign-in
             </p>
           </div>
         </div>
 
         {/* Method 2: Alternative Support Email */}
-        <div className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-md space-y-4 flex flex-col justify-between">
+        <div className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-md space-y-4 flex flex-col justify-between">
           <div className="space-y-3">
-            <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-              <div className="w-8 h-8 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+              <div className="w-8 h-8 rounded-xl bg-pink-100 text-[#BE185D] flex items-center justify-center shrink-0">
                 <Mail className="w-4 h-4" />
               </div>
               <h2>Option 2: Email Deletion Request</h2>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-[#111827] font-medium leading-relaxed">
               If you are unable to access your account, lost device access, or prefer manual assistance, our privacy team processes requests directly:
             </p>
-            <div className="p-4 rounded-2xl bg-pink-50/60 border border-pink-200 text-xs space-y-2 text-slate-800">
-              <p className="font-bold text-slate-900">Send an email with the following details:</p>
-              <ul className="list-disc pl-4 space-y-1.5 text-[11px] text-slate-700">
+            <div className="p-4 rounded-2xl bg-pink-50/70 border border-pink-300 text-xs space-y-2 text-[#111827]">
+              <p className="font-bold text-[#111827]">Send an email with the following details:</p>
+              <ul className="list-disc pl-4 space-y-1.5 text-[11px] text-[#111827] font-medium">
                 <li>
                   <strong>To:</strong>{' '}
                   <a
                     href="mailto:speedmeetlove@gmail.com?subject=Account%20%26%20Data%20Deletion%20Request"
-                    className="text-red-600 font-bold underline font-mono"
+                    className="text-[#B91C1C] font-bold underline font-mono"
                   >
                     speedmeetlove@gmail.com
                   </a>
                 </li>
                 <li>
                   <strong>Subject:</strong>{' '}
-                  <code className="bg-white px-1.5 py-0.5 rounded border border-rose-200 font-mono font-bold text-slate-900">
+                  <code className="bg-white px-1.5 py-0.5 rounded border border-rose-300 font-mono font-bold text-[#111827]">
                     Account &amp; Data Deletion Request
                   </code>
                 </li>
@@ -149,20 +149,20 @@ export const DeleteAccountPage: React.FC = () => {
                 </li>
               </ul>
             </div>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-[#111827] font-medium">
               Email deletion requests are reviewed and verified within 48 business hours by TeeTees Creations.
             </p>
           </div>
 
-          <div className="pt-2 border-t border-slate-100">
+          <div className="pt-2 border-t border-slate-200">
             <a
               href="mailto:speedmeetlove@gmail.com?subject=Account%20%26%20Data%20Deletion%20Request"
-              className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <Mail className="w-4 h-4" />
               <span>Email speedmeetlove@gmail.com</span>
             </a>
-            <p className="text-[11px] text-slate-400 text-center mt-2">
+            <p className="text-[11px] text-[#111827] font-medium text-center mt-2">
               Privacy contact: TeeTees Creations
             </p>
           </div>
@@ -171,72 +171,72 @@ export const DeleteAccountPage: React.FC = () => {
       </div>
 
       {/* Scope: What Data is Deleted */}
-      <div className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-4">
-        <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+      <div className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-4">
+        <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+          <CheckCircle2 className="w-5 h-5 text-[#047857] shrink-0" />
           <h2>Data Erased Upon Account Deletion</h2>
         </div>
-        <p className="text-xs text-slate-600 leading-relaxed">
+        <p className="text-xs text-[#111827] font-medium leading-relaxed">
           When account deletion is executed, Speed Meet Love immediately and permanently purges the following records from active application databases and server storage:
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1">
-            <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-rose-600" />
+          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1">
+            <span className="font-bold text-[#111827] text-xs flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-[#BE123C]" />
               Profile &amp; Biography
             </span>
-            <p className="text-[11px] text-slate-600">
+            <p className="text-[11px] text-[#111827] font-medium">
               First name, age, gender, interested in, occupation, location, bio, interests, icebreaker answers, and avatar preferences.
             </p>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1">
-            <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-              <HeartHandshake className="w-3.5 h-3.5 text-rose-600" />
+          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1">
+            <span className="font-bold text-[#111827] text-xs flex items-center gap-1.5">
+              <HeartHandshake className="w-3.5 h-3.5 text-[#BE123C]" />
               Mutual Matches
             </span>
-            <p className="text-[11px] text-slate-600">
+            <p className="text-[11px] text-[#111827] font-medium">
               All mutual sparks, match pairings, chemistry scores, and second-chance date invitation records.
             </p>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1">
-            <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-              <MessageCircle className="w-3.5 h-3.5 text-rose-600" />
+          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1">
+            <span className="font-bold text-[#111827] text-xs flex items-center gap-1.5">
+              <MessageCircle className="w-3.5 h-3.5 text-[#BE123C]" />
               In-App Chat Messages
             </span>
-            <p className="text-[11px] text-slate-600">
+            <p className="text-[11px] text-[#111827] font-medium">
               All direct chat text, message timestamps, sender/recipient metadata, and read receipts.
             </p>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1">
-            <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-rose-600" />
+          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1">
+            <span className="font-bold text-[#111827] text-xs flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-[#BE123C]" />
               Votes &amp; Private Notes
             </span>
-            <p className="text-[11px] text-slate-600">
+            <p className="text-[11px] text-[#111827] font-medium">
               Confidential speed dating ballots (Like or Pass) and your private dater notes written during rounds.
             </p>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1">
-            <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-              <Video className="w-3.5 h-3.5 text-rose-600" />
+          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1">
+            <span className="font-bold text-[#111827] text-xs flex items-center gap-1.5">
+              <Video className="w-3.5 h-3.5 text-[#BE123C]" />
               Video Rooms &amp; Events
             </span>
-            <p className="text-[11px] text-slate-600">
+            <p className="text-[11px] text-[#111827] font-medium">
               Event registrations, matchmaking queue presence, live room credentials, and active round presence.
             </p>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1">
-            <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-rose-600" />
+          <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1">
+            <span className="font-bold text-[#111827] text-xs flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-[#BE123C]" />
               Session Tokens
             </span>
-            <p className="text-[11px] text-slate-600">
+            <p className="text-[11px] text-[#111827] font-medium">
               All active authentication tokens and device session cache are instantly revoked and invalidated.
             </p>
           </div>
@@ -244,16 +244,16 @@ export const DeleteAccountPage: React.FC = () => {
       </div>
 
       {/* Disclosures: Retention Exceptions */}
-      <div className="p-6 sm:p-8 rounded-3xl bg-amber-50/70 border border-amber-200 shadow-xs space-y-3 text-amber-950">
-        <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-amber-900 font-heading">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+      <div className="p-6 sm:p-8 rounded-3xl bg-amber-50/80 border border-amber-300 shadow-xs space-y-3 text-[#78350F]">
+        <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#78350F] font-heading">
+          <AlertTriangle className="w-5 h-5 text-[#B45309] shrink-0" />
           <h2>Retention Exceptions Disclosed Transparently</h2>
         </div>
-        <p className="text-xs text-amber-900 leading-relaxed">
+        <p className="text-xs text-[#78350F] font-medium leading-relaxed">
           In compliance with privacy standards and engineering reality, we explain any records that cannot be instantaneously or completely deleted, and the specific reasons why:
         </p>
 
-        <ul className="space-y-2 text-xs list-disc pl-5 text-amber-950">
+        <ul className="space-y-2 text-xs list-disc pl-5 text-[#111827] font-medium">
           <li>
             <strong>Ephemeral Cloud Edge Infrastructure Logs:</strong> Raw web server access logs (including incoming IP address, browser user-agent, requested URL, and timestamp) are collected automatically by edge hosting infrastructure (Google Cloud Run / Node reverse proxies) for DDoS defense, system performance, and rate limiting. These temporary server access logs are automatically rotated and deleted after 30 days and cannot be selectively modified or purged by application code.
           </li>
@@ -273,7 +273,7 @@ export const DeleteAccountPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-rose-200">
         <button
           onClick={() => setCurrentView('privacy')}
-          className="text-xs font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer"
+          className="text-xs font-bold text-[#9F1239] hover:text-[#881337] underline cursor-pointer"
         >
           View Full Privacy Policy
         </button>

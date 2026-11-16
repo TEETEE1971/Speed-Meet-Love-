@@ -30,13 +30,13 @@ export const TermsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
         <button
           onClick={() => setCurrentView('home')}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-slate-700 hover:text-red-600 font-bold text-xs border border-rose-200 shadow-xs transition-all cursor-pointer active:scale-95"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-[#111827] hover:text-[#B91C1C] font-bold text-xs border border-rose-300 shadow-xs transition-all cursor-pointer active:scale-95"
         >
-          <ArrowLeft className="w-4 h-4 text-red-600" />
+          <ArrowLeft className="w-4 h-4 text-[#B91C1C]" />
           <span>Back to Speed Meet Love</span>
         </button>
 
-        <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold">
+        <div className="flex items-center gap-2 text-xs text-[#111827] font-semibold">
           <span>Speed Meet Love · Terms &amp; Conditions</span>
           <span>·</span>
           <span>Effective 2026</span>
@@ -75,28 +75,28 @@ export const TermsPage: React.FC = () => {
       </div>
 
       {/* Policy Sections */}
-      <div className="space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed">
+      <div className="space-y-6 text-xs sm:text-sm text-[#111827] font-medium leading-relaxed">
         {/* Section 1 */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <UserCheck className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <UserCheck className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>1. Acceptance &amp; Adults-Only Eligibility (18+)</h2>
           </div>
           <p>
             By creating an account or using Speed Meet Love, you agree to these Terms and Conditions, our{' '}
-            <a href="/acceptable-use" onClick={(e) => handleNav(e, 'acceptable_use')} className="text-red-600 font-bold underline">
+            <a href="/acceptable-use" onClick={(e) => handleNav(e, 'acceptable_use')} className="text-[#B91C1C] font-bold underline">
               Acceptable Use Policy
             </a>
             , our{' '}
-            <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-red-600 font-bold underline">
+            <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-[#B91C1C] font-bold underline">
               Privacy Policy
             </a>
             , our{' '}
-            <a href="/refund-policy" onClick={(e) => handleNav(e, 'refund_policy')} className="text-red-600 font-bold underline">
+            <a href="/refund-policy" onClick={(e) => handleNav(e, 'refund_policy')} className="text-[#B91C1C] font-bold underline">
               Refund Policy
             </a>
             , and our{' '}
-            <a href="/child-safety" onClick={(e) => handleNav(e, 'child_safety')} className="text-red-600 font-bold underline">
+            <a href="/child-safety" onClick={(e) => handleNav(e, 'child_safety')} className="text-[#B91C1C] font-bold underline">
               Child Safety Standards
             </a>
             .
@@ -115,9 +115,9 @@ export const TermsPage: React.FC = () => {
         </section>
 
         {/* Section 2 */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <ShieldCheck className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <ShieldCheck className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>2. Service Description</h2>
           </div>
           <p>
@@ -126,15 +126,15 @@ export const TermsPage: React.FC = () => {
         </section>
 
         {/* Section 3: Zero-Tolerance Prohibitions */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-red-50/50 border-2 border-red-200 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-red-900 font-heading">
-            <ShieldAlert className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-red-50/60 border-2 border-red-300 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#7F1D1D] font-heading">
+            <ShieldAlert className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>3. Zero-Tolerance Prohibited Conduct &amp; Content</h2>
           </div>
-          <p className="font-semibold text-red-950">
+          <p className="font-bold text-[#7F1D1D]">
             Users must comply with our Acceptable Use Policy at all times. The following are strictly prohibited on Speed Meet Love:
           </p>
-          <ul className="space-y-2 list-disc pl-5 text-slate-800">
+          <ul className="space-y-2 list-disc pl-5 text-[#111827]">
             <li>
               <strong>Human Trafficking &amp; Forced Labor:</strong> Any involvement in, recruitment for, promotion of, or facilitation of human trafficking, forced labor, or commercial sex trafficking.
             </li>
@@ -160,7 +160,7 @@ export const TermsPage: React.FC = () => {
               <strong>Illegal Content &amp; Unlawful Activity:</strong> Any content or conduct that violates applicable local, state, federal, or international law.
             </li>
           </ul>
-          <p className="text-xs text-red-900 font-semibold pt-1">
+          <p className="text-xs text-[#7F1D1D] font-bold pt-1">
             Review the complete rules on our{' '}
             <a href="/acceptable-use" onClick={(e) => handleNav(e, 'acceptable_use')} className="underline font-bold">
               Acceptable Use Policy (/acceptable-use)
@@ -170,9 +170,9 @@ export const TermsPage: React.FC = () => {
         </section>
 
         {/* Section 4 */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <CreditCard className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <CreditCard className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>4. Membership Plans, Billing &amp; Cancellation</h2>
           </div>
           <ul className="space-y-1.5 list-disc pl-5">
@@ -187,7 +187,7 @@ export const TermsPage: React.FC = () => {
             </li>
             <li>
               <strong>Recurring Billing &amp; Portal Management:</strong> Web subscriptions are billed monthly through Stripe. Paid members may update payment methods, view invoices, or cancel recurring renewal through the Stripe Customer Billing Portal accessible on the{' '}
-              <a href="/pricing" onClick={(e) => handleNav(e, 'pricing')} className="text-red-600 font-bold underline">
+              <a href="/pricing" onClick={(e) => handleNav(e, 'pricing')} className="text-[#B91C1C] font-bold underline">
                 Pricing page (/pricing)
               </a>
               .
@@ -196,9 +196,9 @@ export const TermsPage: React.FC = () => {
               <strong>Tester Access &amp; Android Containers:</strong> Free tester access granted by the owner is separate from paid Stripe billing. Inside Android app containers, web Stripe checkout is disabled; Android release billing is handled separately via Google Play.
             </li>
           </ul>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-[#111827] font-medium">
             See our{' '}
-            <a href="/refund-policy" onClick={(e) => handleNav(e, 'refund_policy')} className="text-red-600 font-bold underline">
+            <a href="/refund-policy" onClick={(e) => handleNav(e, 'refund_policy')} className="text-[#B91C1C] font-bold underline">
               Refund Policy (/refund-policy)
             </a>{' '}
             for cancellation and billing review details.
@@ -206,14 +206,14 @@ export const TermsPage: React.FC = () => {
         </section>
 
         {/* Section 5 */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Ban className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Ban className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>5. Safety Reporting, Enforcement &amp; Account Termination</h2>
           </div>
           <p>
             Members can block other users and submit in-app safety reports via the <strong>Report Member</strong> controls on profiles, chat threads, and live video rounds, or by emailing{' '}
-            <a href="mailto:speedmeetlove@gmail.com" className="text-red-600 font-bold underline">
+            <a href="mailto:speedmeetlove@gmail.com" className="text-[#B91C1C] font-bold underline">
               speedmeetlove@gmail.com
             </a>
             .
@@ -223,7 +223,7 @@ export const TermsPage: React.FC = () => {
           </p>
           <p>
             You may permanently delete your account at any time from your Profile Settings or view deletion instructions on{' '}
-            <a href="/delete-account" onClick={(e) => handleNav(e, 'delete_account')} className="text-red-600 font-bold underline">
+            <a href="/delete-account" onClick={(e) => handleNav(e, 'delete_account')} className="text-[#B91C1C] font-bold underline">
               /delete-account
             </a>
             .
@@ -231,9 +231,9 @@ export const TermsPage: React.FC = () => {
         </section>
 
         {/* Section 6 */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Scale className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Scale className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>6. User Content, Disclaimers &amp; Limitation of Liability</h2>
           </div>
           <ul className="space-y-1.5 list-disc pl-5">
@@ -253,23 +253,23 @@ export const TermsPage: React.FC = () => {
         </section>
 
         {/* Section 7 */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-200 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Mail className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-300 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Mail className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>7. Updates &amp; Contact Information</h2>
           </div>
           <p>
             TeeTees Creations may update these Terms from time to time by posting a revised version on this page. For questions about these Terms, contact:
           </p>
           <div className="p-4 rounded-2xl bg-white border border-rose-200 space-y-1">
-            <p className="font-extrabold text-slate-900">Speed Meet Love · TeeTees Creations</p>
-            <p className="text-xs">
+            <p className="font-bold text-[#111827]">Speed Meet Love · TeeTees Creations</p>
+            <p className="text-xs text-[#111827]">
               <strong>Email:</strong>{' '}
-              <a href="mailto:speedmeetlove@gmail.com" className="text-red-600 font-bold underline font-mono">
+              <a href="mailto:speedmeetlove@gmail.com" className="text-[#B91C1C] font-bold underline font-mono">
                 speedmeetlove@gmail.com
               </a>
             </p>
-            <p className="text-xs">
+            <p className="text-xs text-[#111827]">
               <strong>Website:</strong> https://speedmeetlove.com
             </p>
           </div>
@@ -279,27 +279,27 @@ export const TermsPage: React.FC = () => {
       {/* Footer Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-rose-200 text-xs">
         <div className="flex flex-wrap items-center gap-3">
-          <a href="/acceptable-use" onClick={(e) => handleNav(e, 'acceptable_use')} className="text-red-600 font-bold hover:underline">
+          <a href="/acceptable-use" onClick={(e) => handleNav(e, 'acceptable_use')} className="text-[#B91C1C] font-bold hover:underline">
             Acceptable Use Policy
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-[#111827] font-bold hover:underline">
             Privacy Policy
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/refund-policy" onClick={(e) => handleNav(e, 'refund_policy')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/refund-policy" onClick={(e) => handleNav(e, 'refund_policy')} className="text-[#111827] font-bold hover:underline">
             Refund Policy
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/law-enforcement" onClick={(e) => handleNav(e, 'law_enforcement')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/law-enforcement" onClick={(e) => handleNav(e, 'law_enforcement')} className="text-[#111827] font-bold hover:underline">
             Law Enforcement
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/contact" onClick={(e) => handleNav(e, 'contact')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/contact" onClick={(e) => handleNav(e, 'contact')} className="text-[#111827] font-bold hover:underline">
             Contact
           </a>
         </div>
-        <div className="text-slate-500 font-medium">© 2026 Speed Meet Love by TeeTees Creations</div>
+        <div className="text-[#111827] font-medium">© 2026 Speed Meet Love by TeeTees Creations</div>
       </div>
     </div>
   );

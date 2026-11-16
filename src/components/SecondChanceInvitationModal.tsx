@@ -64,21 +64,21 @@ export const SecondChanceInvitationModal: React.FC = () => {
         {/* Header with dismiss */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="p-2 rounded-2xl bg-pink-100 text-[#FF2E93]">
-              <Heart className="w-5 h-5 fill-[#FF2E93] animate-pulse" />
+            <span className="p-2 rounded-2xl bg-pink-100 text-[#BE185D]">
+              <Heart className="w-5 h-5 fill-[#BE185D] animate-pulse" />
             </span>
             <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-[#FF2E93] block">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#BE185D] block">
                 {isReadyToStart ? 'Both Agreed! Date Ready' : 'Second-Chance Date Request'}
               </span>
-              <h4 className="font-extrabold text-slate-900 text-sm sm:text-base leading-tight font-heading">
+              <h4 className="font-bold text-[#111827] text-sm sm:text-base leading-tight font-heading">
                 {partnerName} {partner?.Age ? `(${partner.Age})` : ''}
               </h4>
             </div>
           </div>
           <button
             onClick={handleDismiss}
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="p-1.5 rounded-full text-[#111827] hover:text-[#B91C1C] hover:bg-slate-100 transition-colors cursor-pointer"
             title="Dismiss for now (invitation remains safely saved on server)"
           >
             <X className="w-4 h-4" />
@@ -90,14 +90,14 @@ export const SecondChanceInvitationModal: React.FC = () => {
           {partner ? (
             <Avatar user={partner} size="md" className="shrink-0 ring-2 ring-pink-400" />
           ) : (
-            <div className="w-12 h-12 rounded-full bg-pink-500 text-white flex items-center justify-center font-bold">
+            <div className="w-12 h-12 rounded-full bg-pink-600 text-white flex items-center justify-center font-bold">
               {partnerName[0]}
             </div>
           )}
           <div className="text-xs space-y-0.5 overflow-hidden">
-            <p className="font-bold text-slate-800 truncate">{partner?.Occupation || 'Verified Dater'}</p>
-            <p className="text-slate-500 text-[11px] truncate">{partner?.Location || 'Speed Dating Participant'}</p>
-            <div className="flex items-center gap-1.5 text-[10px] text-pink-600 font-semibold pt-0.5">
+            <p className="font-bold text-[#111827] truncate">{partner?.Occupation || 'Verified Dater'}</p>
+            <p className="text-[#111827] font-medium text-[11px] truncate">{partner?.Location || 'Speed Dating Participant'}</p>
+            <div className="flex items-center gap-1.5 text-[10px] text-[#BE185D] font-bold pt-0.5">
               <Clock className="w-3 h-3 shrink-0" />
               <span>10-Minute Private Video Date</span>
             </div>
@@ -105,10 +105,10 @@ export const SecondChanceInvitationModal: React.FC = () => {
         </div>
 
         {/* Explanation & Privacy Notice */}
-        <div className="text-[11px] text-slate-600 space-y-1">
+        <div className="text-[11px] text-[#111827] font-medium space-y-1">
           {isReadyToStart ? (
-            <p className="font-medium text-emerald-700 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center gap-2">
-              <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+            <p className="font-semibold text-[#064E3B] bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center gap-2">
+              <Check className="w-4 h-4 shrink-0 text-[#047857]" />
               <span>Both of you accepted! You can enter whenever you are ready.</span>
             </p>
           ) : (
@@ -120,8 +120,8 @@ export const SecondChanceInvitationModal: React.FC = () => {
             </p>
           )}
 
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 pt-0.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          <div className="flex items-center gap-1 text-[10px] text-[#111827] font-medium pt-0.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-[#047857] shrink-0" />
             <span>Camera & microphone only activate after both participants explicitly click Start Date.</span>
           </div>
         </div>
@@ -149,7 +149,7 @@ export const SecondChanceInvitationModal: React.FC = () => {
                   </button>
                   <button
                     onClick={handleDecline}
-                    className="py-2.5 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs cursor-pointer transition-colors"
+                    className="py-2.5 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-[#111827] font-bold text-xs cursor-pointer transition-colors"
                     title="Politely decline without sharing private reasons"
                   >
                     <span>Decline</span>
@@ -161,7 +161,7 @@ export const SecondChanceInvitationModal: React.FC = () => {
                     if (session.matchId) setSelectedMatchId(session.matchId);
                     setCurrentView('matches');
                   }}
-                  className="w-full py-2.5 px-3 rounded-xl border border-pink-200 bg-pink-50 text-pink-700 font-bold text-xs cursor-pointer hover:bg-pink-100 transition-colors"
+                  className="w-full py-2.5 px-3 rounded-xl border border-pink-200 bg-pink-50 text-[#9D174D] font-bold text-xs cursor-pointer hover:bg-pink-100 transition-colors"
                 >
                   <span>View in Matches</span>
                 </button>

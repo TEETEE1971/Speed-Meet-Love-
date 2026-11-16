@@ -22,34 +22,34 @@ export const ReportModal: React.FC = () => {
       <div className="w-full max-w-md rounded-3xl bg-white border border-pink-100 shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150">
         <div className="flex items-center justify-between border-b border-pink-50 pb-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
+            <div className="w-8 h-8 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-[#BE123C]">
               <ShieldAlert className="w-4 h-4" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 font-heading">
+            <h3 className="text-base font-bold text-[#111827] font-heading">
               Report Member
             </h3>
           </div>
           <button
             onClick={() => setReportModalTarget(null)}
-            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-[#111827] hover:text-[#B91C1C] flex items-center justify-center transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          <div className="p-3 rounded-2xl bg-pink-50/60 border border-pink-100 text-slate-700 leading-relaxed">
-            Reporting <strong className="text-slate-900">{reportModalTarget.FirstName} {reportModalTarget.LastName}</strong>. Your report is strictly confidential and reviewed directly by the platform owner (TeeTees Creations).
+          <div className="p-3 rounded-2xl bg-pink-50/60 border border-pink-100 text-[#111827] font-medium leading-relaxed">
+            Reporting <strong className="text-[#111827] font-bold">{reportModalTarget.FirstName} {reportModalTarget.LastName}</strong>. Your report is strictly confidential and reviewed directly by the platform owner (TeeTees Creations).
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-1.5">
+            <label className="block text-[#111827] font-bold mb-1.5">
               Reason for report
             </label>
             <select
               value={reason}
               onChange={e => setReason(e.target.value as UserReport['Reason'])}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-800 focus:outline-none focus:border-[#FF2E93] focus:ring-1 focus:ring-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D] focus:ring-1 focus:ring-[#BE185D]"
             >
               <option value="Inappropriate behavior">Inappropriate behavior</option>
               <option value="Child safety / Underage / CSAE">Child safety / Underage / CSAE concern</option>
@@ -61,7 +61,7 @@ export const ReportModal: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-1.5">
+            <label className="block text-[#111827] font-bold mb-1.5">
               Additional details (optional)
             </label>
             <textarea
@@ -69,16 +69,16 @@ export const ReportModal: React.FC = () => {
               placeholder="Describe what occurred..."
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF2E93] focus:ring-1 focus:ring-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium placeholder-slate-500 focus:outline-none focus:border-[#BE185D] focus:ring-1 focus:ring-[#BE185D]"
             />
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer pt-1 text-slate-700 select-none">
+          <label className="flex items-center gap-2 cursor-pointer pt-1 text-[#111827] font-medium select-none">
             <input
               type="checkbox"
               checked={alsoBlock}
               onChange={e => setAlsoBlock(e.target.checked)}
-              className="w-4 h-4 text-[#FF2E93] rounded border-slate-300 focus:ring-[#FF2E93]"
+              className="w-4 h-4 text-[#BE185D] rounded border-slate-300 focus:ring-[#BE185D]"
             />
             <span>Also block this member immediately</span>
           </label>
@@ -87,7 +87,7 @@ export const ReportModal: React.FC = () => {
             <button
               type="button"
               onClick={() => setReportModalTarget(null)}
-              className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors"
+              className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold transition-colors"
             >
               Cancel
             </button>

@@ -23,14 +23,14 @@ export const AuthGate: React.FC<AuthGateProps> = ({
       </div>
 
       <div className="space-y-2">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 text-red-700 text-xs font-black">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 text-[#991B1B] text-xs font-bold border border-rose-200">
           <ShieldCheck className="w-3.5 h-3.5" />
           <span>Members Only · 18+ Verified</span>
         </div>
-        <h2 className="text-2xl sm:text-3xl font-black text-slate-900 font-heading">
+        <h2 className="text-2xl sm:text-3xl font-bold text-[#111827] font-heading">
           Sign In to Access {featureName}
         </h2>
-        <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+        <p className="text-xs sm:text-sm text-[#111827] font-medium max-w-md mx-auto leading-relaxed">
           {description}
         </p>
       </div>
@@ -39,7 +39,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({
       <div className="p-6 rounded-3xl bg-white border-2 border-rose-200 shadow-lg space-y-3">
         <button
           onClick={() => openAuthModal('signin')}
-          className="w-full py-3.5 rounded-2xl btn-glossy-red-pink text-white font-extrabold text-sm shadow-md shadow-pink-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+          className="w-full py-3.5 rounded-2xl btn-glossy-red-pink text-white font-bold text-sm shadow-md shadow-pink-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
         >
           <LogIn className="w-4 h-4" />
           <span>Sign In to Your Account</span>
@@ -47,14 +47,14 @@ export const AuthGate: React.FC<AuthGateProps> = ({
 
         <button
           onClick={() => openAuthModal('signup')}
-          className="w-full py-3.5 rounded-2xl bg-white hover:bg-rose-50 active:scale-95 text-red-700 font-extrabold text-sm border-2 border-rose-300 shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+          className="w-full py-3.5 rounded-2xl bg-white hover:bg-rose-50 active:scale-95 text-[#991B1B] font-bold text-sm border-2 border-rose-300 shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
         >
           <UserPlus className="w-4 h-4" />
           <span>Create New Account (18+)</span>
         </button>
 
-        <div className="pt-2 text-xs text-slate-500 flex items-center justify-center gap-1.5">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+        <div className="pt-2 text-xs text-[#111827] font-medium flex items-center justify-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 text-[#047857]" />
           <span>Identity &amp; adult age verified securely on server</span>
         </div>
       </div>
@@ -63,7 +63,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({
       <div>
         <button
           onClick={() => setCurrentView('home')}
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-[#111827] hover:text-[#B91C1C] transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Return to Speed Meet Love Home</span>

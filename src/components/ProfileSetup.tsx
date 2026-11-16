@@ -237,40 +237,40 @@ export const ProfileSetup: React.FC = () => {
         />
         <div className="text-center sm:text-left space-y-1 flex-1">
           <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold text-slate-900 font-heading">
+            <h1 className="text-2xl font-bold text-[#111827] font-heading">
               {currentUser.LastName ? `${currentUser.FirstName} ${currentUser.LastName}` : currentUser.FirstName}
             </h1>
-            <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-pink-50 text-[#FF2E93] border border-pink-200 font-bold">
+            <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-pink-50 text-[#BE185D] border border-pink-200 font-bold">
               {currentUser.SubscriptionTier} Tier
             </span>
             {currentUser.IsTester ? (
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-500" />
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-50 text-[#92400E] border border-amber-200 font-bold flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-[#B45309]" />
                 Free Tester Privilege
               </span>
             ) : isOwner ? (
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold flex items-center gap-1">
-                <Crown className="w-3 h-3 text-purple-500" />
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-purple-50 text-[#581C87] border border-purple-200 font-bold flex items-center gap-1">
+                <Crown className="w-3 h-3 text-[#6B21A8]" />
                 Founder & Owner
               </span>
             ) : appMode === 'demonstration' && (currentUser.UserID.includes('_demo') || currentUser.Email.endsWith('@speedmeetlove.internal')) ? (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-bold">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-[#111827] border border-slate-300 font-bold">
                 Sample Demo Profile
               </span>
             ) : (
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-emerald-500" />
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-50 text-[#065F46] border border-emerald-200 font-bold flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3 text-[#047857]" />
                 Verified Member Account
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-[#111827] font-medium">
             {currentUser.Occupation ? currentUser.Occupation : 'Occupation not set'} · {currentUser.Location ? currentUser.Location : 'Location not set'}
           </p>
           <div className="pt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs">
             <button
               onClick={() => setCurrentView('pricing')}
-              className="text-[#FF2E93] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-[#BE185D] font-bold hover:underline flex items-center gap-1 cursor-pointer"
             >
               <Crown className="w-3.5 h-3.5" />
               Manage Membership
@@ -281,25 +281,25 @@ export const ProfileSetup: React.FC = () => {
 
       <form onSubmit={handleSubmit} className="rounded-3xl bg-white border border-pink-100 p-6 sm:p-8 space-y-6 shadow-sm">
         <div className="border-b border-pink-100 pb-4">
-          <h2 className="text-lg font-bold text-slate-900 font-heading flex items-center gap-2">
-            <UserIcon className="w-5 h-5 text-[#FF2E93]" />
+          <h2 className="text-lg font-bold text-[#111827] font-heading flex items-center gap-2">
+            <UserIcon className="w-5 h-5 text-[#BE185D]" />
             Personal Profile & Photo Avatar
           </h2>
-          <p className="text-xs text-slate-500">Visible to other singles when browsing and during speed rounds</p>
+          <p className="text-xs text-[#111827] font-medium">Visible to other singles when browsing and during speed rounds</p>
         </div>
 
         {/* Profile Photo Management */}
         <div className="p-4 rounded-2xl bg-rose-50/60 border border-pink-100 space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-              <Camera className="w-4 h-4 text-[#FF2E93]" />
+            <label className="text-xs font-bold text-[#111827] uppercase tracking-wider flex items-center gap-1.5">
+              <Camera className="w-4 h-4 text-[#BE185D]" />
               Profile Photo
             </label>
             {formData.ProfilePhoto && (
               <button
                 type="button"
                 onClick={() => setFormData(prev => ({ ...prev, ProfilePhoto: '' }))}
-                className="text-xs text-rose-600 hover:text-rose-800 font-semibold cursor-pointer"
+                className="text-xs text-[#BE123C] hover:text-[#881337] font-bold cursor-pointer"
               >
                 Remove Photo (Use Initials)
               </button>
@@ -319,14 +319,14 @@ export const ProfileSetup: React.FC = () => {
             />
             <div className="space-y-1.5 flex-1 text-xs">
               {formData.ProfilePhoto ? (
-                <p className="text-slate-700 font-medium">Custom profile photo active.</p>
+                <p className="text-[#111827] font-medium">Custom profile photo active.</p>
               ) : (
-                <p className="text-slate-500">
+                <p className="text-[#111827] font-medium">
                   No photo uploaded. Your profile displays your initials on your selected color gradient.
                 </p>
               )}
-              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-pink-200 text-xs font-bold text-slate-800 hover:bg-rose-50 cursor-pointer shadow-2xs">
-                <Upload className="w-3.5 h-3.5 text-[#FF2E93]" />
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-pink-200 text-xs font-bold text-[#111827] hover:bg-rose-50 cursor-pointer shadow-2xs">
+                <Upload className="w-3.5 h-3.5 text-[#BE185D]" />
                 <span>Upload New Photo</span>
                 <input
                   type="file"
@@ -356,8 +356,8 @@ export const ProfileSetup: React.FC = () => {
 
         {/* Avatar Color Picker */}
         <div className="space-y-2">
-          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-            <Palette className="w-4 h-4 text-[#FF2E93]" />
+          <label className="block text-xs font-bold text-[#111827] uppercase tracking-wider flex items-center gap-1.5">
+            <Palette className="w-4 h-4 text-[#BE185D]" />
             Avatar Gradient Color Theme
           </label>
           <div className="flex items-center gap-2 flex-wrap">
@@ -379,33 +379,33 @@ export const ProfileSetup: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">First Name</label>
+            <label className="block text-[#111827] font-bold mb-1">First Name</label>
             <input
               type="text"
               required
               value={formData.FirstName}
               onChange={e => setFormData(prev => ({ ...prev, FirstName: e.target.value }))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 focus:outline-none focus:border-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
             />
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Last Name</label>
+            <label className="block text-[#111827] font-bold mb-1">Last Name</label>
             <input
               type="text"
               required
               value={formData.LastName}
               onChange={e => setFormData(prev => ({ ...prev, LastName: e.target.value }))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 focus:outline-none focus:border-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
             />
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Gender</label>
+            <label className="block text-[#111827] font-bold mb-1">Gender</label>
             <select
               value={formData.Gender}
               onChange={e => setFormData(prev => ({ ...prev, Gender: e.target.value as any }))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 focus:outline-none focus:border-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
             >
               <option value="Man">Man</option>
               <option value="Woman">Woman</option>
@@ -414,11 +414,11 @@ export const ProfileSetup: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Interested In</label>
+            <label className="block text-[#111827] font-bold mb-1">Interested In</label>
             <select
               value={formData.InterestedIn}
               onChange={e => setFormData(prev => ({ ...prev, InterestedIn: e.target.value as any }))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 focus:outline-none focus:border-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
             >
               <option value="Women">Women</option>
               <option value="Men">Men</option>
@@ -427,7 +427,7 @@ export const ProfileSetup: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Age</label>
+            <label className="block text-[#111827] font-bold mb-1">Age</label>
             <input
               type="number"
               min={18}
@@ -435,54 +435,54 @@ export const ProfileSetup: React.FC = () => {
               required
               value={formData.Age}
               onChange={e => setFormData(prev => ({ ...prev, Age: Number(e.target.value) }))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 focus:outline-none focus:border-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
             />
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Occupation</label>
+            <label className="block text-[#111827] font-bold mb-1">Occupation</label>
             <input
               type="text"
               value={formData.Occupation}
               onChange={e => setFormData(prev => ({ ...prev, Occupation: e.target.value }))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 focus:outline-none focus:border-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
             />
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-slate-700 font-semibold mb-1">Location</label>
+            <label className="block text-[#111827] font-bold mb-1">Location</label>
             <input
               type="text"
               value={formData.Location}
               onChange={e => setFormData(prev => ({ ...prev, Location: e.target.value }))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 focus:outline-none focus:border-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
             />
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-slate-700 font-semibold mb-1">Bio</label>
+            <label className="block text-[#111827] font-bold mb-1">Bio</label>
             <textarea
               rows={2}
               value={formData.Bio}
               onChange={e => setFormData(prev => ({ ...prev, Bio: e.target.value }))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 focus:outline-none focus:border-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
             />
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-slate-700 font-semibold mb-1">
+            <label className="block text-[#111827] font-bold mb-1">
               Interests (comma separated)
             </label>
             <input
               type="text"
               value={formData.Interests}
               onChange={e => setFormData(prev => ({ ...prev, Interests: e.target.value }))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 focus:outline-none focus:border-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
             />
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-slate-700 font-semibold mb-1">
+            <label className="block text-[#111827] font-bold mb-1">
               Signature Icebreaker Answer
             </label>
             <input
@@ -490,7 +490,7 @@ export const ProfileSetup: React.FC = () => {
               placeholder="e.g. If I won the lottery tomorrow..."
               value={formData.IcebreakerAnswer}
               onChange={e => setFormData(prev => ({ ...prev, IcebreakerAnswer: e.target.value }))}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 focus:outline-none focus:border-[#FF2E93]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
             />
           </div>
         </div>
@@ -498,22 +498,22 @@ export const ProfileSetup: React.FC = () => {
         {/* Physical Characteristics & Lifestyle Section */}
         <div className="border-t border-pink-100 pt-6 space-y-4 text-xs">
           <div>
-            <h3 className="text-base font-bold text-slate-900 font-heading flex items-center gap-2">
-              <Smile className="w-4 h-4 text-[#FF2E93]" />
+            <h3 className="text-base font-bold text-[#111827] font-heading flex items-center gap-2">
+              <Smile className="w-4 h-4 text-[#BE185D]" />
               Physical Characteristics & Lifestyle
             </h3>
-            <p className="text-slate-500">
+            <p className="text-[#111827] font-medium">
               Provide your details so matches searching by traits can discover your profile.
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Hair Color</label>
+              <label className="block text-[#111827] font-bold mb-1">Hair Color</label>
               <select
                 value={formData.HairColor}
                 onChange={e => setFormData(prev => ({ ...prev, HairColor: e.target.value as any }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium"
               >
                 {['Blonde', 'Brown', 'Black', 'Red', 'Gray/Silver', 'Bald', 'Other'].map(hc => (
                   <option key={hc} value={hc}>{hc}</option>
@@ -522,11 +522,11 @@ export const ProfileSetup: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Eye Color</label>
+              <label className="block text-[#111827] font-bold mb-1">Eye Color</label>
               <select
                 value={formData.EyeColor}
                 onChange={e => setFormData(prev => ({ ...prev, EyeColor: e.target.value as any }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium"
               >
                 {['Blue', 'Brown', 'Green', 'Hazel', 'Gray', 'Other'].map(ec => (
                   <option key={ec} value={ec}>{ec}</option>
@@ -535,12 +535,12 @@ export const ProfileSetup: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Height (Feet & Inches)</label>
+              <label className="block text-[#111827] font-bold mb-1">Height (Feet & Inches)</label>
               <div className="grid grid-cols-2 gap-2">
                 <select
                   value={formData.HeightFeet}
                   onChange={e => setFormData(prev => ({ ...prev, HeightFeet: Number(e.target.value) }))}
-                  className="w-full px-2 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 text-xs"
+                  className="w-full px-2 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium text-xs"
                 >
                   {[4, 5, 6, 7].map(ft => (
                     <option key={ft} value={ft}>{ft} ft</option>
@@ -549,7 +549,7 @@ export const ProfileSetup: React.FC = () => {
                 <select
                   value={formData.HeightInchesRem}
                   onChange={e => setFormData(prev => ({ ...prev, HeightInchesRem: Number(e.target.value) }))}
-                  className="w-full px-2 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 text-xs"
+                  className="w-full px-2 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium text-xs"
                 >
                   {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(inc => (
                     <option key={inc} value={inc}>{inc} in</option>
@@ -559,11 +559,11 @@ export const ProfileSetup: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Smoking</label>
+              <label className="block text-[#111827] font-bold mb-1">Smoking</label>
               <select
                 value={formData.Smoking}
                 onChange={e => setFormData(prev => ({ ...prev, Smoking: e.target.value as any }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium"
               >
                 {['Non-smoker', 'Social smoker', 'Regular smoker'].map(s => (
                   <option key={s} value={s}>{s}</option>
@@ -572,11 +572,11 @@ export const ProfileSetup: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Drinking</label>
+              <label className="block text-[#111827] font-bold mb-1">Drinking</label>
               <select
                 value={formData.Drinking}
                 onChange={e => setFormData(prev => ({ ...prev, Drinking: e.target.value as any }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium"
               >
                 {['Non-drinker', 'Social drinker', 'Regular drinker'].map(d => (
                   <option key={d} value={d}>{d}</option>
@@ -585,11 +585,11 @@ export const ProfileSetup: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Children & Family</label>
+              <label className="block text-[#111827] font-bold mb-1">Children & Family</label>
               <select
                 value={formData.Children}
                 onChange={e => setFormData(prev => ({ ...prev, Children: e.target.value as any }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-medium"
               >
                 {['Has children', 'Wants children', "Doesn't want children", 'Open to children'].map(c => (
                   <option key={c} value={c}>{c}</option>
@@ -602,11 +602,11 @@ export const ProfileSetup: React.FC = () => {
         {/* Privacy Controls Section */}
         <div className="border-t border-pink-100 pt-6 space-y-4 text-xs">
           <div>
-            <h3 className="text-base font-bold text-slate-900 font-heading flex items-center gap-2">
-              <Lock className="w-4 h-4 text-[#FF2E93]" />
+            <h3 className="text-base font-bold text-[#111827] font-heading flex items-center gap-2">
+              <Lock className="w-4 h-4 text-[#BE185D]" />
               Profile Privacy Settings
             </h3>
-            <p className="text-slate-500">
+            <p className="text-[#111827] font-medium">
               Control what personal information is visible to other members while browsing.
             </p>
           </div>
@@ -629,7 +629,7 @@ export const ProfileSetup: React.FC = () => {
                   onChange={e => setFormData(prev => ({ ...prev, [item.id]: e.target.checked }))}
                   className="w-4 h-4 text-red-600 rounded-sm focus:ring-red-500"
                 />
-                <span className="font-semibold text-slate-800 text-xs">{item.label}</span>
+                <span className="font-semibold text-[#111827] text-xs">{item.label}</span>
               </label>
             ))}
           </div>
@@ -638,42 +638,42 @@ export const ProfileSetup: React.FC = () => {
         {/* Dating Preferences Section */}
         <div className="border-t border-pink-100 pt-6 space-y-4 text-xs">
           <div>
-            <h3 className="text-base font-bold text-slate-900 font-heading flex items-center gap-2">
-              <Heart className="w-4 h-4 text-[#FF2E93]" />
+            <h3 className="text-base font-bold text-[#111827] font-heading flex items-center gap-2">
+              <Heart className="w-4 h-4 text-[#BE185D]" />
               Matching Criteria & Preferences
             </h3>
-            <p className="text-slate-500">Used for match filtering and Friday-night speed dating pairings</p>
+            <p className="text-[#111827] font-medium">Used for match filtering and Friday-night speed dating pairings</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Min Age</label>
+              <label className="block text-[#111827] font-bold mb-1">Min Age</label>
               <input
                 type="number"
                 min={18}
                 value={formData.ageMin}
                 onChange={e => setFormData(prev => ({ ...prev, ageMin: Number(e.target.value) }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 font-bold"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-bold"
               />
             </div>
 
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Max Age</label>
+              <label className="block text-[#111827] font-bold mb-1">Max Age</label>
               <input
                 type="number"
                 max={99}
                 value={formData.ageMax}
                 onChange={e => setFormData(prev => ({ ...prev, ageMax: Number(e.target.value) }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 font-bold"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-bold"
               />
             </div>
 
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Max Distance</label>
+              <label className="block text-[#111827] font-bold mb-1">Max Distance</label>
               <select
                 value={formData.distanceMiles}
                 onChange={e => setFormData(prev => ({ ...prev, distanceMiles: Number(e.target.value) }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 font-bold"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-bold"
               >
                 <option value={10}>10 miles</option>
                 <option value={25}>25 miles</option>
@@ -685,11 +685,11 @@ export const ProfileSetup: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Relationship Intent</label>
+              <label className="block text-[#111827] font-bold mb-1">Relationship Intent</label>
               <select
                 value={formData.intent}
                 onChange={e => setFormData(prev => ({ ...prev, intent: e.target.value as any }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-200 text-slate-900 font-bold"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-bold"
               >
                 <option value="Any">Any Intention</option>
                 <option value="Serious Relationship">Serious Relationship</option>
@@ -704,15 +704,15 @@ export const ProfileSetup: React.FC = () => {
         {/* Safety & Blocked Members Management */}
         <div className="border-t border-pink-100 pt-6 space-y-3 text-xs">
           <div>
-            <h3 className="text-base font-bold text-slate-900 font-heading flex items-center gap-2">
-              <Ban className="w-4 h-4 text-rose-500" />
+            <h3 className="text-base font-bold text-[#111827] font-heading flex items-center gap-2">
+              <Ban className="w-4 h-4 text-[#BE123C]" />
               Safety & Blocked Members
             </h3>
-            <p className="text-slate-500">Members you have blocked are hidden from your feed and cannot message you</p>
+            <p className="text-[#111827] font-medium">Members you have blocked are hidden from your feed and cannot message you</p>
           </div>
 
           {blockedUsersList.length === 0 ? (
-            <p className="text-slate-400 italic">No members currently blocked.</p>
+            <p className="text-[#111827] font-medium italic">No members currently blocked.</p>
           ) : (
             <div className="space-y-2">
               {blockedUsersList.map(u => (
@@ -722,12 +722,12 @@ export const ProfileSetup: React.FC = () => {
                 >
                   <div className="flex items-center gap-2.5">
                     <Avatar user={u} size="sm" />
-                    <span className="font-bold text-slate-800">{u.FirstName} {u.LastName}</span>
+                    <span className="font-bold text-[#111827]">{u.FirstName} {u.LastName}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => unblockUser(u.UserID)}
-                    className="px-3 py-1 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold"
+                    className="px-3 py-1 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-[#111827] text-xs font-bold"
                   >
                     Unblock
                   </button>
@@ -743,11 +743,11 @@ export const ProfileSetup: React.FC = () => {
             <div className="p-5 sm:p-6 rounded-3xl bg-amber-50/80 border-2 border-amber-300 space-y-4 shadow-xs">
               <div className="flex items-start sm:items-center justify-between gap-4 flex-col sm:flex-row">
                 <div className="space-y-1">
-                  <h3 className="text-base font-black text-amber-950 font-heading flex items-center gap-2">
-                    <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />
+                  <h3 className="text-base font-bold text-[#78350F] font-heading flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-[#B45309] shrink-0" />
                     Owner Safety Administration: In-App Reports
                   </h3>
-                  <p className="text-xs text-amber-900/80 leading-relaxed max-w-xl">
+                  <p className="text-xs text-[#78350F] font-medium leading-relaxed max-w-xl">
                     Review member reports submitted via live video dates, singles browsing, and chats. Permanently ban offending accounts, terminate session tokens, and coordinate mandatory NCMEC filings.
                   </p>
                 </div>
@@ -784,7 +784,7 @@ export const ProfileSetup: React.FC = () => {
                   <Trash2 className="w-5 h-5 text-red-600 shrink-0" />
                   Danger Zone: Permanent Account Deletion
                 </h3>
-                <p className="text-xs text-red-900/80 leading-relaxed max-w-xl">
+                <p className="text-xs text-[#7F1D1D] font-medium leading-relaxed max-w-xl">
                   Permanently delete your Speed Meet Love account, profile information, photos, mutual matches, chat messages, confidential votes, private notes, and event registrations. This action is irreversible.
                 </p>
               </div>
@@ -804,9 +804,9 @@ export const ProfileSetup: React.FC = () => {
               </button>
             </div>
 
-            <div className="text-[11px] text-red-800 bg-white/70 p-3 rounded-2xl border border-red-200 space-y-1">
-              <span className="font-bold flex items-center gap-1.5 text-red-900">
-                <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+            <div className="text-[11px] text-[#7F1D1D] font-medium bg-white/80 p-3 rounded-2xl border border-red-200 space-y-1">
+              <span className="font-bold flex items-center gap-1.5 text-[#7F1D1D]">
+                <AlertTriangle className="w-3.5 h-3.5 text-[#B91C1C] shrink-0" />
                 Permanent Data Removal & Retention Disclosures:
               </span>
               <p>
@@ -820,7 +820,7 @@ export const ProfileSetup: React.FC = () => {
           <button
             type="button"
             onClick={resetDemoData}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold text-xs transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Reset Demo Database
@@ -844,14 +844,14 @@ export const ProfileSetup: React.FC = () => {
             {/* Modal Header */}
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                <div className="w-11 h-11 rounded-2xl bg-red-100 flex items-center justify-center text-[#B91C1C] shrink-0">
                   <Trash2 className="w-6 h-6 stroke-[2.25]" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900 font-heading">
+                  <h3 className="text-lg font-bold text-[#111827] font-heading">
                     {deletionSuccessResult ? 'Account Deleted' : 'Permanently Delete Account?'}
                   </h3>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-[#111827] font-medium">
                     {deletionSuccessResult ? 'Confirmation & Data Purge Report' : 'This action is irreversible and permanent.'}
                   </p>
                 </div>
@@ -860,7 +860,7 @@ export const ProfileSetup: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsDeleteModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
+                  className="p-1.5 text-[#111827] hover:text-[#B91C1C] rounded-xl hover:bg-slate-100 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -870,20 +870,20 @@ export const ProfileSetup: React.FC = () => {
             {deletionSuccessResult ? (
               /* Success View */
               <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-950 space-y-2">
-                  <div className="flex items-center gap-2 font-black text-sm text-emerald-900">
-                    <Check className="w-4 h-4 text-emerald-600" />
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-[#064E3B] space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-sm text-[#064E3B]">
+                    <Check className="w-4 h-4 text-[#047857]" />
                     <span>Account Successfully Purged</span>
                   </div>
-                  <p className="text-xs text-emerald-900 leading-relaxed">
+                  <p className="text-xs text-[#064E3B] font-medium leading-relaxed">
                     Your Speed Meet Love account, profile information, photos, mutual matches, chat messages, confidential votes, private notes, and event registrations have been permanently deleted from our active server systems.
                   </p>
                 </div>
 
                 {deletionSuccessResult.purged && (
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-1.5 text-slate-700 font-mono">
-                    <p className="font-bold text-slate-900 font-sans text-xs">Purged Records Summary:</p>
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-1.5 text-[#111827] font-mono">
+                    <p className="font-bold text-[#111827] font-sans text-xs">Purged Records Summary:</p>
+                    <div className="grid grid-cols-2 gap-2 text-[11px] font-medium">
                       <div>Matches Purged: <span className="font-bold">{deletionSuccessResult.purged.matches ?? 0}</span></div>
                       <div>Votes &amp; Notes: <span className="font-bold">{deletionSuccessResult.purged.votes ?? 0}</span></div>
                       <div>Shared Rounds: <span className="font-bold">{deletionSuccessResult.purged.sharedRounds ?? 0}</span></div>
@@ -893,12 +893,12 @@ export const ProfileSetup: React.FC = () => {
                 )}
 
                 {deletionSuccessResult.retentionExceptions && deletionSuccessResult.retentionExceptions.length > 0 && (
-                  <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 text-xs space-y-1 text-amber-950">
-                    <p className="font-bold text-amber-900 text-xs flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 text-xs space-y-1 text-[#78350F]">
+                    <p className="font-bold text-[#78350F] text-xs flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-[#B45309] shrink-0" />
                       Retention Exceptions Disclosures:
                     </p>
-                    <ul className="list-disc pl-4 text-[11px] space-y-1 text-amber-900">
+                    <ul className="list-disc pl-4 text-[11px] space-y-1 text-[#78350F] font-medium">
                       {deletionSuccessResult.retentionExceptions.map((ex, idx) => (
                         <li key={idx}>{ex}</li>
                       ))}
@@ -922,12 +922,12 @@ export const ProfileSetup: React.FC = () => {
             ) : (
               /* Confirmation Form */
               <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-red-50 border border-red-200 space-y-2 text-xs text-red-950">
-                  <p className="font-bold flex items-center gap-1.5 text-red-900 text-sm">
-                    <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                <div className="p-4 rounded-2xl bg-red-50 border border-red-200 space-y-2 text-xs text-[#7F1D1D]">
+                  <p className="font-bold flex items-center gap-1.5 text-[#7F1D1D] text-sm">
+                    <AlertTriangle className="w-4 h-4 text-[#B91C1C] shrink-0" />
                     What will be permanently deleted:
                   </p>
-                  <ul className="list-disc pl-5 space-y-1 text-red-900 text-xs">
+                  <ul className="list-disc pl-5 space-y-1 text-[#7F1D1D] font-medium text-xs">
                     <li>Your profile details, biography, and photos</li>
                     <li>All mutual match records and chat history</li>
                     <li>Confidential speed dating round votes (Like/Pass) and private notes</li>
@@ -937,7 +937,7 @@ export const ProfileSetup: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="confirmEmail" className="block text-xs font-bold text-slate-800">
+                  <label htmlFor="confirmEmail" className="block text-xs font-bold text-[#111827]">
                     To confirm deletion, type your registered email address ({currentUser.Email}):
                   </label>
                   <input
@@ -949,15 +949,15 @@ export const ProfileSetup: React.FC = () => {
                       if (deleteError) setDeleteError(null);
                     }}
                     placeholder={currentUser.Email || 'Enter your registered email'}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-500 font-mono text-xs text-slate-900"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-500 font-mono text-xs text-[#111827] font-medium"
                     disabled={isDeleting}
                     autoComplete="off"
                   />
                 </div>
 
                 {deleteError && (
-                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs font-semibold flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-[#9F1239] text-xs font-semibold flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-[#BE123C] shrink-0" />
                     <span>{deleteError}</span>
                   </div>
                 )}
@@ -970,7 +970,7 @@ export const ProfileSetup: React.FC = () => {
                       setDeleteError(null);
                     }}
                     disabled={isDeleting}
-                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold text-xs transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>

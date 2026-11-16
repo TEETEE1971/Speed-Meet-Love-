@@ -188,18 +188,18 @@ export const MatchRevealScreen: React.FC = () => {
         {/* If NO Mutual Matches Found for this event */}
         {!hasMutualMatches ? (
           <div className="rounded-3xl bg-white border border-rose-200 p-8 sm:p-12 text-center space-y-6 shadow-sm">
-            <div className="w-20 h-20 rounded-full bg-rose-50 border-2 border-rose-200 mx-auto flex items-center justify-center text-rose-500 shadow-inner">
-              <Sparkles className="w-10 h-10 text-[#FF2E93]" />
+            <div className="w-20 h-20 rounded-full bg-rose-50 border-2 border-rose-200 mx-auto flex items-center justify-center text-[#BE123C] shadow-inner">
+              <Sparkles className="w-10 h-10 text-[#BE185D]" />
             </div>
 
             <div className="space-y-2 max-w-md mx-auto">
-              <h2 className="text-2xl font-black text-slate-900 font-heading">
+              <h2 className="text-2xl font-bold text-[#111827] font-heading">
                 No Mutual Matches This Round, But Your Spark Is Out There!
               </h2>
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              <p className="text-xs sm:text-sm text-[#111827] font-medium leading-relaxed">
                 Chemistry is all about timing and authentic connection. Keep your heart open! Real sparks happen when you least expect them.
               </p>
-              <div className="pt-2 p-3 bg-pink-50/60 rounded-2xl border border-pink-100 text-xs text-rose-700 font-medium">
+              <div className="pt-2 p-3 bg-pink-50/70 rounded-2xl border border-pink-200 text-xs text-[#9F1239] font-semibold">
                 🔒 Remember: Speed Meet Love voting is <strong>100% confidential</strong>. We never reveal who selected Pass.
               </div>
             </div>
@@ -207,14 +207,14 @@ export const MatchRevealScreen: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3">
               <button
                 onClick={() => setCurrentView('home')}
-                className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
               >
                 <Home className="w-4 h-4" />
                 <span>Return Home</span>
               </button>
               <button
                 onClick={() => setCurrentView('browse')}
-                className="w-full sm:w-auto px-8 py-3 rounded-2xl btn-glossy-red-pink text-white font-black text-xs flex items-center justify-center gap-2 shadow-md cursor-pointer transition-transform hover:scale-[1.02]"
+                className="w-full sm:w-auto px-8 py-3 rounded-2xl btn-glossy-red-pink text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md cursor-pointer transition-transform hover:scale-[1.02]"
               >
                 <Compass className="w-4 h-4" />
                 <span>Browse Singles Near You</span>
@@ -226,13 +226,13 @@ export const MatchRevealScreen: React.FC = () => {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-black text-slate-900 font-heading flex items-center gap-2">
+                <h2 className="text-2xl font-bold text-[#111827] font-heading flex items-center gap-2 flex-wrap">
                   <span>Your Mutual Matches ({mutualPartnerUsers.length})</span>
-                  <span className="text-sm px-2.5 py-0.5 rounded-full bg-rose-100 text-red-700 font-bold border border-rose-200">
+                  <span className="text-sm px-2.5 py-0.5 rounded-full bg-rose-100 text-[#991B1B] font-bold border border-rose-300">
                     {currentEvent.EventName}
                   </span>
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-[#111827] font-medium mt-0.5">
                   Request a private 10-minute video date or save to chat at your own pace. Both options are completely valid!
                 </p>
               </div>
@@ -240,9 +240,9 @@ export const MatchRevealScreen: React.FC = () => {
               {currentUser.SubscriptionTier !== 'Premium Plus' && (
                 <button
                   onClick={() => setCurrentView('pricing')}
-                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black hover:bg-amber-200 transition-colors cursor-pointer"
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-[#78350F] border border-amber-300 text-xs font-bold hover:bg-amber-200 transition-colors cursor-pointer"
                 >
-                  <Crown className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
+                  <Crown className="w-3.5 h-3.5 fill-amber-500 text-[#B45309]" />
                   <span>Second Chance Dates require Plus ($14.99/mo)</span>
                 </button>
               )}
@@ -293,40 +293,40 @@ export const MatchRevealScreen: React.FC = () => {
                           <Avatar user={partner} size="xl" showBadge />
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <h3 className="text-xl font-black text-slate-900 font-heading">
+                              <h3 className="text-xl font-bold text-[#111827] font-heading">
                                 {partner.FirstName} {partner.LastName}
                               </h3>
-                              <span className="text-base text-[#FF2E93]">❤️</span>
+                              <span className="text-base text-[#BE185D]">❤️</span>
                             </div>
-                            <p className="text-xs font-semibold text-slate-500">
+                            <p className="text-xs font-medium text-[#111827]">
                               {partner.Age} years old · {partner.Occupation || 'Professional'}
                             </p>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
+                            <p className="text-[11px] text-[#111827] font-medium mt-0.5">
                               {partner.Location}
                             </p>
                           </div>
                         </div>
 
-                        <div className="px-3 py-1.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 text-white text-xs font-black shadow-xs flex items-center gap-1">
+                        <div className="px-3 py-1.5 rounded-full bg-gradient-to-r from-pink-600 to-rose-600 text-white text-xs font-bold shadow-xs flex items-center gap-1">
                           <Flame className="w-3.5 h-3.5 fill-white" />
                           <span>{existingMatch?.ChemistryScore || 94}% Spark</span>
                         </div>
                       </div>
 
                       {/* Bio & Spark Note */}
-                      <div className="p-3.5 rounded-2xl bg-rose-50/50 border border-rose-100 text-xs space-y-1">
-                        <div className="text-red-700 font-bold flex items-center gap-1 text-[11px]">
-                          <Sparkles className="w-3 h-3 text-[#FF2E93]" />
+                      <div className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 text-xs space-y-1">
+                        <div className="text-[#991B1B] font-bold flex items-center gap-1 text-[11px]">
+                          <Sparkles className="w-3 h-3 text-[#BE185D]" />
                           <span>Mutual Connection Note:</span>
                         </div>
-                        <p className="text-slate-700 italic">
+                        <p className="text-[#111827] font-medium italic">
                           "{partner.Bio || 'Connected through Speed Meet Love 5-minute video rounds.'}"
                         </p>
                       </div>
 
                       {/* Shared Interests */}
                       <div>
-                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 font-heading">
+                        <div className="text-[11px] font-bold text-[#111827] uppercase tracking-wider mb-1.5 font-heading">
                           Shared Chemistry & Interests
                         </div>
                         <div className="flex flex-wrap gap-1.5">
@@ -337,8 +337,8 @@ export const MatchRevealScreen: React.FC = () => {
                                 key={interest}
                                 className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold ${
                                   isShared
-                                    ? 'bg-rose-100 text-red-700 border border-rose-200'
-                                    : 'bg-slate-100 text-slate-600'
+                                    ? 'bg-rose-100 text-[#991B1B] border border-rose-300'
+                                    : 'bg-slate-100 text-[#111827] border border-slate-200'
                                 }`}
                               >
                                 {interest} {isShared && '✨'}
@@ -537,15 +537,15 @@ export const MatchRevealScreen: React.FC = () => {
       </div>
 
       {/* Speed Meet Love Privacy & Membership Notice */}
-      <div className="p-4 rounded-2xl bg-white border border-rose-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+      <div className="p-4 rounded-2xl bg-white border border-rose-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#111827] font-medium">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+          <ShieldCheck className="w-4 h-4 text-[#047857] shrink-0" />
           <span>
             <strong>Confidential Voting Protected:</strong> Single-sided Likes or Passes are never exposed. Mutual matches remain permanently saved to your account.
           </span>
         </div>
-        <div className="text-[11px] font-bold text-slate-500 shrink-0">
-          Tier: <span className="text-red-600 font-black">{currentUser.SubscriptionTier}</span>
+        <div className="text-[11px] font-bold text-[#111827] shrink-0">
+          Tier: <span className="text-[#B91C1C] font-bold">{currentUser.SubscriptionTier}</span>
         </div>
       </div>
     </div>

@@ -152,9 +152,29 @@ class MainActivity : AppCompatActivity() {
         configureWebView()
         handleBackNavigation()
 
-        // Direct connection to deployed production backend
-        val targetUrl = getString(R.string.default_web_url)
+        // Load verified App Link destination if opened via link, otherwise load speedmeetlove.com
+        val targetUrl = resolveAppLinkUrl(intent) ?: getString(R.string.default_web_url)
         webView.loadUrl(targetUrl)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val deepLinkUrl = resolveAppLinkUrl(intent)
+        if (deepLinkUrl != null && ::webView.isInitialized) {
+            webView.loadUrl(deepLinkUrl)
+        }
+    }
+
+    private fun resolveAppLinkUrl(intent: Intent?): String? {
+        if (intent?.action != Intent.ACTION_VIEW) return null
+        val uri = intent.data ?: return null
+        val host = uri.host?.lowercase() ?: return null
+        return if (uri.scheme == "https" && (host == "speedmeetlove.com" || host == "www.speedmeetlove.com")) {
+            uri.toString()
+        } else {
+            null
+        }
     }
 
     private fun checkAndRequestAppPermissions() {
@@ -198,8 +218,9 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
-                // Keep speed-meet-love and Google auth domains inside WebView; route external links outside
-                if (url.startsWith("https://speed-meet-love.ai.studio") ||
+                // Keep speedmeetlove.com and Google auth domains inside WebView; route external links outside
+                if (url.startsWith("https://speedmeetlove.com") ||
+                    url.startsWith("https://www.speedmeetlove.com") ||
                     url.startsWith("https://accounts.google.com") ||
                     url.contains(".run.app")) {
                     return false

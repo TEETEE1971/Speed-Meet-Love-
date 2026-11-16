@@ -43,7 +43,8 @@ export type AppView =
   | 'law_enforcement'
   | 'contact'
   | 'owner_reports'
-  | 'owner_users';
+  | 'owner_users'
+  | 'owner_waitlist';
 
 export type SecondDateStatus =
   | 'waiting_for_partner'
@@ -157,6 +158,7 @@ export interface User {
   StripeCustomerId?: string;
   StripeSubscriptionId?: string;
   IsTester?: boolean;
+  IsOwner?: boolean;
   testerAccessGranted?: boolean;
   testerAccessGrantedAt?: number;
   testerAccessGrantedBy?: string;
@@ -184,6 +186,11 @@ export interface SpeedEvent {
   MaxAge: number;
   LocationName: string;
   ThemeIcon?: string;
+  Confirmed?: boolean;
+  ConfirmedAt?: number | null;
+  IsManualLaunch?: boolean;
+  CreatedAt?: number;
+  CreatedBy?: string;
 }
 
 export interface Round {
@@ -275,6 +282,8 @@ export interface RegisteredUserSummary {
   isOwner: boolean;
   subscriptionStatus?: SubscriptionStatus;
   stripeCustomerId?: string;
+  stripeCustomerIdLive?: string | null;
+  stripeCustomerIdTest?: string | null;
   isTester?: boolean;
   testerAccessGranted?: boolean;
   testerAccessGrantedAt?: number | null;
@@ -319,4 +328,38 @@ export interface LiveSessionState {
   isReady?: boolean;
   completedRoundIndex?: number;
 }
+
+export interface WaitlistEntrySummary {
+  userId: string;
+  joinedAt: number;
+  updatedAt?: number;
+}
+
+export interface OwnerWaitlistMember {
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  age: number;
+  gender: 'Woman' | 'Man' | 'Non-Binary';
+  interestedIn: 'Men' | 'Women' | 'Everyone';
+  location: string;
+  relationshipIntent?: string;
+  subscriptionTier: SubscriptionTier;
+  joinedAt: number;
+  updatedAt?: number;
+  compatibleCount: number;
+  compatibleWithNames: string[];
+}
+
+export interface OwnerWaitlistSummary {
+  totalWaitlisted: number;
+  womenSeekingMen: number;
+  menSeekingWomen: number;
+  lgbtqOrEveryone: number;
+  thirtyPlusCount: number;
+  compatiblePairsCount: number;
+}
+
 

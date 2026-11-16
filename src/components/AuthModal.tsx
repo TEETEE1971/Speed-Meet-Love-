@@ -220,10 +220,10 @@ export const AuthModal: React.FC = () => {
                 setSignInError(null);
                 setSignUpError(null);
               }}
-              className={`flex-1 py-3 text-xs font-black transition-all border-b-2 cursor-pointer ${
+              className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 cursor-pointer ${
                 authModalTab === 'signin'
-                  ? 'border-red-600 text-red-600 bg-white'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
+                  ? 'border-[#B91C1C] text-[#B91C1C] bg-white'
+                  : 'border-transparent text-[#111827] hover:text-[#B91C1C]'
               }`}
             >
               Sign In
@@ -235,10 +235,10 @@ export const AuthModal: React.FC = () => {
                 setSignInError(null);
                 setSignUpError(null);
               }}
-              className={`flex-1 py-3 text-xs font-black transition-all border-b-2 cursor-pointer ${
+              className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 cursor-pointer ${
                 authModalTab === 'signup'
-                  ? 'border-red-600 text-red-600 bg-white'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
+                  ? 'border-[#B91C1C] text-[#B91C1C] bg-white'
+                  : 'border-transparent text-[#111827] hover:text-[#B91C1C]'
               }`}
             >
               Create Account
@@ -284,16 +284,16 @@ export const AuthModal: React.FC = () => {
                 </div>
               ) : (
                 <>
-                  <p className="text-xs text-slate-600 leading-relaxed">
+                  <p className="text-xs text-[#111827] font-medium leading-relaxed">
                     Forgot your password? Enter the email address linked to your Speed Meet Love account. We will send you a secure link to reset it.
                   </p>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-bold text-slate-800">
+                    <label className="block text-xs font-bold text-[#111827]">
                       Account Email Address
                     </label>
                     <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <Mail className="w-4 h-4 text-[#111827] absolute left-3.5 top-3" />
                       <input
                         type="email"
                         value={resetEmail}
@@ -302,7 +302,7 @@ export const AuthModal: React.FC = () => {
                         required
                         autoFocus
                         autoComplete="email"
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-500 text-xs text-slate-900"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-600 text-xs font-medium text-[#111827]"
                       />
                     </div>
                   </div>
@@ -310,7 +310,7 @@ export const AuthModal: React.FC = () => {
                   <button
                     type="submit"
                     disabled={isSendingReset}
-                    className="w-full py-3 rounded-2xl btn-glossy-red-pink text-white font-extrabold text-xs sm:text-sm shadow-md shadow-pink-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                    className="w-full py-3 rounded-2xl btn-glossy-red-pink text-white font-bold text-xs sm:text-sm shadow-md shadow-pink-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                   >
                     {isSendingReset ? (
                       <>
@@ -329,7 +329,7 @@ export const AuthModal: React.FC = () => {
                     <button
                       type="button"
                       onClick={backToSignIn}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-red-600 transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-[#111827] hover:text-[#B91C1C] transition-colors cursor-pointer"
                     >
                       <ArrowLeft className="w-3.5 h-3.5" />
                       <span>Back to sign in</span>
@@ -344,18 +344,18 @@ export const AuthModal: React.FC = () => {
           {!isForgotPasswordView && authModalTab === 'signin' && (
             <form onSubmit={handleSignInSubmit} className="space-y-3.5">
               {signInError && (
-                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-300 text-[#881337] text-xs font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-[#BE123C] shrink-0" />
                   <span>{signInError}</span>
                 </div>
               )}
 
               <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-800">
+                <label className="block text-xs font-bold text-[#111827]">
                   Email Address
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <Mail className="w-4 h-4 text-[#111827] absolute left-3.5 top-3" />
                   <input
                     type="email"
                     value={signInEmail}
@@ -363,17 +363,17 @@ export const AuthModal: React.FC = () => {
                     placeholder="your.email@example.com"
                     required
                     autoComplete="email"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-500 text-xs text-slate-900"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-600 text-xs font-medium text-[#111827]"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-800">
+                <label className="block text-xs font-bold text-[#111827]">
                   Password
                 </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <Lock className="w-4 h-4 text-[#111827] absolute left-3.5 top-3" />
                   <input
                     type="password"
                     value={signInPassword}
@@ -381,7 +381,7 @@ export const AuthModal: React.FC = () => {
                     placeholder="••••••••"
                     required
                     autoComplete="current-password"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-500 text-xs text-slate-900"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-600 text-xs font-medium text-[#111827]"
                   />
                 </div>
                 {/* Working "Forgot password?" Link Below Password Field */}
@@ -389,7 +389,7 @@ export const AuthModal: React.FC = () => {
                   <button
                     type="button"
                     onClick={openForgotPassword}
-                    className="text-xs font-bold text-red-600 hover:text-red-800 hover:underline cursor-pointer transition-colors"
+                    className="text-xs font-bold text-[#B91C1C] hover:text-red-900 hover:underline cursor-pointer transition-colors"
                   >
                     Forgot password?
                   </button>
@@ -399,7 +399,7 @@ export const AuthModal: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSigningIn}
-                className="w-full py-3 rounded-2xl btn-glossy-red-pink text-white font-extrabold text-xs sm:text-sm shadow-md shadow-pink-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                className="w-full py-3 rounded-2xl btn-glossy-red-pink text-white font-bold text-xs sm:text-sm shadow-md shadow-pink-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
               >
                 {isSigningIn ? (
                   <>
@@ -415,7 +415,7 @@ export const AuthModal: React.FC = () => {
               </button>
 
               <div className="text-center pt-2">
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-[#111827] font-medium">
                   Don&rsquo;t have an account yet?{' '}
                   <button
                     type="button"
@@ -423,7 +423,7 @@ export const AuthModal: React.FC = () => {
                       setAuthModalTab('signup');
                       setSignInError(null);
                     }}
-                    className="text-red-600 font-bold underline cursor-pointer hover:text-red-800"
+                    className="text-[#B91C1C] font-bold underline cursor-pointer hover:text-red-900"
                   >
                     Create Account (18+)
                   </button>
@@ -569,7 +569,7 @@ export const AuthModal: React.FC = () => {
               </button>
 
               <div className="text-center pt-1">
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-[#111827] font-medium">
                   Already have an account?{' '}
                   <button
                     type="button"
@@ -580,7 +580,7 @@ export const AuthModal: React.FC = () => {
                       setResetError(null);
                       setResetSuccessMessage(null);
                     }}
-                    className="text-red-600 font-bold underline cursor-pointer hover:text-red-800"
+                    className="text-[#B91C1C] font-bold underline cursor-pointer hover:text-red-900"
                   >
                     Sign In
                   </button>

@@ -1,8 +1,36 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { User, SpeedEvent, Round, Match, Message, SubscriptionTier, EventType, UserReport, AppView, LiveSessionState, AppMode, UserPreferences, SecondDateSession } from '../types';
+import { User, SpeedEvent, Round, Match, Message, SubscriptionTier, EventType, UserReport, AppView, LiveSessionState, AppMode, UserPreferences, SecondDateSession, WaitlistEntrySummary } from '../types';
 import { INITIAL_USERS, INITIAL_EVENTS, INITIAL_ROUNDS, INITIAL_MATCHES, INITIAL_MESSAGES } from '../data/initialData';
 
 export type { AppView, LiveSessionState, AppMode, SecondDateSession };
+
+function wantsGenderClient(
+  interestedIn: User['InterestedIn'] | string | undefined,
+  candidateGender: User['Gender'] | string | undefined
+): boolean {
+  if (!interestedIn || interestedIn === 'Everyone') return true;
+  if (interestedIn === 'Men') return candidateGender === 'Man' || candidateGender === 'Non-Binary';
+  if (interestedIn === 'Women') return candidateGender === 'Woman' || candidateGender === 'Non-Binary';
+  return true;
+}
+
+export function areUsersCompatible(
+  userA: User | undefined | null,
+  userB: User | undefined | null,
+  evt?: SpeedEvent | null
+): boolean {
+  if (!userA || !userB) return false;
+  if (!userA.UserID || !userB.UserID || userA.UserID === userB.UserID) return false;
+  if (typeof userA.Age !== 'number' || userA.Age < 18) return false;
+  if (typeof userB.Age !== 'number' || userB.Age < 18) return false;
+  if (evt && (evt.EventType === '30 & Older' || evt.MinAge >= 30)) {
+    if (userA.Age < 30 || userB.Age < 30) return false;
+  }
+  return (
+    wantsGenderClient(userA.InterestedIn, userB.Gender) &&
+    wantsGenderClient(userB.InterestedIn, userA.Gender)
+  );
+}
 
 // Calculate exact epoch ms in America/New_York (handles DST automatically)
 export function getEpochMsInEasternTime(dateStr: string, timeStr = '19:00'): number {
@@ -150,6 +178,32 @@ interface AppContextType {
   isOwner: boolean;
   syncAuthSession: (user: User) => Promise<string | null>;
   deleteAccount: (confirmEmail: string) => Promise<{ success: boolean; error?: string; purged?: any; retentionExceptions?: string[] }>;
+  waitlistJoined: boolean;
+  waitlistEntry: WaitlistEntrySummary | null;
+  waitlistLoading: boolean;
+  refreshWaitlistStatus: () => Promise<void>;
+  joinWaitlist: () => Promise<{ success: boolean; error?: string; alreadyJoined?: boolean }>;
+  leaveWaitlist: () => Promise<{ success: boolean; error?: string }>;
+  confirmedLaunchEvents: SpeedEvent[];
+  ownerLaunchEvents: SpeedEvent[];
+  refreshLaunchEvents: () => Promise<void>;
+  scheduleLaunchEvent: (payload: {
+    EventName: string;
+    DayOfWeek: 'Friday' | 'Saturday' | 'Sunday';
+    EventDate: string;
+    EventStartTime?: string;
+    EventEndTime?: string;
+    TimeZone?: string;
+    MaxParticipants?: number;
+    EventType: EventType;
+    Description?: string;
+    MinAge?: number;
+    MaxAge?: number;
+    LocationName?: string;
+    Confirmed?: boolean;
+  }) => Promise<{ success: boolean; event?: SpeedEvent; error?: string }>;
+  confirmLaunchEvent: (eventId: string, confirmed: boolean) => Promise<{ success: boolean; event?: SpeedEvent; error?: string }>;
+  deleteLaunchEvent: (eventId: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -191,6 +245,27 @@ export const safeStorage = {
 
 // Module-level safe storage wrapper that prevents Safari crashes
 const localStorage = safeStorage;
+
+function hasSavedOwnerSession(): boolean {
+  const savedToken = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+  const savedUserId = localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`);
+  if (!savedToken || !savedUserId) return false;
+  if (savedUserId === 'usr_kristy') return true;
+  try {
+    const savedUsersRaw = localStorage.getItem(`${STORAGE_KEY_PREFIX}users`);
+    if (savedUsersRaw) {
+      const parsed = JSON.parse(savedUsersRaw);
+      if (Array.isArray(parsed)) {
+        const matched = parsed.find((u: any) => (u.UserID || u.userId) === savedUserId);
+        const email = (matched?.Email || matched?.email || '').toLowerCase().trim();
+        if (email === 'kristylten@gmail.com' || matched?.IsOwner || matched?.isOwner) {
+          return true;
+        }
+      }
+    }
+  } catch (e) {}
+  return false;
+}
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<User[]>(() => {
@@ -234,10 +309,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
     const savedToken = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
     const savedUser = localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`);
-    const savedMode = localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) || 'production';
     if (savedToken && savedUser) return savedUser;
-    if (savedMode === 'demonstration' && savedUser) return savedUser;
     return '';
+  });
+
+  const [authToken, setAuthToken] = useState<string | null>(() => {
+    return localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`) || null;
   });
 
   const [events, setEvents] = useState<SpeedEvent[]>(() => {
@@ -305,12 +382,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const getSessionStorageKey = (mode: AppMode, userId: string) =>
     `${STORAGE_KEY_PREFIX}session_${mode}_${userId}`;
 
-  // Application Mode: Demonstration Mode (Testing sandbox) vs Production Mode (Real consenting members)
-  // Defaults to production mode for published app and real visitor sessions
-  const [appMode, setAppModeState] = useState<AppMode>(() => {
+  // Application Mode: Demonstration Mode (Owner-only testing sandbox) vs Production Mode (Default for all visitors/testers/members)
+  const [rawAppMode, setAppModeState] = useState<AppMode>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`);
-    return (saved as AppMode) || 'production';
+    if (saved === 'demonstration' && hasSavedOwnerSession()) {
+      return 'demonstration';
+    }
+    if (saved && saved !== 'production') {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
+    }
+    return 'production';
   });
+
+  const currentUser: User | null = useMemo(() => {
+    if (!currentUserId) return null;
+    const found = users.find(u => u.UserID === currentUserId);
+    if (found) return found;
+    const initialFound = INITIAL_USERS.find(u => u.UserID === currentUserId);
+    if (initialFound) return initialFound;
+    return null;
+  }, [currentUserId, users]);
+
+  const isAuthenticated = Boolean(currentUser && authToken);
+
+  const isOwner = Boolean(
+    isAuthenticated &&
+    currentUser && (
+      currentUser.IsOwner ||
+      (currentUser.Email && currentUser.Email.toLowerCase().trim() === 'kristylten@gmail.com') ||
+      currentUser.UserID === 'usr_kristy'
+    )
+  );
+
+  const appMode: AppMode = isOwner ? rawAppMode : 'production';
 
   const PUBLIC_VIEW_PATHS: Partial<Record<AppView, string>> = {
     pricing: '/pricing',
@@ -341,7 +445,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return publicView;
       }
     }
-    const initialMode = (localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) as AppMode) || 'production';
+    const ownerHint = hasSavedOwnerSession();
+    const initialMode: AppMode =
+      localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) === 'demonstration' && ownerHint
+        ? 'demonstration'
+        : 'production';
     const initialToken = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
     const initialUserId = (initialToken && localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`)) || '';
     if (initialUserId) {
@@ -354,11 +462,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}currentView_${initialMode}`);
+    if ((saved === 'tables' || saved === 'owner_reports' || saved === 'owner_users' || saved === 'owner_waitlist') && !ownerHint) {
+      return 'home';
+    }
     return (saved as AppView) || 'home';
   });
 
   const [selectedEventId, setSelectedEventIdState] = useState<string>(() => {
-    const initialMode = (localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) as AppMode) || 'production';
+    const initialMode: AppMode =
+      localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) === 'demonstration' && hasSavedOwnerSession()
+        ? 'demonstration'
+        : 'production';
     const initialToken = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
     const initialUserId = (initialToken && localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`)) || '';
     if (initialUserId) {
@@ -378,7 +492,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
   const [activeRoundIndex, setActiveRoundIndexState] = useState<number>(() => {
-    const initialMode = (localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) as AppMode) || 'production';
+    const initialMode: AppMode =
+      localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) === 'demonstration' && hasSavedOwnerSession()
+        ? 'demonstration'
+        : 'production';
     const initialToken = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
     const initialUserId = (initialToken && localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`)) || '';
     if (initialUserId) {
@@ -397,7 +514,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [liveSession, setLiveSessionState] = useState<LiveSessionState | null>(() => {
-    const initialMode = (localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) as AppMode) || 'production';
+    const initialMode: AppMode =
+      localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) === 'demonstration' && hasSavedOwnerSession()
+        ? 'demonstration'
+        : 'production';
     const initialToken = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
     const initialUserId = (initialToken && localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`)) || '';
     if (initialUserId) {
@@ -419,8 +539,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [reportModalTarget, setReportModalTarget] = useState<User | null>(null);
   const [activeSecondDateSession, setActiveSecondDateSession] = useState<SecondDateSession | null>(null);
   const [secondDateSessions, setSecondDateSessions] = useState<SecondDateSession[]>([]);
+  const [waitlistJoined, setWaitlistJoined] = useState<boolean>(false);
+  const [waitlistEntry, setWaitlistEntry] = useState<WaitlistEntrySummary | null>(null);
+  const [waitlistLoading, setWaitlistLoading] = useState<boolean>(false);
+  const [confirmedLaunchEvents, setConfirmedLaunchEvents] = useState<SpeedEvent[]>([]);
+  const [ownerLaunchEvents, setOwnerLaunchEvents] = useState<SpeedEvent[]>([]);
 
   const setAppMode = (mode: AppMode) => {
+    if (!isOwner) {
+      if (rawAppMode !== 'production') {
+        setAppModeState('production');
+      }
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
+      return;
+    }
+
     const prevMode = appMode;
     setAppModeState(mode);
     localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, mode);
@@ -463,12 +596,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    showNotification(
-      mode === 'demonstration'
-        ? 'Switched to Demonstration Mode (Sandbox Testing).'
-        : 'Switched to Production Mode (Live Speed Dating). Real consenting members only.',
-      'pink'
-    );
+    if (isOwner) {
+      showNotification(
+        mode === 'demonstration'
+          ? 'Switched to Demonstration Mode (Sandbox Testing).'
+          : 'Switched to Production Mode (Live Speed Dating). Real consenting members only.',
+        'pink'
+      );
+    }
   };
 
   const [serverTimeOffset, setServerTimeOffset] = useState<number>(0);
@@ -513,6 +648,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const toggleSimulateLiveEvent = async (eventId: string, enable: boolean) => {
+    if (!isOwner) return;
     try {
       const res = await fetch(`/api/events/${eventId}/simulate-start`, {
         method: 'POST',
@@ -672,12 +808,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}likes`, JSON.stringify(likesMap));
   }, [likesMap]);
 
-  // ============================================================================
-  // SERVER-AUTHENTICATED SESSION TOKEN & AUTH MODAL STATE
-  // ============================================================================
-  const [authToken, setAuthToken] = useState<string | null>(() => {
-    return localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`) || null;
-  });
+  // Enforce Production mode silently for all non-owners (testers, other members, signed-out visitors)
+  useEffect(() => {
+    if (!isOwner) {
+      if (rawAppMode !== 'production') {
+        setAppModeState('production');
+      }
+      if (localStorage.getItem(`${STORAGE_KEY_PREFIX}appMode`) !== 'production') {
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
+      }
+      if (currentView === 'tables' || currentView === 'owner_reports' || currentView === 'owner_users' || currentView === 'owner_waitlist') {
+        setCurrentViewState('home');
+      }
+    }
+  }, [isOwner, rawAppMode, currentView]);
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalTab, setAuthModalTab] = useState<'signin' | 'signup'>('signin');
@@ -687,28 +831,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsAuthModalOpen(true);
   }, []);
 
-  const currentUser: User | null = useMemo(() => {
-    if (!currentUserId) {
-      return appMode === 'demonstration' && users.length > 0 ? users[0] : null;
-    }
-    const found = users.find(u => u.UserID === currentUserId);
-    if (found) return found;
-    const initialFound = INITIAL_USERS.find(u => u.UserID === currentUserId);
-    if (initialFound) return initialFound;
-    return null;
-  }, [currentUserId, users, appMode]);
-
-  const isAuthenticated = Boolean(currentUser && authToken);
-
-  const isOwner = Boolean(
-    currentUser && (
-      (currentUser.Email && currentUser.Email.toLowerCase().trim() === 'kristylten@gmail.com') ||
-      currentUser.UserID === 'usr_kristy'
-    )
-  );
-
   const setCurrentView = (view: AppView) => {
-    setCurrentViewState(view);
+    const ownerOnlyViews: AppView[] = ['tables', 'owner_reports', 'owner_users', 'owner_waitlist'];
+    const safeView: AppView = ownerOnlyViews.includes(view) && !isOwner ? 'home' : view;
+    setCurrentViewState(safeView);
     if (typeof window !== 'undefined') {
       const targetPath = PUBLIC_VIEW_PATHS[view];
       if (targetPath) {
@@ -720,15 +846,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
     const isEphemeralOrPublicDoc =
-      Boolean(PUBLIC_VIEW_PATHS[view]) ||
-      view === 'owner_reports' ||
-      view === 'owner_users' ||
-      view === 'tables';
+      Boolean(PUBLIC_VIEW_PATHS[safeView]) ||
+      safeView === 'owner_reports' ||
+      safeView === 'owner_users' ||
+      safeView === 'owner_waitlist' ||
+      safeView === 'tables';
     if (!isEphemeralOrPublicDoc) {
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}currentView_${appMode}`, view);
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}currentView_${appMode}`, safeView);
     }
     if (liveSession && liveSession.mode === appMode) {
-      saveLiveSession({ currentView: view });
+      saveLiveSession({ currentView: safeView });
     }
   };
 
@@ -931,8 +1058,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const switchUser = (userId: string) => {
-    if (appMode === 'production') {
-      showNotification('Member switching is disabled in Production. Sign out and sign in with your own account.', 'pink');
+    if (!isOwner || appMode === 'production') {
+      if (isOwner) {
+        showNotification('Member switching is disabled in Production. Sign out and sign in with your own account.', 'pink');
+      }
       return;
     }
     setCurrentUserId(userId);
@@ -1051,8 +1180,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setSubscriptionTier = (tier: SubscriptionTier) => {
-    if (appMode === 'production') {
-      showNotification('Speed Meet Love does not currently process simulated card upgrades in Production. Upgrade processing requires payment gateway integration.', 'pink');
+    if (appMode === 'production' || !isOwner) {
+      showNotification('Plan upgrades cannot be simulated in Production.', 'pink');
       return;
     }
     if (!currentUser) return;
@@ -1284,13 +1413,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!targetEvent) return { success: false, message: 'Event not found' };
 
     if (!canAccessLiveSpeedDating(currentUser)) {
-      showNotification(
-        'Weekend Speed Dating requires a Premium Plus membership ($14.99/mo). Upgrade to join!',
-        'pink'
-      );
+      showNotification('Event membership coming soon.', 'pink');
       return {
         success: false,
-        message: 'Premium Plus ($14.99/mo) required to participate in weekend speed dating.',
+        message: 'Event membership coming soon.',
       };
     }
 
@@ -1334,6 +1460,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
     );
 
+    if (targetEvent.IsManualLaunch || eventId.startsWith('evt_launch_')) {
+      const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+      if (token) {
+        fetch(`/api/launch-events/${eventId}/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        }).catch(() => {});
+      }
+    }
+
     showNotification(
       `✓ Registration Confirmed! You are registered for ${targetEvent.EventName} (${targetEvent.DayOfWeek} at 7:00 PM EST).`,
       'success'
@@ -1347,12 +1486,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { registeredCount: 0, message: 'Please sign in or create an account to register.' };
     }
     if (!canAccessLiveSpeedDating(currentUser)) {
-      showNotification(
-        'Multi-night registration requires a Premium Plus membership ($14.99/mo). Upgrade to join!',
-        'pink'
-      );
+      showNotification('Event membership coming soon.', 'pink');
       setCurrentView('pricing');
-      return { registeredCount: 0, message: 'Premium Plus required' };
+      return { registeredCount: 0, message: 'Event membership coming soon.' };
     }
 
     if (!eventIds.length) {
@@ -1410,6 +1546,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.UserID }),
       }).catch(err => console.warn('Server leave event call error:', err));
+
+      if (eventId.startsWith('evt_launch_')) {
+        const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+        if (token) {
+          fetch(`/api/launch-events/${eventId}/leave`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          }).catch(() => {});
+        }
+      }
     }
 
     // 2. Clear live session and reset active round index to 0
@@ -1532,12 +1678,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       candidatePartners = preferredPartner ? [preferredPartner, ...otherAuthorized] : otherAuthorized;
     } else if (appMode === 'production') {
-      // Production mode: Connect real consenting registered members
+      // Production mode: Connect real consenting, mutually compatible registered members only
       candidatePartners = users.filter(
         u =>
           targetEvent.ParticipantsList.includes(u.UserID) &&
           u.UserID !== currentUser.UserID &&
-          !blockedUserIds.includes(u.UserID)
+          !blockedUserIds.includes(u.UserID) &&
+          areUsersCompatible(currentUser, u, targetEvent)
       );
     } else {
       // Demonstration mode: Curated simulated partners strictly matching category & orientation
@@ -1661,14 +1808,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Determine available partners
     let availablePartners: User[] = [];
     if (appMode === 'production') {
-      // In production, NEVER invent participants: ONLY use registered members in event
+      // In production, NEVER invent or pair incompatible participants
+      const isStagingEvt = eventId === 'evt_staging_dev' || eventId.startsWith('evt_staging_');
       if (targetEvent) {
         availablePartners = users.filter(
           u =>
             targetEvent.ParticipantsList.includes(u.UserID) &&
             u.UserID !== meId &&
             !blockedUserIds.includes(u.UserID) &&
-            !existingPartners.has(u.UserID)
+            !existingPartners.has(u.UserID) &&
+            (isStagingEvt || areUsersCompatible(currentUser, u, targetEvent))
         );
       }
     } else {
@@ -1749,10 +1898,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!targetEvent) return false;
 
     if (!canAccessLiveSpeedDating(currentUser)) {
-      showNotification(
-        'Weekend Speed Dating requires a Premium Plus membership ($14.99/mo). Upgrade to join!',
-        'pink'
-      );
+      showNotification('Event membership coming soon.', 'pink');
       setCurrentView('pricing');
       return false;
     }
@@ -1813,7 +1959,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentView('live');
 
     const activeRound = eventRounds[targetRoundIdx];
-    const partnerId = activeRound ? (activeRound.UserA === currentUser.UserID ? activeRound.UserB : activeRound.UserA) : '';
+    const rawPartnerId = activeRound ? (activeRound.UserA === currentUser.UserID ? activeRound.UserB : activeRound.UserA) : '';
+    const isStagingEvt = eventId === 'evt_staging_dev' || eventId.startsWith('evt_staging_');
+    const partnerObj = rawPartnerId ? users.find(u => u.UserID === rawPartnerId) : undefined;
+    const isPartnerValid =
+      Boolean(partnerObj) &&
+      (appMode !== 'production' || isStagingEvt || areUsersCompatible(currentUser, partnerObj, targetEvent));
+    const partnerId = isPartnerValid ? rawPartnerId : '';
     const initialStage = partnerId ? 'call' : 'waiting_room';
 
     // Preserve existing roundStartedAt and roundExpiresAt if re-entering an active session
@@ -1848,7 +2000,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showNotification(
       initialStage === 'call'
         ? `${targetEvent.EventName} is LIVE! 5-minute video round ${targetRoundIdx + 1} started.`
-        : `${targetEvent.EventName} is LIVE! Waiting for an eligible partner in the Waiting Room...`,
+        : `${targetEvent.EventName} is LIVE! Waiting for a compatible participant...`,
       'pink'
     );
     return true;
@@ -2476,6 +2628,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       SubscriptionStatus: apiUser.SubscriptionStatus || apiUser.subscriptionStatus || 'none',
       StripeCustomerId: apiUser.StripeCustomerId || apiUser.stripeCustomerId || undefined,
       IsTester: Boolean(apiUser.IsTester || apiUser.isTester),
+      IsOwner: Boolean(apiUser.IsOwner || apiUser.isOwner || isFounder),
       Bio: bio,
       Occupation: occupation,
       Interests: interests,
@@ -2519,9 +2672,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const token = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
     if (!token) {
-      if (appMode === 'production') {
-        setCurrentUserId('');
-      }
+      setCurrentUserId('');
+      setAppModeState('production');
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
       return;
     }
 
@@ -2537,6 +2690,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (data.success && data.user) {
           const normalized = normalizeUserFromApi(data.user);
           const userId = normalized.UserID;
+          const userIsOwner = Boolean(
+            normalized.IsOwner ||
+            (normalized.Email && normalized.Email.toLowerCase().trim() === 'kristylten@gmail.com') ||
+            userId === 'usr_kristy'
+          );
           setAuthToken(token);
           setCurrentUserId(userId);
           localStorage.setItem(`${STORAGE_KEY_PREFIX}current_user_id`, userId);
@@ -2544,12 +2702,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const exists = prev.some(u => u.UserID === userId);
             return exists ? prev.map(u => (u.UserID === userId ? { ...u, ...normalized } : u)) : [normalized, ...prev];
           });
+          if (!userIsOwner) {
+            setAppModeState('production');
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
+          }
         } else {
           // Stale or invalid token
           setAuthToken(null);
           setCurrentUserId('');
+          setAppModeState('production');
           localStorage.removeItem(`${STORAGE_KEY_PREFIX}authToken`);
           localStorage.removeItem(`${STORAGE_KEY_PREFIX}current_user_id`);
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
         }
       })
       .catch(() => {
@@ -2559,7 +2723,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       isMounted = false;
     };
-  }, [appMode, normalizeUserFromApi]);
+  }, [normalizeUserFromApi]);
 
   const signIn = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string; user?: User }> => {
     try {
@@ -2575,11 +2739,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const normalized = normalizeUserFromApi(data.user);
       const userId = normalized.UserID;
+      const userIsOwner = Boolean(
+        normalized.IsOwner ||
+        (normalized.Email && normalized.Email.toLowerCase().trim() === 'kristylten@gmail.com') ||
+        userId === 'usr_kristy'
+      );
 
       setAuthToken(data.token);
       localStorage.setItem(`${STORAGE_KEY_PREFIX}authToken`, data.token);
       setCurrentUserId(userId);
       localStorage.setItem(`${STORAGE_KEY_PREFIX}current_user_id`, userId);
+
+      if (!userIsOwner) {
+        setAppModeState('production');
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
+      }
 
       setUsers(prev => {
         const exists = prev.some(u => u.UserID === userId);
@@ -2607,11 +2781,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const normalized = normalizeUserFromApi(data.user);
       const userId = normalized.UserID;
+      const userIsOwner = Boolean(
+        normalized.IsOwner ||
+        (normalized.Email && normalized.Email.toLowerCase().trim() === 'kristylten@gmail.com') ||
+        userId === 'usr_kristy'
+      );
 
       setAuthToken(data.token);
       localStorage.setItem(`${STORAGE_KEY_PREFIX}authToken`, data.token);
       setCurrentUserId(userId);
       localStorage.setItem(`${STORAGE_KEY_PREFIX}current_user_id`, userId);
+
+      if (!userIsOwner) {
+        setAppModeState('production');
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
+      }
 
       setUsers(prev => [normalized, ...prev.filter(u => u.UserID !== userId)]);
 
@@ -2663,14 +2847,287 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAuthToken(null);
     setCurrentUserId('');
+    setWaitlistJoined(false);
+    setWaitlistEntry(null);
+    setOwnerLaunchEvents([]);
+    setAppModeState('production');
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
     clearLiveSession();
     localStorage.removeItem(`${STORAGE_KEY_PREFIX}authToken`);
     localStorage.removeItem(`${STORAGE_KEY_PREFIX}current_user_id`);
     // Reset in-memory users state to prevent profile state leakage between accounts
     setUsers(INITIAL_USERS);
-    setCurrentView('home');
+    setCurrentViewState('home');
     showNotification('You have been securely signed out.', 'info');
   }, [authToken, clearLiveSession]);
+
+  // ============================================================================
+  // LAUNCH WAITING LIST & FOUNDER-CONFIRMED LAUNCH EVENTS
+  // (Notice: Zero automated invitations or notifications dispatched yet)
+  // ============================================================================
+
+  const refreshWaitlistStatus = useCallback(async () => {
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+    if (!token || !currentUserId) {
+      setWaitlistJoined(false);
+      setWaitlistEntry(null);
+      return;
+    }
+    try {
+      const res = await fetch('/api/waitlist/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setWaitlistJoined(Boolean(data.joined));
+          setWaitlistEntry(data.entry || null);
+        }
+      }
+    } catch (e) {
+      console.warn('Unable to check waitlist status:', e);
+    }
+  }, [authToken, currentUserId]);
+
+  useEffect(() => {
+    if (isAuthenticated && currentUserId) {
+      refreshWaitlistStatus();
+    } else {
+      setWaitlistJoined(false);
+      setWaitlistEntry(null);
+    }
+  }, [isAuthenticated, currentUserId, refreshWaitlistStatus]);
+
+  const joinWaitlist = useCallback(async (): Promise<{ success: boolean; error?: string; alreadyJoined?: boolean }> => {
+    if (!currentUser || !isAuthenticated) {
+      openAuthModal('signin');
+      return { success: false, error: 'Please sign in to join the Event Waiting List.' };
+    }
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+    if (!token) {
+      openAuthModal('signin');
+      return { success: false, error: 'Please sign in to join the Event Waiting List.' };
+    }
+
+    setWaitlistLoading(true);
+    try {
+      const res = await fetch('/api/waitlist/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errMsg = data.error || 'Could not join the Event Waiting List.';
+        showNotification(errMsg, 'pink');
+        return { success: false, error: errMsg };
+      }
+
+      setWaitlistJoined(true);
+      setWaitlistEntry(data.entry || { userId: currentUser.UserID, joinedAt: Date.now() });
+      showNotification(
+        data.alreadyJoined
+          ? "You're already saved on the Event Waiting List."
+          : "You're on the Event Waiting List! Your interest has been saved.",
+        'success'
+      );
+      return { success: true, alreadyJoined: Boolean(data.alreadyJoined) };
+    } catch (err: any) {
+      const errMsg = err?.message || 'Network error saving waitlist interest.';
+      showNotification(errMsg, 'pink');
+      return { success: false, error: errMsg };
+    } finally {
+      setWaitlistLoading(false);
+    }
+  }, [currentUser, isAuthenticated, authToken, openAuthModal, showNotification]);
+
+  const leaveWaitlist = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    if (!currentUser || !isAuthenticated) {
+      openAuthModal('signin');
+      return { success: false, error: 'Please sign in to update your waiting list status.' };
+    }
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+    if (!token) {
+      openAuthModal('signin');
+      return { success: false, error: 'Authentication required.' };
+    }
+
+    setWaitlistLoading(true);
+    try {
+      const res = await fetch('/api/waitlist/leave', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errMsg = data.error || 'Could not leave the Event Waiting List.';
+        showNotification(errMsg, 'pink');
+        return { success: false, error: errMsg };
+      }
+
+      setWaitlistJoined(false);
+      setWaitlistEntry(null);
+      showNotification('You have left the Event Waiting List.', 'info');
+      return { success: true };
+    } catch (err: any) {
+      const errMsg = err?.message || 'Network error updating waiting list.';
+      showNotification(errMsg, 'pink');
+      return { success: false, error: errMsg };
+    } finally {
+      setWaitlistLoading(false);
+    }
+  }, [currentUser, isAuthenticated, authToken, openAuthModal, showNotification]);
+
+  const refreshLaunchEvents = useCallback(async () => {
+    try {
+      const res = await fetch('/api/launch-events');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.events)) {
+          setConfirmedLaunchEvents(data.events);
+          setEvents(prev => {
+            const nonLaunch = prev.filter(e => !e.EventID.startsWith('evt_launch_') && !e.IsManualLaunch);
+            return [...data.events, ...nonLaunch];
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Unable to load confirmed launch events:', e);
+    }
+
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+    if (isOwner && token) {
+      try {
+        const ownerRes = await fetch('/api/owner/launch-events', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (ownerRes.ok) {
+          const ownerData = await ownerRes.json();
+          if (ownerData.success && Array.isArray(ownerData.events)) {
+            setOwnerLaunchEvents(ownerData.events);
+          }
+        }
+      } catch (e) {
+        console.warn('Unable to load owner launch events:', e);
+      }
+    } else {
+      setOwnerLaunchEvents([]);
+    }
+  }, [isOwner, authToken]);
+
+  useEffect(() => {
+    refreshLaunchEvents();
+  }, [refreshLaunchEvents]);
+
+  const scheduleLaunchEvent = useCallback(async (payload: {
+    EventName: string;
+    DayOfWeek: 'Friday' | 'Saturday' | 'Sunday';
+    EventDate: string;
+    EventStartTime?: string;
+    EventEndTime?: string;
+    TimeZone?: string;
+    MaxParticipants?: number;
+    EventType: EventType;
+    Description?: string;
+    MinAge?: number;
+    MaxAge?: number;
+    LocationName?: string;
+    Confirmed?: boolean;
+  }): Promise<{ success: boolean; event?: SpeedEvent; error?: string }> => {
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+    if (!isOwner || !token) {
+      return { success: false, error: 'Owner authorization required.' };
+    }
+    try {
+      const res = await fetch('/api/owner/launch-events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errMsg = data.error || 'Failed to schedule launch event.';
+        showNotification(errMsg, 'pink');
+        return { success: false, error: errMsg };
+      }
+      await refreshLaunchEvents();
+      showNotification(data.message || 'Launch event saved (no notifications sent).', 'success');
+      return { success: true, event: data.event };
+    } catch (err: any) {
+      const errMsg = err?.message || 'Network error scheduling launch event.';
+      showNotification(errMsg, 'pink');
+      return { success: false, error: errMsg };
+    }
+  }, [isOwner, authToken, refreshLaunchEvents, showNotification]);
+
+  const confirmLaunchEvent = useCallback(async (
+    eventId: string,
+    confirmed: boolean
+  ): Promise<{ success: boolean; event?: SpeedEvent; error?: string }> => {
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+    if (!isOwner || !token) {
+      return { success: false, error: 'Owner authorization required.' };
+    }
+    try {
+      const res = await fetch(`/api/owner/launch-events/${eventId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ Confirmed: confirmed }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errMsg = data.error || 'Failed to update launch event confirmation.';
+        showNotification(errMsg, 'pink');
+        return { success: false, error: errMsg };
+      }
+      await refreshLaunchEvents();
+      showNotification(data.message || 'Launch event status updated (no notifications sent).', 'success');
+      return { success: true, event: data.event };
+    } catch (err: any) {
+      const errMsg = err?.message || 'Network error updating launch event.';
+      showNotification(errMsg, 'pink');
+      return { success: false, error: errMsg };
+    }
+  }, [isOwner, authToken, refreshLaunchEvents, showNotification]);
+
+  const deleteLaunchEvent = useCallback(async (
+    eventId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+    if (!isOwner || !token) {
+      return { success: false, error: 'Owner authorization required.' };
+    }
+    try {
+      const res = await fetch(`/api/owner/launch-events/${eventId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errMsg = data.error || 'Failed to delete launch event.';
+        showNotification(errMsg, 'pink');
+        return { success: false, error: errMsg };
+      }
+      await refreshLaunchEvents();
+      showNotification('Launch event removed.', 'info');
+      return { success: true };
+    } catch (err: any) {
+      const errMsg = err?.message || 'Network error deleting launch event.';
+      showNotification(errMsg, 'pink');
+      return { success: false, error: errMsg };
+    }
+  }, [isOwner, authToken, refreshLaunchEvents, showNotification]);
 
   const syncAuthSession = useCallback(async (user: User): Promise<string | null> => {
     try {
@@ -2793,6 +3250,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveSecondDateSession(null);
       }
 
+      // 8b. Purge waitlist state on account deletion
+      setWaitlistJoined(false);
+      setWaitlistEntry(null);
+
       // 9. In production, remain signed out; in demonstration mode, switch to remaining member
       if (appMode === 'production') {
         setCurrentUserId('');
@@ -2912,6 +3373,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isOwner,
         syncAuthSession,
         deleteAccount,
+        waitlistJoined,
+        waitlistEntry,
+        waitlistLoading,
+        refreshWaitlistStatus,
+        joinWaitlist,
+        leaveWaitlist,
+        confirmedLaunchEvents,
+        ownerLaunchEvents,
+        refreshLaunchEvents,
+        scheduleLaunchEvent,
+        confirmLaunchEvent,
+        deleteLaunchEvent,
       }}
     >
       {children}

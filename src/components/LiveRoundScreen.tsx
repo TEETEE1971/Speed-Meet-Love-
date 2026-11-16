@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp, areUsersCompatible } from '../context/AppContext';
 import { ICEBREAKER_QUESTIONS } from '../data/initialData';
 import { User } from '../types';
 import {
@@ -53,7 +53,6 @@ export const LiveRoundScreen: React.FC = () => {
     skipRound,
     requestReplay,
     setCurrentView,
-    setSubscriptionTier,
     canAccessLiveSpeedDating,
     blockUser,
     setReportModalTarget,
@@ -67,6 +66,7 @@ export const LiveRoundScreen: React.FC = () => {
     appMode,
     repairEventRounds,
     serverTimeOffset,
+    isOwner,
   } = useApp();
 
   if (!currentUser) {
@@ -103,15 +103,18 @@ export const LiveRoundScreen: React.FC = () => {
     ? (isUserA ? currentRound.UserB : currentRound.UserA)
     : (isStaging ? defaultStagingPartnerId : (appMode === 'demonstration' ? 'usr_02' : ''));
 
-  // In production mode: NEVER invent participants!
-  // Partner must be an actual found user who is either an authorized staging partner or registered in the event
+  // In production mode: NEVER invent participants and NEVER pair incompatible partners!
+  // Partner must be an actual found user who is either an authorized staging partner or compatible & registered in the event
   const isFoundUser = partnerId ? users.find(u => u.UserID === partnerId) : undefined;
   const isEligibleRegistered = isStaging
     ? Boolean(isFoundUser && ['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(isFoundUser.UserID))
     : Boolean(isFoundUser && activeEvent.ParticipantsList.includes(isFoundUser.UserID));
+  const isPartnerCompatible = isFoundUser
+    ? isStaging || appMode !== 'production' || areUsersCompatible(currentUser, isFoundUser, activeEvent)
+    : false;
 
   const hasEligiblePartner = appMode === 'production'
-    ? Boolean(isEligibleRegistered && isFoundUser)
+    ? Boolean(isEligibleRegistered && isFoundUser && isPartnerCompatible)
     : true;
 
   const partner: User = (appMode === 'production' && isEligibleRegistered && isFoundUser)
@@ -341,9 +344,9 @@ export const LiveRoundScreen: React.FC = () => {
       .catch(() => {});
   }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID]);
 
-  // In Production Mode, acquire secure LiveKit room token when entering call stage
+  // In Production Mode, acquire secure LiveKit room token when entering call stage with a compatible partner
   const fetchLiveKitRoomToken = useCallback(async () => {
-    if (appMode !== 'production' || stage !== 'call' || !liveKitStatus?.configured) {
+    if (appMode !== 'production' || stage !== 'call' || !liveKitStatus?.configured || !hasEligiblePartner) {
       return;
     }
 
@@ -398,6 +401,7 @@ export const LiveRoundScreen: React.FC = () => {
     appMode,
     stage,
     liveKitStatus?.configured,
+    hasEligiblePartner,
     activeEvent.EventID,
     currentUser.UserID,
     partner.UserID,
@@ -1331,36 +1335,32 @@ export const LiveRoundScreen: React.FC = () => {
   if (!isEligible) {
     return (
       <div className="max-w-xl mx-auto p-8 sm:p-10 rounded-3xl bg-white border border-pink-200 shadow-xl text-center space-y-5 my-8">
-        <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 mx-auto flex items-center justify-center text-amber-600 shadow-sm">
+        <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-300 mx-auto flex items-center justify-center text-[#B45309] shadow-sm">
           <Crown className="w-8 h-8" />
         </div>
 
         <div>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 font-heading">
-            Premium Plus Exclusive
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[#92400E] font-heading">
+            Event Access Notice
           </span>
-          <h2 className="text-2xl font-bold text-slate-900 font-heading mt-1">Weekend Speed Dating Locked</h2>
-          <p className="text-xs sm:text-sm text-slate-600 mt-2">
-            Live online speed dating every Friday, Saturday, and Sunday at 7:00 PM is an exclusive privilege of the <strong>Premium Plus</strong> tier ($14.99/mo).
+          <h2 className="text-2xl font-bold text-[#111827] font-heading mt-1">Event membership coming soon.</h2>
+          <p className="text-xs sm:text-sm text-[#111827] font-medium mt-2">
+            We’re welcoming our first members! Join our free Event Waiting List on Home or Events while new paid event memberships are paused. Existing subscribers keep full access.
           </p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
           <button
             onClick={() => setCurrentView('friday')}
-            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-semibold"
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl btn-pink-gradient text-xs font-bold cursor-pointer"
           >
-            Back to Weekend Events
+            Back to Events &amp; Waiting List
           </button>
           <button
-            onClick={() => {
-              setSubscriptionTier('Premium Plus');
-              showNotification('Upgraded to Premium Plus ($14.99/mo)! Entering speed dating...', 'pink');
-            }}
-            className="w-full sm:w-auto px-6 py-2.5 rounded-xl btn-pink-gradient font-bold text-xs flex items-center justify-center gap-1.5"
+            onClick={() => setCurrentView('pricing')}
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 text-[#111827] hover:bg-slate-200 text-xs font-bold cursor-pointer"
           >
-            <Crown className="w-3.5 h-3.5 fill-white" />
-            Upgrade to Premium Plus ($14.99/mo)
+            View Membership Plans
           </button>
         </div>
       </div>
@@ -1370,71 +1370,92 @@ export const LiveRoundScreen: React.FC = () => {
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
       {/* Top Banner Notice */}
-      <div className={`px-4 py-2.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
-        appMode === 'demonstration'
-          ? 'bg-purple-50/80 border-purple-200 text-purple-900'
-          : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
-      }`}>
-        <div className="flex items-center gap-2">
-          <ShieldCheck className={`w-4 h-4 shrink-0 ${appMode === 'demonstration' ? 'text-purple-600' : 'text-emerald-600'}`} />
-          <span>
-            {appMode === 'demonstration' ? (
-              <>
-                <strong>Simulated Demonstration Sandbox:</strong> Real video signaling is in simulation mode. 5-min rounds, private secret ballots, 2-min breaks, and consent-based Next Date operate in real time with simulated partner audio.
-              </>
-            ) : (
-              <>
-                <strong>Live Production Speed Dating:</strong> Real consenting members connected via LiveKit WebRTC SFU. End-to-end encrypted video, 5-min speed date rounds, and mutual consent Next Date matching.
-              </>
-            )}
-          </span>
+      {isOwner ? (
+        <div className={`px-4 py-2.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
+          appMode === 'demonstration'
+            ? 'bg-purple-50/80 border-purple-200 text-purple-900'
+            : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+        }`}>
+          <div className="flex items-center gap-2 font-medium">
+            <ShieldCheck className={`w-4 h-4 shrink-0 ${appMode === 'demonstration' ? 'text-purple-800' : 'text-[#047857]'}`} />
+            <span className="text-[#111827]">
+              {appMode === 'demonstration' ? (
+                <>
+                  <strong>Simulated Demonstration Sandbox:</strong> Real video signaling is in simulation mode. 5-min rounds, private secret ballots, 2-min breaks, and consent-based Next Date operate in real time with simulated partner audio.
+                </>
+              ) : (
+                <>
+                  <strong>Live Production Speed Dating:</strong> Real consenting members connected via LiveKit WebRTC SFU. End-to-end encrypted video, 5-min speed date rounds, and mutual consent Next Date matching.
+                </>
+              )}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowSessionInfoModal(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#065F46] border border-emerald-300 font-bold transition-colors cursor-pointer text-[11px]"
+              title="View persistent session state and backend services checklist"
+            >
+              <span className="w-2 h-2 rounded-full bg-[#047857] animate-pulse" />
+              <span>Persistent Session Active</span>
+            </button>
+            <span className="font-bold text-[#111827] bg-white px-2.5 py-1 rounded-xl border border-pink-300 text-[11px]">
+              {activeEvent.DayOfWeek} at {activeEvent.TimeZone}
+            </span>
+            <button
+              onClick={() => setShowLeaveModal(true)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white hover:bg-rose-50 text-[#BE123C] border border-rose-300 font-bold transition-colors cursor-pointer text-[11px]"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Leave Event</span>
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <button
-            onClick={() => setShowSessionInfoModal(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold transition-colors cursor-pointer text-[11px]"
-            title="View persistent session state and backend services checklist"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Persistent Session Active</span>
-          </button>
-          <span className="font-semibold text-slate-600 bg-white px-2.5 py-1 rounded-xl border border-pink-200 text-[11px]">
-            {activeEvent.DayOfWeek} at {activeEvent.TimeZone}
-          </span>
-          <button
-            onClick={() => setShowLeaveModal(true)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-bold transition-colors cursor-pointer text-[11px]"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Leave Event</span>
-          </button>
+      ) : (
+        <div className="px-4 py-2.5 rounded-2xl border border-pink-200 bg-white flex flex-wrap items-center justify-between gap-2 text-xs shadow-2xs">
+          <div className="flex items-center gap-2 font-bold text-[#111827]">
+            <ShieldCheck className="w-4 h-4 shrink-0 text-[#BE185D]" />
+            <span>{activeEvent.EventName}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <span className="font-bold text-[#111827] bg-pink-50 px-2.5 py-1 rounded-xl border border-pink-300 text-[11px]">
+              {activeEvent.DayOfWeek} at {activeEvent.TimeZone}
+            </span>
+            <button
+              onClick={() => setShowLeaveModal(true)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white hover:bg-rose-50 text-[#BE123C] border border-rose-300 font-bold transition-colors cursor-pointer text-[11px]"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Leave Event</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* STAGE 1: ACTIVE 5-MINUTE VIDEO ROUND */}
       {stage === 'call' && (
         <div className="space-y-4">
           {/* Status Header */}
-          <div className="p-4 rounded-3xl bg-white border border-pink-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="p-4 rounded-3xl bg-white border border-pink-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowLeaveModal(true)}
-                className="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
+                className="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] flex items-center justify-center transition-colors"
                 title="Leave event"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-pink-50 text-[#FF2E93] border border-pink-100 font-heading">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-pink-50 text-[#BE185D] border border-pink-300 font-heading">
                     Round {activeRoundIndex + 1} of {targetTotalRounds}
                   </span>
-                  <span className="text-xs text-slate-400">·</span>
-                  <span className="text-xs font-semibold text-slate-600">
+                  <span className="text-xs text-[#111827] font-bold">·</span>
+                  <span className="text-xs font-semibold text-[#111827]">
                     5-Minute One-on-One Speed Date
                   </span>
                 </div>
-                <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 font-heading mt-0.5">
+                <h1 className="text-xl sm:text-2xl font-bold text-[#111827] font-heading mt-0.5">
                   Dating with {partner?.FirstName || 'Your Speed Dating Match'}
                 </h1>
               </div>
@@ -1444,24 +1465,24 @@ export const LiveRoundScreen: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               {isTimerSyncing && !serverRoundRef.current ? (
                 <div
-                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl border font-mono font-bold text-xs sm:text-sm bg-pink-50 border-pink-200 text-[#FF2E93] shadow-2xs"
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl border font-mono font-bold text-xs sm:text-sm bg-pink-50 border-pink-300 text-[#BE185D] shadow-2xs"
                   title="Synchronizing authoritative round timer with server..."
                 >
-                  <span className="w-3.5 h-3.5 border-2 border-[#FF2E93] border-t-transparent rounded-full animate-spin" />
-                  <span className="tracking-tight font-sans font-semibold">Reconnecting…</span>
+                  <span className="w-3.5 h-3.5 border-2 border-[#BE185D] border-t-transparent rounded-full animate-spin" />
+                  <span className="tracking-tight font-sans font-bold">Reconnecting…</span>
                 </div>
               ) : (
                 <div
                   className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl border font-mono font-black text-base sm:text-lg transition-colors shadow-2xs ${
                     timeLeft < 60
-                      ? 'bg-rose-50 border-rose-300 text-rose-600 animate-pulse'
-                      : 'bg-pink-50 border-pink-200 text-[#FF2E93]'
+                      ? 'bg-rose-50 border-rose-400 text-[#BE123C] animate-pulse'
+                      : 'bg-pink-50 border-pink-300 text-[#BE185D]'
                   }`}
                   title="Shared server-authoritative 5-minute round timer"
                 >
-                  <Clock className="w-4 h-4 text-[#FF2E93]" />
+                  <Clock className="w-4 h-4 text-[#BE185D]" />
                   <span className="tracking-tight">{formatMinutes(timeLeft)}</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Server Synced Timer" />
+                  <span className="w-2 h-2 rounded-full bg-[#047857] animate-pulse" title="Server Synced Timer" />
                 </div>
               )}
 
@@ -1469,7 +1490,7 @@ export const LiveRoundScreen: React.FC = () => {
               <button
                 onClick={sendHeartReaction}
                 disabled={isSendingHeart || !hasEligiblePartner}
-                className="px-3 sm:px-4 py-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-pink-500/25 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                className="px-3 sm:px-4 py-2 rounded-2xl bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-pink-500/25 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                 title="Send a real-time heart reaction to express interest non-verbally"
               >
                 <Heart className="w-4 h-4 fill-white" />
@@ -1481,12 +1502,12 @@ export const LiveRoundScreen: React.FC = () => {
                 type="button"
                 onClick={handleEndRoundAndVote}
                 disabled={isEndingRound}
-                className="px-3.5 sm:px-4 py-2 min-h-[42px] rounded-2xl bg-white hover:bg-pink-50 active:bg-pink-100 border-2 border-pink-300 text-xs font-black text-[#FF2E93] transition-all shadow-sm hover:shadow active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+                className="px-3.5 sm:px-4 py-2 min-h-[42px] rounded-2xl bg-white hover:bg-pink-50 active:bg-pink-100 border-2 border-pink-400 text-xs font-bold text-[#BE185D] transition-all shadow-sm hover:shadow active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
                 title="Immediately end your video session and cast your confidential vote"
               >
                 {isEndingRound ? (
                   <>
-                    <span className="w-3.5 h-3.5 border-2 border-[#FF2E93] border-t-transparent rounded-full animate-spin" />
+                    <span className="w-3.5 h-3.5 border-2 border-[#BE185D] border-t-transparent rounded-full animate-spin" />
                     <span>Ending...</span>
                   </>
                 ) : (
@@ -1499,21 +1520,21 @@ export const LiveRoundScreen: React.FC = () => {
             </div>
           </div>
 
-          {/* Main Area: Show Waiting Card if in production with no eligible partner, otherwise show video stage */}
+          {/* Main Area: NEVER send someone into a video date without a compatible partner */}
           {!hasEligiblePartner && appMode === 'production' ? (
-            <div className="p-8 sm:p-10 rounded-3xl bg-white border border-amber-200 shadow-xl text-center space-y-5 my-4">
-              <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 mx-auto flex items-center justify-center text-amber-600 shadow-sm">
+            <div className="p-8 sm:p-10 rounded-3xl bg-white border border-amber-300 shadow-xl text-center space-y-5 my-4">
+              <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-300 mx-auto flex items-center justify-center text-[#B45309] shadow-sm">
                 <UserCheck className="w-8 h-8" />
               </div>
               <div className="space-y-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 font-heading">
-                  Round {activeRoundIndex + 1} of {targetTotalRounds} · Live Speed Dating
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#92400E] font-heading">
+                  Round {activeRoundIndex + 1} of {targetTotalRounds} · Partner Compatibility Check
                 </span>
-                <h2 className="text-2xl font-bold text-slate-900 font-heading">
-                  Awaiting Eligible Partner
+                <h2 className="text-2xl font-bold text-[#111827] font-heading">
+                  Waiting for a compatible participant
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
-                  No eligible registered participant is currently available for Round {activeRoundIndex + 1}. Speed Meet Love only connects real consenting participants and never invents fake profiles in production.
+                <p className="text-xs sm:text-sm text-[#111827] font-medium max-w-md mx-auto">
+                  Video dates only start once you are matched with a compatible participant. You can wait in the queue or leave anytime.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -1526,14 +1547,15 @@ export const LiveRoundScreen: React.FC = () => {
                   className="w-full sm:w-auto px-6 py-2.5 rounded-xl btn-pink-gradient font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                 >
                   <Radio className="w-4 h-4" />
-                  <span>Enter Waiting Room Queue</span>
+                  <span>Enter Waiting Room</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCurrentView('friday')}
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
+                  onClick={() => leaveEvent(activeEvent.EventID)}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-[#BE123C] border border-rose-300 font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  Return to Weekend Events
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Leave</span>
                 </button>
               </div>
             </div>
@@ -1794,21 +1816,21 @@ export const LiveRoundScreen: React.FC = () => {
               )}
 
               {/* In-Call Chemistry Spark / Icebreaker prompt */}
-              <div className="p-4 rounded-3xl bg-white border border-pink-100 shadow-xs flex items-center justify-between gap-4">
+              <div className="p-4 rounded-3xl bg-white border border-pink-200 shadow-xs flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-pink-50 border border-pink-200 flex items-center justify-center text-[#FF2E93] shrink-0">
+                  <div className="w-10 h-10 rounded-2xl bg-pink-50 border border-pink-300 flex items-center justify-center text-[#BE185D] shrink-0">
                     <Sparkles className="w-5 h-5" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 font-heading">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#111827] font-heading">
                         Conversation Spark #{icebreakerIdx + 1}
                       </span>
-                      <span className="text-[10px] font-bold text-[#FF2E93] bg-pink-50 px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] font-bold text-[#BE185D] bg-pink-50 border border-pink-200 px-2 py-0.5 rounded-full">
                         {currentIcebreaker.category}
                       </span>
                     </div>
-                    <p className="text-xs sm:text-sm font-semibold text-slate-800 mt-0.5">
+                    <p className="text-xs sm:text-sm font-semibold text-[#111827] mt-0.5">
                       “{currentIcebreaker.question}”
                     </p>
                   </div>
@@ -1816,7 +1838,7 @@ export const LiveRoundScreen: React.FC = () => {
 
                 <button
                   onClick={() => setIcebreakerIdx(prev => prev + 1)}
-                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 shrink-0 transition-colors"
+                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-[#111827] shrink-0 transition-colors"
                 >
                   Next Question
                 </button>
@@ -1826,23 +1848,23 @@ export const LiveRoundScreen: React.FC = () => {
             {/* Right 4 Cols: Partner Profile & Private Notes */}
             <div className="lg:col-span-4 space-y-4">
               {/* Partner Quick Bio */}
-              <div className="p-5 rounded-3xl bg-white border border-pink-100 shadow-xs space-y-4">
+              <div className="p-5 rounded-3xl bg-white border border-pink-200 shadow-xs space-y-4">
                 <div className="flex items-center gap-3">
                   <Avatar user={partner} size="md" showBadge />
                   <div>
-                    <h3 className="font-extrabold text-slate-900 font-heading text-base">
+                    <h3 className="font-bold text-[#111827] font-heading text-base">
                       {partner.FirstName} {partner.LastName}
                     </h3>
-                    <p className="text-xs text-slate-500">{partner.Occupation} · {partner.Age}</p>
+                    <p className="text-xs text-[#111827] font-medium">{partner.Occupation} · {partner.Age}</p>
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-600 bg-pink-50/50 p-3 rounded-2xl border border-pink-100 leading-relaxed">
+                <div className="text-xs text-[#111827] font-medium bg-pink-50/50 p-3 rounded-2xl border border-pink-200 leading-relaxed">
                   {partner?.Bio}
                 </div>
 
                 <div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 font-heading">
+                  <div className="text-[10px] font-bold text-[#111827] uppercase tracking-wider mb-1.5 font-heading">
                     Shared Interests
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -1853,8 +1875,8 @@ export const LiveRoundScreen: React.FC = () => {
                           key={interest}
                           className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium ${
                             isShared
-                              ? 'bg-pink-100 text-[#FF2E93] font-bold border border-pink-200'
-                              : 'bg-slate-100 text-slate-600'
+                              ? 'bg-pink-100 text-[#9D174D] font-bold border border-pink-300'
+                              : 'bg-slate-100 text-[#111827] border border-slate-200'
                           }`}
                         >
                           {interest} {isShared && '✨'}
@@ -1865,28 +1887,28 @@ export const LiveRoundScreen: React.FC = () => {
                 </div>
 
                 {partner?.IcebreakerAnswer && (
-                  <div className="pt-2 border-t border-slate-100 text-xs">
-                    <span className="font-bold text-slate-700">Fun Fact: </span>
-                    <span className="text-slate-600">{partner.IcebreakerAnswer}</span>
+                  <div className="pt-2 border-t border-slate-200 text-xs text-[#111827] font-medium">
+                    <span className="font-bold text-[#111827]">Fun Fact: </span>
+                    <span>{partner.IcebreakerAnswer}</span>
                   </div>
                 )}
               </div>
 
               {/* Private In-Round Notes */}
-              <div className="p-5 rounded-3xl bg-white border border-pink-100 shadow-xs space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+              <div className="p-5 rounded-3xl bg-white border border-pink-200 shadow-xs space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-[#111827]">
                   <span className="flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-[#FF2E93]" />
+                    <FileText className="w-3.5 h-3.5 text-[#BE185D]" />
                     Private Notes (Confidential)
                   </span>
-                  <span className="text-[10px] text-slate-400">Only you see this</span>
+                  <span className="text-[10px] text-[#111827] font-medium">Only you see this</span>
                 </div>
                 <textarea
                   rows={3}
                   value={privateNotes}
                   onChange={e => handleNotesChange(e.target.value)}
                   placeholder="Notes on energy, shared hobbies, humor, vibe..."
-                  className="w-full p-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF2E93] focus:ring-1 focus:ring-[#FF2E93]"
+                  className="w-full p-3 rounded-2xl bg-white border border-slate-300 text-xs text-[#111827] font-medium placeholder-slate-500 focus:outline-none focus:border-[#BE185D] focus:ring-1 focus:ring-[#BE185D]"
                 />
               </div>
 
@@ -1896,7 +1918,7 @@ export const LiveRoundScreen: React.FC = () => {
                   type="button"
                   onClick={handleEndRoundAndVote}
                   disabled={isEndingRound}
-                  className="text-[#FF2E93] hover:text-rose-700 flex items-center gap-1 font-bold cursor-pointer"
+                  className="text-[#BE185D] hover:text-[#9D174D] flex items-center gap-1 font-bold cursor-pointer"
                 >
                   <FastForward className="w-3.5 h-3.5 fill-current" />
                   <span>{isEndingRound ? 'Ending...' : 'End Round & Vote'}</span>
@@ -1905,14 +1927,14 @@ export const LiveRoundScreen: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleSkipRound}
-                    className="text-slate-500 hover:text-slate-800 flex items-center gap-1 font-semibold cursor-pointer"
+                    className="text-[#111827] hover:text-[#BE185D] flex items-center gap-1 font-bold cursor-pointer"
                   >
                     <span>Skip to Break</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setReportModalTarget(partner)}
-                    className="text-rose-500 hover:text-rose-700 flex items-center gap-1 font-semibold cursor-pointer"
+                    className="text-[#BE123C] hover:text-[#9F1239] flex items-center gap-1 font-bold cursor-pointer"
                   >
                     <ShieldAlert className="w-3.5 h-3.5" />
                     <span>Report</span>
@@ -1932,32 +1954,32 @@ export const LiveRoundScreen: React.FC = () => {
             
             {/* Header & Break Timer */}
             <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pink-50 border border-pink-200 text-xs font-bold text-[#FF2E93] uppercase tracking-wider font-heading">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pink-50 border border-pink-300 text-xs font-bold text-[#BE185D] uppercase tracking-wider font-heading">
                 <Coffee className="w-3.5 h-3.5" />
                 <span>Round {activeRoundIndex + 1} Concluded · 2-Minute Break</span>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-heading">
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#111827] font-heading">
                 How did you feel about {partner?.FirstName || 'this dater'}?
               </h2>
-              <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
+              <p className="text-xs sm:text-sm text-[#111827] font-medium max-w-md mx-auto">
                 Cast your confidential vote below. Neither dater will know the other’s choice unless it’s a mutual like!
               </p>
             </div>
 
             {/* Break Countdown Bar */}
-            <div className="p-4 rounded-2xl bg-pink-50/60 border border-pink-100 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2.5 text-xs font-bold text-slate-700 text-left">
-                <Clock className="w-4 h-4 text-[#FF2E93] shrink-0" />
+            <div className="p-4 rounded-2xl bg-pink-50/70 border border-pink-200 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5 text-xs font-bold text-[#111827] text-left">
+                <Clock className="w-4 h-4 text-[#BE185D] shrink-0" />
                 <div>
                   {breakTimeLeft > 0 ? (
-                    <div>Break Timer: <span className="font-mono text-[#FF2E93] text-sm">{formatMinutes(breakTimeLeft)}</span> remaining</div>
+                    <div>Break Timer: <span className="font-mono text-[#BE185D] text-sm">{formatMinutes(breakTimeLeft)}</span> remaining</div>
                   ) : (
-                    <div className="text-[#FF2E93] font-black flex items-center gap-1">
+                    <div className="text-[#BE185D] font-bold flex items-center gap-1">
                       <span>Break Concluded</span>
                       {voteSaved ? <span>· Automatically advancing to next date...</span> : <span>· Cast your confidential vote above to advance</span>}
                     </div>
                   )}
-                  <div className="text-[10px] text-slate-500 font-normal">
+                  <div className="text-[10px] text-[#111827] font-medium">
                     {breakTimeLeft > 0
                       ? 'Grab water, take a breath, or write notes. You will automatically advance when the break ends.'
                       : voteSaved
@@ -1969,7 +1991,7 @@ export const LiveRoundScreen: React.FC = () => {
 
               <button
                 onClick={() => setBreakPaused(prev => !prev)}
-                className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-1"
+                className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 text-[11px] font-bold text-[#111827] hover:bg-slate-50 flex items-center gap-1"
               >
                 {breakPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
                 <span>{breakPaused ? 'Resume' : 'Pause'}</span>
@@ -1981,30 +2003,30 @@ export const LiveRoundScreen: React.FC = () => {
               <div className="flex items-center justify-center gap-4 py-2">
                 <Avatar user={partner} size="lg" showBadge />
                 <div className="text-left">
-                  <div className="font-extrabold text-slate-900 text-lg font-heading">
+                  <div className="font-bold text-[#111827] text-lg font-heading">
                     {partner.FirstName} {partner.LastName}, {partner.Age}
                   </div>
-                  <div className="text-xs text-slate-500">{partner.Occupation} · {partner.Location}</div>
+                  <div className="text-xs text-[#111827] font-medium">{partner.Occupation} · {partner.Location}</div>
                 </div>
               </div>
             ) : (
-              <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-800 text-xs text-center space-y-1 my-2">
+              <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-300 text-[#78350F] text-xs text-center space-y-1 my-2">
                 <div className="font-bold">No Partner Paired for Round {activeRoundIndex + 1}</div>
-                <div className="text-[11px] text-amber-700">No confidential ballot required. You will automatically advance to the Waiting Room when the timer ends, or advance now.</div>
+                <div className="text-[11px] text-[#92400E] font-medium">No confidential ballot required. You will automatically advance to the Waiting Room when the timer ends, or advance now.</div>
               </div>
             )}
 
             {/* Error notifications with immediate retry options */}
             {endRoundError && (
-              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center justify-between gap-3 text-left">
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-[#78350F] font-medium text-xs flex items-center justify-between gap-3 text-left">
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <AlertCircle className="w-4 h-4 text-[#B45309] shrink-0" />
                   <span>{endRoundError}</span>
                 </div>
                 <button
                   type="button"
                   onClick={handleEndRoundAndVote}
-                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold rounded-xl text-[11px] shrink-0 cursor-pointer shadow-xs"
+                  className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 active:bg-amber-900 text-white font-bold rounded-xl text-[11px] shrink-0 cursor-pointer shadow-xs"
                 >
                   Retry Sync
                 </button>
@@ -2012,15 +2034,15 @@ export const LiveRoundScreen: React.FC = () => {
             )}
 
             {voteError && (
-              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between gap-3 text-left">
+              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-[#9F1239] font-medium text-xs flex items-center justify-between gap-3 text-left">
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <AlertCircle className="w-4 h-4 text-[#BE123C] shrink-0" />
                   <span>{voteError}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => voteSaved ? handleNextDateClick() : selectedDecision && handleDecision(selectedDecision)}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold rounded-xl text-[11px] shrink-0 cursor-pointer shadow-xs"
+                  className="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 active:bg-rose-900 text-white font-bold rounded-xl text-[11px] shrink-0 cursor-pointer shadow-xs"
                 >
                   {voteSaved ? 'Retry Next Date' : 'Retry Vote'}
                 </button>
@@ -2029,7 +2051,7 @@ export const LiveRoundScreen: React.FC = () => {
 
             {/* The Private Like or Pass Ballot */}
             <div className="space-y-3">
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider font-heading">
+              <div className="text-xs font-bold text-[#111827] uppercase tracking-wider font-heading">
                 Confidential Secret Ballot
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -2037,10 +2059,10 @@ export const LiveRoundScreen: React.FC = () => {
                   type="button"
                   disabled={isSubmittingVote || !hasEligiblePartner}
                   onClick={() => handleDecision('pass')}
-                  className={`py-4 px-6 min-h-[52px] rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                  className={`py-4 px-6 min-h-[52px] rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                     selectedDecision === 'pass'
-                      ? 'bg-slate-800 text-white shadow-md ring-4 ring-slate-400 scale-[1.02]'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 active:scale-98'
+                      ? 'bg-slate-900 text-white shadow-md ring-4 ring-slate-400 scale-[1.02]'
+                      : 'bg-slate-100 text-[#111827] hover:bg-slate-200 border border-slate-300 active:scale-98'
                   }`}
                 >
                   <X className="w-5 h-5 stroke-[2.5]" />
@@ -2051,10 +2073,10 @@ export const LiveRoundScreen: React.FC = () => {
                   type="button"
                   disabled={isSubmittingVote || !hasEligiblePartner}
                   onClick={() => handleDecision('like')}
-                  className={`py-4 px-6 min-h-[52px] rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                  className={`py-4 px-6 min-h-[52px] rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                     selectedDecision === 'like'
                       ? 'btn-pink-gradient text-white shadow-lg shadow-pink-500/30 ring-4 ring-pink-300 scale-[1.02]'
-                      : 'bg-pink-50 hover:bg-pink-100 text-[#FF2E93] border-2 border-pink-300 active:scale-98'
+                      : 'bg-pink-50 hover:bg-pink-100 text-[#BE185D] border-2 border-pink-400 active:scale-98'
                   }`}
                 >
                   <Heart className="w-5 h-5 fill-current" />
@@ -2063,8 +2085,8 @@ export const LiveRoundScreen: React.FC = () => {
               </div>
 
               {voteSaved && (
-                <div className="text-xs text-emerald-700 font-bold flex items-center justify-center gap-1.5 pt-1.5 bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200">
-                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div className="text-xs text-[#065F46] font-bold flex items-center justify-center gap-1.5 pt-1.5 bg-emerald-50 p-2.5 rounded-xl border border-emerald-300">
+                  <CheckCircle className="w-4 h-4 text-[#047857] shrink-0" />
                   <span>Your confidential choice is securely recorded. Neither dater sees this unless it's a mutual match!</span>
                 </div>
               )}
@@ -2072,7 +2094,7 @@ export const LiveRoundScreen: React.FC = () => {
 
             {/* Notes edit */}
             <div className="text-left space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">
+              <label className="text-xs font-bold text-[#111827]">
                 Update Private Notes
               </label>
               <textarea
@@ -2080,7 +2102,7 @@ export const LiveRoundScreen: React.FC = () => {
                 value={privateNotes}
                 onChange={e => handleNotesChange(e.target.value)}
                 placeholder="What did you connect on? Add private memory triggers..."
-                className="w-full p-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF2E93] focus:ring-1 focus:ring-[#FF2E93]"
+                className="w-full p-3 rounded-2xl bg-white border border-slate-300 text-xs text-[#111827] font-medium placeholder-slate-500 focus:outline-none focus:border-[#BE185D] focus:ring-1 focus:ring-[#BE185D]"
               />
             </div>
 
@@ -2092,7 +2114,7 @@ export const LiveRoundScreen: React.FC = () => {
                 disabled={Boolean(hasEligiblePartner && !voteSaved) || isSubmittingVote || isAdvancing}
                 className={`w-full py-4 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                   hasEligiblePartner && !selectedDecision
-                    ? 'bg-pink-100 text-[#FF2E93] border border-pink-300 hover:bg-pink-200 shadow-sm'
+                    ? 'bg-pink-100 text-[#9D174D] border border-pink-300 hover:bg-pink-200 shadow-sm'
                     : 'btn-pink-gradient text-white shadow-lg shadow-pink-500/20 hover:scale-[1.01] active:scale-98'
                 }`}
               >
@@ -2109,7 +2131,7 @@ export const LiveRoundScreen: React.FC = () => {
                 </span>
                 <ChevronRight className="w-5 h-5" />
               </button>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-[#111827] font-medium">
                 {!hasEligiblePartner
                   ? 'No ballot required for this slot. You will automatically advance when the break ends, or tap above to advance now.'
                   : !voteSaved
@@ -2139,42 +2161,52 @@ export const LiveRoundScreen: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <span className="text-[11px] font-bold uppercase tracking-widest text-[#FF2E93] font-heading">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-[#BE185D] font-heading">
                 Speed Meet Love Waiting Room
               </span>
-              <h2 className="text-2xl font-extrabold text-slate-900 font-heading">
-                {foundPartnerName ? `Found Your Next Date!` : `Matching with Your Next Date...`}
+              <h2 className="text-2xl font-bold text-[#111827] font-heading">
+                {foundPartnerName ? `Found Your Next Date!` : `Waiting for a compatible participant`}
               </h2>
-              <p className="text-xs sm:text-sm text-slate-600 max-w-sm mx-auto">
+              <p className="text-xs sm:text-sm text-[#111827] font-medium max-w-sm mx-auto">
                 {foundPartnerName
                   ? `Paired with ${foundPartnerName}. Initializing 5-minute video round...`
-                  : `Waiting for the next eligible participant to complete their break and enter the waiting room.`}
+                  : `You’ll enter a live video date only once a compatible participant joins and is ready.`}
               </p>
             </div>
 
             {/* Countdown Badge if match found */}
             {waitingCountdown !== null && (
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-bold flex items-center justify-center gap-2 animate-bounce">
-                <CheckCircle className="w-5 h-5 text-emerald-600" />
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-[#065F46] text-sm font-bold flex items-center justify-center gap-2 animate-bounce">
+                <CheckCircle className="w-5 h-5 text-[#047857]" />
                 <span>Starting video round in {waitingCountdown} seconds...</span>
               </div>
             )}
 
             {/* Waiting room controls */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4 border-t border-slate-100">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4 border-t border-slate-200">
               <button
+                type="button"
                 onClick={() => {
                   setStage('break');
                   saveLiveSession({ stage: 'break', breakStartedAt: Date.now() });
                 }}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Coffee className="w-3.5 h-3.5" />
                 <span>Pause & Take More Break</span>
               </button>
 
-              {/* DEMO SHORTCUT: Isolated strictly to demonstration mode, NO double increment */}
-              {appMode === 'demonstration' && (
+              <button
+                type="button"
+                onClick={() => leaveEvent(activeEvent.EventID)}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-[#BE123C] border border-rose-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Leave</span>
+              </button>
+
+              {/* DEMO SHORTCUT: Isolated strictly to owner demonstration mode, NO double increment */}
+              {isOwner && appMode === 'demonstration' && (
                 <button
                   onClick={() => {
                     // Connect to the already queued activeRoundIndex (NO double increment!)
@@ -2234,15 +2266,15 @@ export const LiveRoundScreen: React.FC = () => {
                       setCurrentView('results');
                     }
                   }}
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-[#FF2E93] border border-pink-200 text-xs font-bold transition-colors cursor-pointer"
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-[#BE185D] border border-pink-300 text-xs font-bold transition-colors cursor-pointer"
                 >
                   Connect Now (Demo)
                 </button>
               )}
             </div>
 
-            <p className="text-[11px] text-slate-400">
-              You maintain full control. If a partner is excused or unavailable, our system smoothly pairs you with another attendee without penalty.
+            <p className="text-[11px] text-[#111827] font-medium">
+              You maintain full control and can leave anytime. Video dates never launch unless a compatible partner is paired.
             </p>
           </div>
         </div>
@@ -2251,16 +2283,16 @@ export const LiveRoundScreen: React.FC = () => {
       {/* CONFIRMATION MODAL: LEAVE EVENT */}
       {showLeaveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-3xl bg-white border border-pink-100 shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
+          <div className="w-full max-w-md rounded-3xl bg-white border border-pink-200 shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-300 text-[#BE123C] flex items-center justify-center mx-auto">
               <LogOut className="w-6 h-6" />
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-extrabold text-slate-900 font-heading">
+              <h3 className="text-xl font-bold text-[#111827] font-heading">
                 Leave Speed Dating Session?
               </h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
+              <p className="text-xs text-[#111827] font-medium leading-relaxed">
                 You can gracefully leave at any time. All private votes you’ve cast for completed rounds will remain safely saved, and any mutual matches will still unlock in your Matches tab!
               </p>
             </div>
@@ -2268,13 +2300,13 @@ export const LiveRoundScreen: React.FC = () => {
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button
                 onClick={() => setShowLeaveModal(false)}
-                className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+                className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold text-xs transition-colors"
               >
                 Stay in Event
               </button>
               <button
                 onClick={handleConfirmLeaveEvent}
-                className="py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors shadow-sm"
+                className="py-2.5 px-4 rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs transition-colors shadow-sm"
               >
                 Leave Gracefully
               </button>
@@ -2286,34 +2318,34 @@ export const LiveRoundScreen: React.FC = () => {
       {/* ARCHITECTURE & SERVICE BOUNDARY MODAL */}
       {showSessionInfoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-lg rounded-3xl bg-white border border-pink-100 shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150 text-left">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="w-full max-w-lg rounded-3xl bg-white border border-pink-200 shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150 text-left">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-300 flex items-center justify-center text-[#047857]">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-slate-900 font-heading">
+                  <h3 className="text-base font-bold text-[#111827] font-heading">
                     Session Persistence & Architecture
                   </h3>
-                  <span className="text-[11px] text-emerald-700 font-medium">Demonstration Mode + Production Checklist</span>
+                  <span className="text-[11px] text-[#065F46] font-bold">Demonstration Mode + Production Checklist</span>
                 </div>
               </div>
               <button
                 onClick={() => setShowSessionInfoModal(false)}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+                className="text-[#111827] hover:text-[#BE185D] font-bold p-1 rounded-lg"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-3.5 text-xs text-slate-600 max-h-[60vh] overflow-y-auto pr-1">
-              <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1.5">
-                <div className="font-bold text-emerald-900 flex items-center gap-1.5">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+            <div className="space-y-3.5 text-xs text-[#111827] font-medium max-h-[60vh] overflow-y-auto pr-1">
+              <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-300 space-y-1.5">
+                <div className="font-bold text-[#064E3B] flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4 text-[#047857]" />
                   Currently Implemented & Active
                 </div>
-                <ul className="list-disc list-inside space-y-1 text-emerald-800 text-[11px]">
+                <ul className="list-disc list-inside space-y-1 text-[#064E3B] font-medium text-[11px]">
                   <li><strong>Real Elapsed Wall-Clock Timers:</strong> Timers calculate true elapsed time via epoch timestamps (`roundStartedAt`), eliminating timer drift when mobile phones sleep or tabs are backgrounded.</li>
                   <li><strong>Automatic Screen Restoration:</strong> Leaving the tab or refreshing immediately restores your exact stage (active call, 2-minute break, or waiting room) rather than dumping you into the lobby.</li>
                   <li><strong>Private Ballot & Notes Persistence:</strong> Your private votes and notes are safely committed to memory, localStorage, and the Express `/api/session/:userId` store.</li>
@@ -2322,12 +2354,12 @@ export const LiveRoundScreen: React.FC = () => {
                 </ul>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-1.5">
-                <div className="font-bold text-amber-900 flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
+              <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-300 space-y-1.5">
+                <div className="font-bold text-[#78350F] flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-[#B45309]" />
                   Demonstration Boundaries (Production Integration Steps)
                 </div>
-                <ul className="list-disc list-inside space-y-1 text-amber-800 text-[11px]">
+                <ul className="list-disc list-inside space-y-1 text-[#78350F] font-medium text-[11px]">
                   <li><strong>Live Video WebRTC Infrastructure:</strong> Currently using local camera mirroring and simulated remote video streams. Production requires integrating a WebRTC Selective Forwarding Unit (SFU) service (such as LiveKit, Daily.co, Twilio Video, or Agora RTC) for peer streaming, STUN/TURN relays, and noise suppression.</li>
                   <li><strong>Production WebSocket Mesh:</strong> Real-time cross-client event synchronization currently runs via the demo server. Production deployment requires Socket.io, Ably, or Pusher clustering across load-balanced instances.</li>
                   <li><strong>Payment &amp; Memberships:</strong> Subscriptions ($9.99/month Premium, $14.99/month Premium Plus) integrate with Stripe web checkout and Customer Billing Portal, with sandbox testing fallback when server Stripe keys are not active.</li>

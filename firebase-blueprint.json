@@ -20,7 +20,9 @@
         "profilePhoto": { "type": "string", "description": "Profile photo URL" },
         "subscriptionTier": { "type": "string", "enum": ["Free", "Premium", "Premium Plus"], "description": "Subscription tier" },
         "subscriptionStatus": { "type": "string", "enum": ["none", "active", "trialing", "past_due", "canceled", "incomplete", "unpaid"], "description": "Stripe subscription status" },
-        "stripeCustomerId": { "type": "string", "description": "Stripe customer ID (e.g. cus_...)" },
+        "stripeCustomerId": { "type": "string", "description": "Active-mode Stripe customer ID (e.g. cus_...)" },
+        "stripeCustomerIdLive": { "type": "string", "description": "Live-mode Stripe customer ID (kept separate from test mode)" },
+        "stripeCustomerIdTest": { "type": "string", "description": "Test/sandbox-mode Stripe customer ID (kept separate from live mode)" },
         "stripeSubscriptionId": { "type": "string", "description": "Stripe subscription ID (e.g. sub_...)" },
         "stripePriceId": { "type": "string", "description": "Active Stripe price ID" },
         "subscriptionCurrentPeriodEnd": { "type": "number", "description": "Subscription period expiration timestamp in Unix epoch ms" },
@@ -69,6 +71,58 @@
         "notes": { "type": "string", "description": "Optional notes from the owner" }
       },
       "required": ["email", "grantedAt", "grantedBy"]
+    },
+    "WaitlistEntry": {
+      "title": "WaitlistEntry",
+      "description": "Free launch waiting list interest entry saved once per authenticated member",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Unique member userId" },
+        "email": { "type": "string", "format": "email", "description": "Member email address" },
+        "firstName": { "type": "string", "description": "Member first name" },
+        "lastName": { "type": "string", "description": "Member last name" },
+        "gender": { "type": "string", "description": "Member gender identity" },
+        "interestedIn": { "type": "string", "description": "Member dating preference" },
+        "age": { "type": "number", "description": "Member age (18+)" },
+        "location": { "type": "string", "description": "Member city/state" },
+        "relationshipIntent": { "type": "string", "description": "Member relationship goal" },
+        "subscriptionTier": { "type": "string", "description": "Current tier at join time" },
+        "joinedAt": { "type": "number", "description": "Unix epoch ms when interest was recorded" },
+        "updatedAt": { "type": "number", "description": "Unix epoch ms of last profile sync" }
+      },
+      "required": ["userId", "email", "joinedAt"]
+    },
+    "LaunchEvent": {
+      "title": "LaunchEvent",
+      "description": "Manually scheduled launch event managed by the founder/admin",
+      "type": "object",
+      "properties": {
+        "EventID": { "type": "string", "description": "Unique launch event ID" },
+        "EventName": { "type": "string", "description": "Title of launch event" },
+        "DayOfWeek": { "type": "string", "description": "Day label (Friday | Saturday | Sunday)" },
+        "EventDate": { "type": "string", "description": "Calendar date YYYY-MM-DD" },
+        "EventStartTime": { "type": "string", "description": "24h start time (e.g. 19:00)" },
+        "EventEndTime": { "type": "string", "description": "24h end time (e.g. 20:15)" },
+        "TimeZone": { "type": "string", "description": "Eastern Time display label" },
+        "MaxParticipants": { "type": "number", "description": "Maximum spots" },
+        "ParticipantsList": { "type": "array", "description": "Registered userIds" },
+        "EventStatus": { "type": "string", "enum": ["Upcoming", "Live", "Completed"] },
+        "RoundsGenerated": { "type": "boolean" },
+        "HostID": { "type": "string" },
+        "EventType": { "type": "string" },
+        "Description": { "type": "string" },
+        "TotalRounds": { "type": "number" },
+        "RoundDurationSeconds": { "type": "number" },
+        "BreakDurationSeconds": { "type": "number" },
+        "MinAge": { "type": "number" },
+        "MaxAge": { "type": "number" },
+        "LocationName": { "type": "string" },
+        "Confirmed": { "type": "boolean", "description": "Whether founder has confirmed/published this launch event" },
+        "ConfirmedAt": { "type": "number", "description": "Unix epoch ms when confirmed" },
+        "CreatedAt": { "type": "number", "description": "Unix epoch ms when scheduled" },
+        "CreatedBy": { "type": "string", "description": "Founder email or userId" }
+      },
+      "required": ["EventID", "EventName", "EventDate", "Confirmed", "CreatedAt"]
     }
   },
   "firestore": {
@@ -87,6 +141,14 @@
     "/granted_testers/{emailDocId}": {
       "schema": "GrantedTester",
       "description": "Durable collection of tester accounts granted free Premium Plus access by the owner"
+    },
+    "/event_waitlist/{userId}": {
+      "schema": "WaitlistEntry",
+      "description": "Durable collection of free event waiting list entries (one per member)"
+    },
+    "/launch_events/{eventId}": {
+      "schema": "LaunchEvent",
+      "description": "Durable collection of founder-scheduled launch events"
     }
   }
 }

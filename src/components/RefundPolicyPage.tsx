@@ -27,13 +27,13 @@ export const RefundPolicyPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
         <button
           onClick={() => setCurrentView('home')}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-slate-700 hover:text-red-600 font-bold text-xs border border-rose-200 shadow-xs transition-all cursor-pointer active:scale-95"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-[#111827] hover:text-[#B91C1C] font-bold text-xs border border-rose-300 shadow-xs transition-all cursor-pointer active:scale-95"
         >
-          <ArrowLeft className="w-4 h-4 text-red-600" />
+          <ArrowLeft className="w-4 h-4 text-[#B91C1C]" />
           <span>Back to Speed Meet Love</span>
         </button>
 
-        <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold">
+        <div className="flex items-center gap-2 text-xs text-[#111827] font-semibold">
           <span>Speed Meet Love · Refund &amp; Cancellation Policy</span>
         </div>
       </div>
@@ -58,11 +58,11 @@ export const RefundPolicyPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed">
+      <div className="space-y-6 text-xs sm:text-sm text-[#111827] font-medium leading-relaxed">
         {/* Verified Pricing Plans */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <CreditCard className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <CreditCard className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>1. Membership Plans &amp; Recurring Billing</h2>
           </div>
           <p>Speed Meet Love offers three membership tiers on the web:</p>
@@ -77,15 +77,15 @@ export const RefundPolicyPage: React.FC = () => {
               <strong>Premium Plus ($14.99 USD/month):</strong> Recurring monthly web subscription billed via Stripe. Unlocks all Premium features plus live speed dating on Friday, Saturday, and Sunday at 7:00 PM EST.
             </li>
           </ul>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-[#111827] font-medium">
             Free tester access granted directly by the platform owner does not create a paid Stripe subscription or card charge. Android app purchases, once released on Google Play, are governed by Google Play billing rather than web Stripe checkout.
           </p>
         </section>
 
         {/* How to Cancel */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <CheckCircle2 className="w-5 h-5 text-[#047857] shrink-0" />
             <h2>2. How to Cancel Your Subscription</h2>
           </div>
           <p>
@@ -94,7 +94,7 @@ export const RefundPolicyPage: React.FC = () => {
           <ol className="space-y-1.5 list-decimal pl-5">
             <li>
               Sign in to Speed Meet Love and visit the{' '}
-              <a href="/pricing" onClick={(e) => handleNav(e, 'pricing')} className="text-red-600 font-bold underline">
+              <a href="/pricing" onClick={(e) => handleNav(e, 'pricing')} className="text-[#B91C1C] font-bold underline">
                 Pricing &amp; Membership page (/pricing)
               </a>
               .
@@ -106,9 +106,9 @@ export const RefundPolicyPage: React.FC = () => {
               Select your active subscription and choose <strong>Cancel subscription</strong> to prevent future billing cycles.
             </li>
           </ol>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-[#111827] font-medium">
             If you have trouble accessing the Stripe Customer Billing Portal or plan to delete your account, please cancel your subscription before deleting your account or email{' '}
-            <a href="mailto:speedmeetlove@gmail.com" className="text-red-600 font-bold underline">
+            <a href="mailto:speedmeetlove@gmail.com" className="text-[#B91C1C] font-bold underline">
               speedmeetlove@gmail.com
             </a>{' '}
             for assistance.
@@ -116,29 +116,29 @@ export const RefundPolicyPage: React.FC = () => {
         </section>
 
         {/* Refund Inquiries */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <AlertCircle className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>3. Billing Disputes &amp; Refund Requests</h2>
           </div>
           <p>
             If you believe you were charged in error, experienced a duplicate charge, have an unrecognized transaction, or wish to request a billing review, please contact TeeTees Creations directly before initiating a payment dispute so we can investigate your Stripe billing record promptly.
           </p>
-          <div className="p-4 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1.5 text-xs">
-            <p className="font-bold text-slate-900">What to include when requesting a billing review:</p>
-            <ul className="list-disc pl-5 space-y-1 text-slate-700">
+          <div className="p-4 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1.5 text-xs">
+            <p className="font-bold text-[#111827]">What to include when requesting a billing review:</p>
+            <ul className="list-disc pl-5 space-y-1 text-[#111827] font-medium">
               <li>The email address associated with your Speed Meet Love account</li>
               <li>The date and dollar amount ($9.99 or $14.99) of the charge</li>
               <li>A brief explanation of the billing issue or request</li>
             </ul>
           </div>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-[#111827] font-medium">
             Requests are reviewed directly by TeeTees Creations. Accounts terminated for violations of our{' '}
-            <a href="/terms" onClick={(e) => handleNav(e, 'terms')} className="text-red-600 font-bold underline">
+            <a href="/terms" onClick={(e) => handleNav(e, 'terms')} className="text-[#B91C1C] font-bold underline">
               Terms &amp; Conditions
             </a>{' '}
             or{' '}
-            <a href="/acceptable-use" onClick={(e) => handleNav(e, 'acceptable_use')} className="text-red-600 font-bold underline">
+            <a href="/acceptable-use" onClick={(e) => handleNav(e, 'acceptable_use')} className="text-[#B91C1C] font-bold underline">
               Acceptable Use Policy
             </a>{' '}
             remain subject to account ban enforcement.
@@ -146,14 +146,14 @@ export const RefundPolicyPage: React.FC = () => {
         </section>
 
         {/* Contact */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-200 shadow-xs space-y-2">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Mail className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-300 shadow-xs space-y-2">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Mail className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>4. Billing Support Contact</h2>
           </div>
           <p>
             Send all cancellation help, invoice questions, and refund inquiries to{' '}
-            <a href="mailto:speedmeetlove@gmail.com" className="text-red-600 font-bold underline font-mono">
+            <a href="mailto:speedmeetlove@gmail.com" className="text-[#B91C1C] font-bold underline font-mono">
               speedmeetlove@gmail.com
             </a>{' '}
             (TeeTees Creations).
@@ -164,23 +164,23 @@ export const RefundPolicyPage: React.FC = () => {
       {/* Footer Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-rose-200 text-xs">
         <div className="flex flex-wrap items-center gap-3">
-          <a href="/pricing" onClick={(e) => handleNav(e, 'pricing')} className="text-red-600 font-bold hover:underline">
+          <a href="/pricing" onClick={(e) => handleNav(e, 'pricing')} className="text-[#B91C1C] font-bold hover:underline">
             View Pricing (/pricing)
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/terms" onClick={(e) => handleNav(e, 'terms')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/terms" onClick={(e) => handleNav(e, 'terms')} className="text-[#111827] font-bold hover:underline">
             Terms &amp; Conditions
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-[#111827] font-bold hover:underline">
             Privacy Policy
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/contact" onClick={(e) => handleNav(e, 'contact')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/contact" onClick={(e) => handleNav(e, 'contact')} className="text-[#111827] font-bold hover:underline">
             Contact
           </a>
         </div>
-        <div className="text-slate-500 font-medium">© 2026 Speed Meet Love by TeeTees Creations</div>
+        <div className="text-[#111827] font-medium">© 2026 Speed Meet Love by TeeTees Creations</div>
       </div>
     </div>
   );

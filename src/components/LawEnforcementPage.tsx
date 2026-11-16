@@ -27,13 +27,13 @@ export const LawEnforcementPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
         <button
           onClick={() => setCurrentView('home')}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-slate-700 hover:text-red-600 font-bold text-xs border border-rose-200 shadow-xs transition-all cursor-pointer active:scale-95"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-[#111827] hover:text-[#B91C1C] font-bold text-xs border border-rose-300 shadow-xs transition-all cursor-pointer active:scale-95"
         >
-          <ArrowLeft className="w-4 h-4 text-red-600" />
+          <ArrowLeft className="w-4 h-4 text-[#B91C1C]" />
           <span>Back to Speed Meet Love</span>
         </button>
 
-        <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold">
+        <div className="flex items-center gap-2 text-xs text-[#111827] font-semibold">
           <span>Speed Meet Love · Law-Enforcement Protocols</span>
         </div>
       </div>
@@ -57,16 +57,16 @@ export const LawEnforcementPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed">
+      <div className="space-y-6 text-xs sm:text-sm text-[#111827] font-medium leading-relaxed">
         {/* Section 1: Legal Process */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Scale className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Scale className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>1. Cooperation with Lawful Process</h2>
           </div>
           <p>
             TeeTees Creations cooperates with lawful subpoenas, court orders, search warrants, and valid law-enforcement requests in accordance with applicable United States law and our{' '}
-            <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-red-600 font-bold underline">
+            <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-[#B91C1C] font-bold underline">
               Privacy Policy
             </a>
             .
@@ -77,24 +77,24 @@ export const LawEnforcementPage: React.FC = () => {
         </section>
 
         {/* Section 2: Mandatory NCMEC Reporting */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-red-50/50 border border-red-200 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-red-900 font-heading">
-            <ShieldAlert className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-red-50/60 border border-red-300 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#7F1D1D] font-heading">
+            <ShieldAlert className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>2. Mandatory Child Safety &amp; Exploitation Reporting (18 U.S.C. § 2258A)</h2>
           </div>
-          <p className="text-slate-800">
+          <p className="text-[#111827]">
             In compliance with United States federal law (18 U.S.C. § 2258A), TeeTees Creations files mandatory reports with the{' '}
             <strong>National Center for Missing &amp; Exploited Children (NCMEC)</strong> via the CyberTipline whenever any instance of child sexual abuse material (CSAM), child sexual abuse and exploitation (CSAE), or attempted grooming of minors is identified.
           </p>
-          <p className="text-slate-800">
+          <p className="text-[#111827]">
             When the platform owner bans an account through the safety report system, Speed Meet Love immediately revokes active session tokens, removes the account from live matchmaking queues and active rounds, and retains safety report records and ban identifiers in administrative archives to enforce permanent bans.
           </p>
         </section>
 
         {/* Section 3: Data Available vs Not Retained */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Database className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Database className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>3. System Architecture &amp; Data Availability</h2>
           </div>
           <p>
@@ -123,20 +123,20 @@ export const LawEnforcementPage: React.FC = () => {
         </section>
 
         {/* Section 4: Contact Point */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-200 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Mail className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-300 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Mail className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>4. Law-Enforcement Point of Contact</h2>
           </div>
           <p>
             Authorized law-enforcement and government requests may be directed to TeeTees Creations at:
           </p>
-          <div className="p-4 rounded-2xl bg-white border border-rose-200 space-y-1 text-xs sm:text-sm">
+          <div className="p-4 rounded-2xl bg-white border border-rose-200 space-y-1 text-xs sm:text-sm text-[#111827]">
             <p><strong>Service:</strong> Speed Meet Love (https://speedmeetlove.com)</p>
             <p><strong>Operator:</strong> TeeTees Creations</p>
             <p>
               <strong>Designated Email Contact:</strong>{' '}
-              <a href="mailto:speedmeetlove@gmail.com" className="text-red-600 font-bold underline font-mono">
+              <a href="mailto:speedmeetlove@gmail.com" className="text-[#B91C1C] font-bold underline font-mono">
                 speedmeetlove@gmail.com
               </a>
             </p>
@@ -147,23 +147,23 @@ export const LawEnforcementPage: React.FC = () => {
       {/* Footer Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-rose-200 text-xs">
         <div className="flex flex-wrap items-center gap-3">
-          <a href="/child-safety" onClick={(e) => handleNav(e, 'child_safety')} className="text-red-600 font-bold hover:underline">
+          <a href="/child-safety" onClick={(e) => handleNav(e, 'child_safety')} className="text-[#B91C1C] font-bold hover:underline">
             Child Safety Standards
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/acceptable-use" onClick={(e) => handleNav(e, 'acceptable_use')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/acceptable-use" onClick={(e) => handleNav(e, 'acceptable_use')} className="text-[#111827] font-bold hover:underline">
             Acceptable Use Policy
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/privacy" onClick={(e) => handleNav(e, 'privacy')} className="text-[#111827] font-bold hover:underline">
             Privacy Policy
           </a>
-          <span className="text-slate-300">·</span>
-          <a href="/contact" onClick={(e) => handleNav(e, 'contact')} className="text-slate-600 font-bold hover:underline">
+          <span className="text-[#111827] font-bold">·</span>
+          <a href="/contact" onClick={(e) => handleNav(e, 'contact')} className="text-[#111827] font-bold hover:underline">
             Contact
           </a>
         </div>
-        <div className="text-slate-500 font-medium">© 2026 Speed Meet Love by TeeTees Creations</div>
+        <div className="text-[#111827] font-medium">© 2026 Speed Meet Love by TeeTees Creations</div>
       </div>
     </div>
   );

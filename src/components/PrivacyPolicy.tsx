@@ -37,13 +37,13 @@ export const PrivacyPolicy: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
         <button
           onClick={() => setCurrentView('home')}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-slate-700 hover:text-red-600 font-bold text-xs border border-rose-200 shadow-xs transition-all cursor-pointer active:scale-95"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 text-[#111827] hover:text-[#B91C1C] font-bold text-xs border border-rose-300 shadow-xs transition-all cursor-pointer active:scale-95"
         >
-          <ArrowLeft className="w-4 h-4 text-red-600" />
+          <ArrowLeft className="w-4 h-4 text-[#B91C1C]" />
           <span>Back to Speed Meet Love</span>
         </button>
 
-        <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold">
+        <div className="flex items-center gap-2 text-xs text-[#111827] font-semibold">
           <span>Effective Date: November 2, 2026</span>
           <span>·</span>
           <span>Version 1.0</span>
@@ -76,44 +76,44 @@ export const PrivacyPolicy: React.FC = () => {
 
       {/* Quick Summary Highlights */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-4 rounded-2xl bg-white border border-rose-100 shadow-xs space-y-2">
-          <div className="w-8 h-8 rounded-xl bg-pink-50 border border-pink-200 flex items-center justify-center text-[#FF2E93]">
+        <div className="p-4 rounded-2xl bg-white border border-rose-200 shadow-xs space-y-2">
+          <div className="w-8 h-8 rounded-xl bg-pink-50 border border-pink-300 flex items-center justify-center text-[#BE185D]">
             <Lock className="w-4 h-4" />
           </div>
-          <h2 className="font-extrabold text-sm text-slate-900 font-heading">Confidential Voting</h2>
-          <p className="text-xs text-slate-600 leading-relaxed">
+          <h2 className="font-bold text-sm text-[#111827] font-heading">Confidential Voting</h2>
+          <p className="text-xs text-[#111827] font-medium leading-relaxed">
             Your post-round votes (Like or Pass) and private notes are strictly secret. Other members only learn you liked them if feelings are mutual.
           </p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white border border-rose-100 shadow-xs space-y-2">
-          <div className="w-8 h-8 rounded-xl bg-pink-50 border border-pink-200 flex items-center justify-center text-[#FF2E93]">
+        <div className="p-4 rounded-2xl bg-white border border-rose-200 shadow-xs space-y-2">
+          <div className="w-8 h-8 rounded-xl bg-pink-50 border border-pink-300 flex items-center justify-center text-[#BE185D]">
             <Video className="w-4 h-4" />
           </div>
-          <h2 className="font-extrabold text-sm text-slate-900 font-heading">No Video Recording</h2>
-          <p className="text-xs text-slate-600 leading-relaxed">
+          <h2 className="font-bold text-sm text-[#111827] font-heading">No Video Recording</h2>
+          <p className="text-xs text-[#111827] font-medium leading-relaxed">
             Five-minute speed dating and ten-minute second-chance video streams are live and ephemeral. Speed Meet Love does not record or store your dates.
           </p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white border border-rose-100 shadow-xs space-y-2">
-          <div className="w-8 h-8 rounded-xl bg-pink-50 border border-pink-200 flex items-center justify-center text-[#FF2E93]">
+        <div className="p-4 rounded-2xl bg-white border border-rose-200 shadow-xs space-y-2">
+          <div className="w-8 h-8 rounded-xl bg-pink-50 border border-pink-300 flex items-center justify-center text-[#BE185D]">
             <ShieldCheck className="w-4 h-4" />
           </div>
-          <h2 className="font-extrabold text-sm text-slate-900 font-heading">No Data Selling</h2>
-          <p className="text-xs text-slate-600 leading-relaxed">
+          <h2 className="font-bold text-sm text-[#111827] font-heading">No Data Selling</h2>
+          <p className="text-xs text-[#111827] font-medium leading-relaxed">
             TeeTees Creations does not sell, rent, or trade your personal data, profile photos, or contact information to advertisers or data brokers.
           </p>
         </div>
       </div>
 
       {/* Detailed Policy Sections */}
-      <div className="space-y-6 text-slate-800 text-xs sm:text-sm leading-relaxed">
+      <div className="space-y-6 text-[#111827] font-medium text-xs sm:text-sm leading-relaxed">
 
         {/* Section 1: Introduction */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <FileText className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <FileText className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>1. Introduction & About Speed Meet Love</h2>
           </div>
           <p>
@@ -122,21 +122,21 @@ export const PrivacyPolicy: React.FC = () => {
           <p>
             This Privacy Policy explains how TeeTees Creations collects, uses, shares, stores, and protects personal information when you use Speed Meet Love, as well as how you may exercise your privacy rights and request data deletion. By accessing or using Speed Meet Love, you acknowledge the practices described in this policy.
           </p>
-          <p className="font-bold text-slate-900">
-            Privacy and Support Contact: <a href="mailto:speedmeetlove@gmail.com" className="text-red-600 underline font-mono">speedmeetlove@gmail.com</a>
+          <p className="font-bold text-[#111827]">
+            Privacy and Support Contact: <a href="mailto:speedmeetlove@gmail.com" className="text-[#B91C1C] underline font-mono">speedmeetlove@gmail.com</a>
           </p>
         </section>
 
         {/* Section 2: Information We Collect */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-4">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <UserCheck className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-4">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <UserCheck className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>2. Information We Collect</h2>
           </div>
           <p>
             To provide live video speed dating, pair compatible members, and maintain platform safety, we collect the following categories of data:
           </p>
-          <ul className="space-y-2.5 list-disc pl-5 text-slate-700">
+          <ul className="space-y-2.5 list-disc pl-5 text-[#111827]">
             <li>
               <strong>Profile & Account Details:</strong> First name, optional last name (stored securely and not displayed on public cards), email address, age and date of birth (used to verify that all participants are adults aged 18 and older), gender identity ('Woman', 'Man', 'Non-Binary'), dating preferences ('Men', 'Women', 'Everyone'), location (city, state, or approximate distance), occupation, bio, hobbies and interests tags, and icebreaker prompt responses.
             </li>
@@ -168,46 +168,46 @@ export const PrivacyPolicy: React.FC = () => {
         </section>
 
         {/* Section 3: How We Use Your Information */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Calendar className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Calendar className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>3. Purposes of Data Processing</h2>
           </div>
           <p>We process your personal information strictly for legitimate operational purposes:</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            <div className="p-3 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1">
-              <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <div className="p-3 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1">
+              <span className="font-bold text-[#111827] text-xs flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#047857]" />
                 Event Pairing & Matchmaking
               </span>
-              <p className="text-[11px] text-slate-600">
+              <p className="text-[11px] text-[#111827] font-medium">
                 Organizing round schedules and pairing consenting daters during weekend events based on age, orientation, and mutual readiness.
               </p>
             </div>
-            <div className="p-3 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1">
-              <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <div className="p-3 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1">
+              <span className="font-bold text-[#111827] text-xs flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#047857]" />
                 Live Video Connection
               </span>
-              <p className="text-[11px] text-slate-600">
+              <p className="text-[11px] text-[#111827] font-medium">
                 Generating secure, short-lived room tokens to connect two matched daters in real-time WebRTC video calls.
               </p>
             </div>
-            <div className="p-3 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1">
-              <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <div className="p-3 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1">
+              <span className="font-bold text-[#111827] text-xs flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#047857]" />
                 Confidential Match Calculation
               </span>
-              <p className="text-[11px] text-slate-600">
+              <p className="text-[11px] text-[#111827] font-medium">
                 Evaluating post-round secret ballots and revealing mutual matches only when both participants submit a Like.
               </p>
             </div>
-            <div className="p-3 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-1">
-              <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <div className="p-3 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-1">
+              <span className="font-bold text-[#111827] text-xs flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#047857]" />
                 Safety & Abuse Prevention
               </span>
-              <p className="text-[11px] text-slate-600">
+              <p className="text-[11px] text-[#111827] font-medium">
                 Enforcing 18+ adult restrictions, honoring member blocks, and reviewing community violation reports.
               </p>
             </div>
@@ -215,18 +215,18 @@ export const PrivacyPolicy: React.FC = () => {
         </section>
 
         {/* Section 4: What Other Members Can and Cannot See */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-4">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Eye className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-4">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Eye className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>4. What Other Members Can and Cannot See</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-2">
-              <div className="flex items-center gap-2 text-emerald-900 font-extrabold text-xs uppercase tracking-wider font-heading">
-                <Eye className="w-4 h-4 text-emerald-600" />
+            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-300 space-y-2">
+              <div className="flex items-center gap-2 text-[#064E3B] font-bold text-xs uppercase tracking-wider font-heading">
+                <Eye className="w-4 h-4 text-[#047857]" />
                 <span>Visible to Other Members</span>
               </div>
-              <ul className="space-y-1 text-xs text-slate-700 list-disc pl-4">
+              <ul className="space-y-1 text-xs text-[#111827] font-medium list-disc pl-4">
                 <li>Your First Name and Age</li>
                 <li>Your Profile Photo and Avatar</li>
                 <li>Your Occupation and Bio</li>
@@ -236,12 +236,12 @@ export const PrivacyPolicy: React.FC = () => {
               </ul>
             </div>
 
-            <div className="p-4 rounded-2xl bg-rose-50/60 border border-rose-200 space-y-2">
-              <div className="flex items-center gap-2 text-rose-900 font-extrabold text-xs uppercase tracking-wider font-heading">
-                <EyeOff className="w-4 h-4 text-rose-600" />
+            <div className="p-4 rounded-2xl bg-rose-50/70 border border-rose-300 space-y-2">
+              <div className="flex items-center gap-2 text-[#881337] font-bold text-xs uppercase tracking-wider font-heading">
+                <EyeOff className="w-4 h-4 text-[#BE123C]" />
                 <span>Never Visible to Other Members</span>
               </div>
-              <ul className="space-y-1 text-xs text-slate-700 list-disc pl-4">
+              <ul className="space-y-1 text-xs text-[#111827] font-medium list-disc pl-4">
                 <li>Your Last Name and Email Address</li>
                 <li>Your confidential post-round votes (Like or Pass)</li>
                 <li>Your confidential private dater notes</li>
@@ -254,15 +254,15 @@ export const PrivacyPolicy: React.FC = () => {
         </section>
 
         {/* Section 5: Camera & Microphone Use and Video Processing */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Camera className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Camera className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>5. Camera, Microphone Use & Video Processing</h2>
           </div>
           <p>
             Speed Meet Love relies on real-time WebRTC audio and video capabilities to deliver one-on-one speed dating:
           </p>
-          <ul className="space-y-2 list-disc pl-5 text-slate-700">
+          <ul className="space-y-2 list-disc pl-5 text-[#111827]">
             <li>
               <strong>Hardware Access Permissions:</strong> The application requests access to your camera and microphone via standard browser permissions (`navigator.mediaDevices.getUserMedia`). This access is used only while testing equipment in the event lobby, during active five-minute speed dating calls, and during ten-minute second-chance video dates.
             </li>
@@ -282,13 +282,13 @@ export const PrivacyPolicy: React.FC = () => {
         </section>
 
         {/* Section 6: Third-Party Service Providers */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Server className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Server className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>6. Third-Party Service Providers</h2>
           </div>
           <p>We work with trusted infrastructure providers to deliver our service:</p>
-          <ul className="space-y-2 list-disc pl-5 text-slate-700">
+          <ul className="space-y-2 list-disc pl-5 text-[#111827]">
             <li>
               <strong>Stripe (Payment Processing):</strong> Processes web subscription checkouts ($9.99/month Premium and $14.99/month Premium Plus), recurring billing, webhooks, and self-serve subscription management via the Stripe Customer Billing Portal. Speed Meet Love stores only Stripe customer/subscription identifiers and status—never full card numbers.
             </li>
@@ -308,12 +308,12 @@ export const PrivacyPolicy: React.FC = () => {
         </section>
 
         {/* Section 7: Data Storage, Retention & Security */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Lock className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Lock className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>7. Data Storage, Retention & Security</h2>
           </div>
-          <div className="space-y-3 text-slate-700">
+          <div className="space-y-3 text-[#111827]">
             <p>
               <strong>Storage Mechanisms:</strong> Client-side preferences and session states are stored in your browser&rsquo;s local web storage (`localStorage`). Server-authoritative user profiles, event sessions, persistent matches, round votes, and safety reports are persisted in Google Cloud Firestore and application server data files (`matches.json`, `round_votes.json`, `safety_reports.json`, `banned_users.json`, `granted_testers.json`).
             </p>
@@ -348,9 +348,9 @@ export const PrivacyPolicy: React.FC = () => {
         </section>
 
         {/* Section 8: Account & Data Deletion Requests */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-4">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Trash2 className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-4">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Trash2 className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>8. Account &amp; Data Deletion Requests</h2>
           </div>
           <p>
@@ -358,51 +358,51 @@ export const PrivacyPolicy: React.FC = () => {
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-950 space-y-2">
-              <div className="flex items-center gap-2 font-bold text-xs text-emerald-900">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-300 text-[#064E3B] space-y-2">
+              <div className="flex items-center gap-2 font-bold text-xs text-[#064E3B]">
+                <CheckCircle2 className="w-4 h-4 text-[#047857] shrink-0" />
                 <span>Option 1: In-App Self-Serve Deletion</span>
               </div>
-              <p className="text-xs text-slate-700 leading-relaxed">
+              <p className="text-xs text-[#111827] font-medium leading-relaxed">
                 You can delete your account directly inside the app. Sign in, go to <strong>My Profile</strong> (Profile Settings), scroll to <strong>Danger Zone: Permanent Account Deletion</strong>, tap <strong>Delete My Account</strong>, enter your registered email address to verify ownership, and confirm. Your records will be permanently purged on the server immediately.
               </p>
               <div className="pt-1">
                 <button
                   type="button"
                   onClick={() => setCurrentView('delete_account')}
-                  className="text-xs font-bold text-emerald-800 underline hover:text-emerald-950 cursor-pointer"
+                  className="text-xs font-bold text-[#065F46] underline hover:text-[#064E3B] cursor-pointer"
                 >
                   View Public Deletion Page (/delete-account) →
                 </button>
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-rose-50/70 border border-rose-200 text-rose-950 space-y-2">
-              <div className="flex items-center gap-2 font-bold text-xs text-red-900">
-                <Mail className="w-4 h-4 text-red-600 shrink-0" />
+            <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-300 text-[#881337] space-y-2">
+              <div className="flex items-center gap-2 font-bold text-xs text-[#881337]">
+                <Mail className="w-4 h-4 text-[#B91C1C] shrink-0" />
                 <span>Option 2: Support Email Request</span>
               </div>
-              <p className="text-xs text-slate-700 leading-relaxed">
+              <p className="text-xs text-[#111827] font-medium leading-relaxed">
                 If you cannot sign in or prefer email assistance, email{' '}
-                <a href="mailto:speedmeetlove@gmail.com" className="font-bold underline text-red-600">
+                <a href="mailto:speedmeetlove@gmail.com" className="font-bold underline text-[#B91C1C]">
                   speedmeetlove@gmail.com
                 </a>{' '}
-                with subject line <code className="bg-rose-100 px-1 py-0.5 rounded font-mono font-bold text-slate-900">Account &amp; Data Deletion Request</code> from your registered email. Our team will verify and permanently delete your account within 48 business hours.
+                with subject line <code className="bg-rose-100 px-1 py-0.5 rounded font-mono font-bold text-[#111827]">Account &amp; Data Deletion Request</code> from your registered email. Our team will verify and permanently delete your account within 48 business hours.
               </p>
             </div>
           </div>
         </section>
 
         {/* Section 9: Safety, Blocking & Reporting */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <ShieldCheck className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <ShieldCheck className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>9. Community Safety, Blocking & Reporting</h2>
           </div>
           <p>
             We prioritize member safety and respectful behavior. You may at any time:
           </p>
-          <ul className="space-y-1.5 list-disc pl-5 text-slate-700">
+          <ul className="space-y-1.5 list-disc pl-5 text-[#111827]">
             <li>
               <strong>Block a Member:</strong> Instantly hides the member from your browse feed, removes existing matches, and filters out mutual messages.
             </li>
@@ -413,20 +413,20 @@ export const PrivacyPolicy: React.FC = () => {
         </section>
 
         {/* Section 10: Age Restrictions & Children's Privacy */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <UserCheck className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <UserCheck className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>10. Adults Only (18+) Policy &amp; Child Safety Standards</h2>
           </div>
           <p>
             Speed Meet Love is strictly restricted to consenting adults aged 18 and older. We enforce zero tolerance for underage registration, child sexual abuse material (CSAM), child sexual abuse and exploitation (CSAE), grooming, and any form of minor endangerment. If we learn that a user is under 18 years old, we promptly terminate the account and purge all associated records.
           </p>
-          <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-300 text-[#78350F] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />
+              <ShieldAlert className="w-5 h-5 text-[#B45309] shrink-0" />
               <div>
-                <p className="font-extrabold text-xs text-amber-950">Child Sexual Abuse &amp; Exploitation (CSAE) Policy</p>
-                <p className="text-[11px] text-amber-900">
+                <p className="font-bold text-xs text-[#78350F]">Child Sexual Abuse &amp; Exploitation (CSAE) Policy</p>
+                <p className="text-[11px] text-[#78350F] font-medium">
                   Read our full Google Play Child Safety Standards declaration, reporting procedures, and law enforcement escalation.
                 </p>
               </div>
@@ -434,7 +434,7 @@ export const PrivacyPolicy: React.FC = () => {
             <button
               type="button"
               onClick={() => setCurrentView('child_safety')}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs shrink-0 cursor-pointer transition-colors shadow-xs"
+              className="px-3.5 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs shrink-0 cursor-pointer transition-colors shadow-xs"
             >
               View Child Safety (/child-safety) →
             </button>
@@ -442,9 +442,9 @@ export const PrivacyPolicy: React.FC = () => {
         </section>
 
         {/* Section 11: Changes to this Policy */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-100 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <FileText className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <FileText className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>11. Updates to this Privacy Policy</h2>
           </div>
           <p>
@@ -453,20 +453,20 @@ export const PrivacyPolicy: React.FC = () => {
         </section>
 
         {/* Section 12: Contact Us */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-200 shadow-xs space-y-3">
-          <div className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 font-heading">
-            <Mail className="w-5 h-5 text-red-600 shrink-0" />
+        <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-300 shadow-xs space-y-3">
+          <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
+            <Mail className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <h2>12. Contacting TeeTees Creations</h2>
           </div>
-          <p className="text-slate-700">
+          <p className="text-[#111827]">
             If you have questions, feedback, or requests regarding this Privacy Policy or your personal information, please reach out to:
           </p>
           <div className="p-4 rounded-2xl bg-white border border-rose-200 space-y-1">
-            <p className="font-extrabold text-slate-900">Speed Meet Love</p>
-            <p className="text-slate-600 text-xs">A TeeTees Creations Application</p>
-            <p className="text-xs pt-1">
+            <p className="font-bold text-[#111827]">Speed Meet Love</p>
+            <p className="text-[#111827] font-medium text-xs">A TeeTees Creations Application</p>
+            <p className="text-xs pt-1 text-[#111827]">
               <strong>Privacy &amp; Support Inquiries:</strong>{' '}
-              <a href="mailto:speedmeetlove@gmail.com" className="text-red-600 font-bold underline font-mono">
+              <a href="mailto:speedmeetlove@gmail.com" className="text-[#B91C1C] font-bold underline font-mono">
                 speedmeetlove@gmail.com
               </a>
             </p>

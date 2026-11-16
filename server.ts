@@ -27,18 +27,119 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = 3000;
 
+const ANDROID_ASSET_LINKS = [
+  {
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: {
+      namespace: 'android_app',
+      package_name: 'com.teeteescreations.speedmeetlove',
+      sha256_cert_fingerprints: [
+        '8C:50:A3:7B:24:9E:DD:94:9E:DC:09:90:6D:2E:6B:86:DF:4B:27:D1:08:CF:FD:F1:1C:C0:3F:80:ED:8D:2E:1F',
+        '92:B8:14:27:FE:C5:7F:A1:22:7A:C6:A5:70:D7:0D:B9:0C:27:F6:F3:5C:8F:ED:B6:A5:67:8C:81:62:06:7F:F5',
+        'F2:2C:D9:53:34:2A:2E:D6:71:CC:FF:AD:8D:8B:0D:B6:BD:AD:33:B3:61:BF:66:54:07:AB:35:89:72:BB:1A:A8',
+      ],
+    },
+  },
+];
+
+// Serve Android App Links Digital Asset Links verification file directly (HTTP 200, application/json, no redirects or login)
+app.get('/.well-known/assetlinks.json', (_req, res) => {
+  const candidates = [
+    path.resolve(__dirname, 'public', '.well-known', 'assetlinks.json'),
+    path.resolve(__dirname, 'dist', '.well-known', 'assetlinks.json'),
+  ];
+
+  for (const filePath of candidates) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, 'utf8');
+        res.status(200);
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return res.send(raw);
+      }
+    } catch {
+      // Fall back to embedded exact JSON payload
+    }
+  }
+
+  res.status(200);
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  return res.send(JSON.stringify(ANDROID_ASSET_LINKS, null, 2));
+});
+
 // Production application domain & routes as requested
 const APP_URL = 'https://speedmeetlove.com';
 const STRIPE_WEBHOOK_ROUTE = '/api/stripe/webhook';
 
+const SERVER_STARTED_AT = new Date().toISOString();
+
+function sanitizeStripeEnvValue(rawValue: string | undefined): { value: string; hadWrapper: boolean } {
+  const original = rawValue || '';
+  let current = original.trim();
+  let hadWrapper = current !== original;
+
+  const stripQuotes = (input: string): string => {
+    let s = input.trim();
+    while (
+      s.length >= 2 &&
+      ((s.startsWith('"') && s.endsWith('"')) ||
+        (s.startsWith("'") && s.endsWith("'")) ||
+        (s.startsWith('`') && s.endsWith('`')))
+    ) {
+      s = s.slice(1, -1).trim();
+      hadWrapper = true;
+    }
+    return s;
+  };
+
+  current = stripQuotes(current);
+
+  // Strip accidental ENV_VAR_NAME= prefix if pasted with key name
+  const eqMatch = current.match(/^[A-Z0-9_]+\s*=\s*(.+)$/s);
+  if (eqMatch && /^(whsec_|sk_|rk_|pk_)/.test(stripQuotes(eqMatch[1]))) {
+    current = stripQuotes(eqMatch[1]);
+    hadWrapper = true;
+  }
+
+  // Remove any accidental embedded whitespace/newlines inside a key/secret
+  const collapsed = current.replace(/\s+/g, '');
+  if (collapsed !== current) {
+    current = collapsed;
+    hadWrapper = true;
+  }
+
+  return { value: current, hadWrapper };
+}
+
+function getStripeWebhookSecretConfig() {
+  const raw = process.env.STRIPE_WEBHOOK_SECRET || '';
+  const tokens = raw
+    .split(/[\r\n,;]+/)
+    .map((part) => sanitizeStripeEnvValue(part))
+    .filter((item) => item.value.length > 0);
+
+  const uniqueSecrets = Array.from(new Set(tokens.map((t) => t.value)));
+  const validFormatCount = uniqueSecrets.filter((s) => s.startsWith('whsec_')).length;
+  const looksPlaceholder = uniqueSecrets.some((s) => /your_stripe|placeholder|example/i.test(s));
+  const hadWrapper = tokens.some((t) => t.hadWrapper) || raw.trim() !== raw;
+
+  return {
+    secrets: uniqueSecrets,
+    hasSecret: uniqueSecrets.length > 0,
+    validFormatCount,
+    hadWrapper,
+    looksPlaceholder,
+  };
+}
+
 // Stripe configuration - Secret keys remain strictly on the server
-const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || '').trim();
-const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
-const RAW_STRIPE_PUBLISHABLE_KEY = (
-  process.env.STRIPE_PUBLISHABLE_KEY ||
-  process.env.VITE_STRIPE_PUBLISHABLE_KEY ||
-  ''
-).trim();
+const STRIPE_SECRET_KEY = sanitizeStripeEnvValue(process.env.STRIPE_SECRET_KEY).value;
+const STRIPE_WEBHOOK_SECRET = getStripeWebhookSecretConfig().secrets[0] || '';
+const RAW_STRIPE_PUBLISHABLE_KEY = sanitizeStripeEnvValue(
+  process.env.STRIPE_PUBLISHABLE_KEY || process.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
+).value;
 const STRIPE_PUBLISHABLE_KEY = /^pk_(live|test)_/.test(RAW_STRIPE_PUBLISHABLE_KEY)
   ? RAW_STRIPE_PUBLISHABLE_KEY
   : '';
@@ -204,12 +305,21 @@ if (stripe && STRIPE_IS_LIVE_KEY) {
   void ensureStripePricesResolved();
 }
 
-// Use raw body specifically for Stripe webhooks signature verification, json for all other routes
+function isStripeWebhookRequest(req: express.Request): boolean {
+  const pathOnly = (req.path || req.originalUrl || '').split('?')[0].replace(/\/+$/, '');
+  return pathOnly === STRIPE_WEBHOOK_ROUTE;
+}
+
+// Use untouched raw Buffer specifically for Stripe webhooks signature verification, json for all other routes
 app.use((req, res, next) => {
-  if (req.originalUrl === '/api/stripe/webhook') {
-    express.raw({ type: 'application/json' })(req, res, next);
+  if (isStripeWebhookRequest(req)) {
+    express.raw({ type: () => true, limit: '2mb' })(req, res, next);
   } else {
-    express.json()(req, res, next);
+    express.json({
+      verify: (r, _res, buf) => {
+        (r as any).rawBody = buf;
+      },
+    })(req, res, next);
   }
 });
 
@@ -1989,6 +2099,8 @@ export interface ServerUserRecord {
   subscriptionTier: 'Free' | 'Premium' | 'Premium Plus';
   subscriptionStatus?: 'none' | 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete' | 'unpaid';
   stripeCustomerId?: string;
+  stripeCustomerIdLive?: string;
+  stripeCustomerIdTest?: string;
   stripeSubscriptionId?: string;
   stripePriceId?: string;
   subscriptionCurrentPeriodEnd?: number;
@@ -2079,6 +2191,148 @@ function saveGrantedTestersToDisk() {
   } catch (err) {
     console.warn('Failed to save granted testers to disk:', err);
   }
+}
+
+export interface ServerWaitlistEntry {
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  gender: 'Woman' | 'Man' | 'Non-Binary';
+  interestedIn: 'Men' | 'Women' | 'Everyone';
+  age: number;
+  location: string;
+  relationshipIntent?: string;
+  subscriptionTier: 'Free' | 'Premium' | 'Premium Plus';
+  joinedAt: number;
+  updatedAt: number;
+}
+
+const WAITLIST_FILE = path.join(DATA_DIR, 'waitlist.json');
+const serverWaitlist = new Map<string, ServerWaitlistEntry>();
+
+export interface ServerLaunchEventRecord {
+  EventID: string;
+  EventName: string;
+  DayOfWeek: 'Friday' | 'Saturday' | 'Sunday';
+  EventDate: string;
+  EventStartTime: string;
+  EventEndTime: string;
+  TimeZone: string;
+  MaxParticipants: number;
+  ParticipantsList: string[];
+  EventStatus: 'Upcoming' | 'Live' | 'Completed';
+  RoundsGenerated: boolean;
+  HostID: string;
+  EventType: 'Straight' | 'LGBTQ+' | '30 & Older' | 'Age-specific' | 'Premium-only';
+  Description: string;
+  TotalRounds: number;
+  RoundDurationSeconds: number;
+  BreakDurationSeconds: number;
+  MinAge: number;
+  MaxAge: number;
+  LocationName: string;
+  Confirmed: boolean;
+  ConfirmedAt: number | null;
+  IsManualLaunch: boolean;
+  CreatedAt: number;
+  CreatedBy: string;
+}
+
+const LAUNCH_EVENTS_FILE = path.join(DATA_DIR, 'launch_events.json');
+const serverLaunchEvents = new Map<string, ServerLaunchEventRecord>();
+
+function loadWaitlistFromDisk() {
+  try {
+    ensureStorageDirectory();
+    if (fs.existsSync(WAITLIST_FILE)) {
+      const data = fs.readFileSync(WAITLIST_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (item && item.userId) {
+            serverWaitlist.set(item.userId, item);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load waitlist from disk:', err);
+  }
+}
+
+function saveWaitlistToDisk() {
+  try {
+    ensureStorageDirectory();
+    const array = Array.from(serverWaitlist.values());
+    fs.writeFileSync(WAITLIST_FILE, JSON.stringify(array, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Failed to save waitlist to disk:', err);
+  }
+}
+
+function loadLaunchEventsFromDisk() {
+  try {
+    ensureStorageDirectory();
+    if (fs.existsSync(LAUNCH_EVENTS_FILE)) {
+      const data = fs.readFileSync(LAUNCH_EVENTS_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (item && item.EventID) {
+            serverLaunchEvents.set(item.EventID, item);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load launch events from disk:', err);
+  }
+}
+
+function saveLaunchEventsToDisk() {
+  try {
+    ensureStorageDirectory();
+    const array = Array.from(serverLaunchEvents.values());
+    fs.writeFileSync(LAUNCH_EVENTS_FILE, JSON.stringify(array, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Failed to save launch events to disk:', err);
+  }
+}
+
+function wantsGender(interestedIn?: string, candidateGender?: string): boolean {
+  if (!interestedIn || !candidateGender) return false;
+  if (interestedIn === 'Everyone') return true;
+  if (interestedIn === 'Women') return candidateGender === 'Woman';
+  if (interestedIn === 'Men') return candidateGender === 'Man';
+  return false;
+}
+
+export function areParticipantsCompatible(
+  userA: { userId: string; gender?: string; interestedIn?: string; age?: number },
+  userB: { userId: string; gender?: string; interestedIn?: string; age?: number },
+  eventMeta?: { eventType?: string; minAge?: number }
+): boolean {
+  if (!userA?.userId || !userB?.userId || userA.userId === userB.userId) {
+    return false;
+  }
+  const ageA = typeof userA.age === 'number' ? userA.age : 0;
+  const ageB = typeof userB.age === 'number' ? userB.age : 0;
+  if (ageA < 18 || ageB < 18) {
+    return false;
+  }
+  const minRequiredAge = eventMeta?.eventType === '30 & Older'
+    ? 30
+    : typeof eventMeta?.minAge === 'number' && eventMeta.minAge >= 30
+    ? eventMeta.minAge
+    : 18;
+  if (ageA < minRequiredAge || ageB < minRequiredAge) {
+    return false;
+  }
+  if (!wantsGender(userA.interestedIn, userB.gender) || !wantsGender(userB.interestedIn, userA.gender)) {
+    return false;
+  }
+  return true;
 }
 
 export const OWNER_EMAILS = new Set(['kristylten@gmail.com']);
@@ -2325,6 +2579,8 @@ loadUsersFromDisk();
 loadReportsFromDisk();
 loadBannedUsersFromDisk();
 loadGrantedTestersFromDisk();
+loadWaitlistFromDisk();
+loadLaunchEventsFromDisk();
 seedDefaultUsersIfEmpty();
 
 // ============================================================================
@@ -2424,10 +2680,46 @@ async function syncDurableDatabaseOnStartup() {
       }
     }
 
+    // 2c. Sync event waiting list from durable storage
+    const waitlistCol = firestoreCollection(firestoreDb, 'event_waitlist');
+    const waitlistSnap = await firestoreGetDocs(waitlistCol).catch(() => null);
+    if (waitlistSnap && !waitlistSnap.empty) {
+      waitlistSnap.forEach(d => {
+        const item = d.data() as ServerWaitlistEntry;
+        if (item && item.userId) {
+          serverWaitlist.set(item.userId, item);
+        }
+      });
+      console.log(`[DURABLE DB] Rehydrated ${serverWaitlist.size} waitlist entries from Cloud Firestore.`);
+    } else if (serverWaitlist.size > 0) {
+      for (const [uid, entry] of serverWaitlist.entries()) {
+        await firestoreSetDoc(firestoreDoc(firestoreDb, 'event_waitlist', uid), entry).catch(() => null);
+      }
+    }
+
+    // 2d. Sync manually scheduled launch events from durable storage
+    const launchEventsCol = firestoreCollection(firestoreDb, 'launch_events');
+    const launchSnap = await firestoreGetDocs(launchEventsCol).catch(() => null);
+    if (launchSnap && !launchSnap.empty) {
+      launchSnap.forEach(d => {
+        const item = d.data() as ServerLaunchEventRecord;
+        if (item && item.EventID) {
+          serverLaunchEvents.set(item.EventID, item);
+        }
+      });
+      console.log(`[DURABLE DB] Rehydrated ${serverLaunchEvents.size} launch event(s) from Cloud Firestore.`);
+    } else if (serverLaunchEvents.size > 0) {
+      for (const [eid, evt] of serverLaunchEvents.entries()) {
+        await firestoreSetDoc(firestoreDoc(firestoreDb, 'launch_events', eid), evt).catch(() => null);
+      }
+    }
+
     // 3. Keep local backup files in sync
     saveUsersToDisk();
     saveBannedUsersToDisk();
     saveGrantedTestersToDisk();
+    saveWaitlistToDisk();
+    saveLaunchEventsToDisk();
 
     // Ensure all registered users matching granted testers have Premium Plus tester privileges
     for (const [email, record] of grantedTesterRecords.entries()) {
@@ -2555,6 +2847,56 @@ async function unbanUserInDurableDatabase(identifier: string): Promise<void> {
   }
 }
 
+async function saveWaitlistEntryToDurableDatabase(entry: ServerWaitlistEntry): Promise<void> {
+  serverWaitlist.set(entry.userId, entry);
+  saveWaitlistToDisk();
+  if (firestoreDb) {
+    try {
+      await firestoreSetDoc(firestoreDoc(firestoreDb, 'event_waitlist', entry.userId), cleanFirestoreObject(entry));
+    } catch (err) {
+      console.error('[DURABLE DB] Error saving waitlist entry to Firestore:', err);
+      throw new Error('Failed to save waiting list entry to durable database.');
+    }
+  }
+}
+
+async function deleteWaitlistEntryFromDurableDatabase(userId: string): Promise<void> {
+  serverWaitlist.delete(userId);
+  saveWaitlistToDisk();
+  if (firestoreDb) {
+    try {
+      await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'event_waitlist', userId));
+    } catch (err) {
+      console.warn('[DURABLE DB] Error deleting waitlist entry from Firestore:', err);
+    }
+  }
+}
+
+async function saveLaunchEventToDurableDatabase(evt: ServerLaunchEventRecord): Promise<void> {
+  serverLaunchEvents.set(evt.EventID, evt);
+  saveLaunchEventsToDisk();
+  if (firestoreDb) {
+    try {
+      await firestoreSetDoc(firestoreDoc(firestoreDb, 'launch_events', evt.EventID), cleanFirestoreObject(evt));
+    } catch (err) {
+      console.error('[DURABLE DB] Error saving launch event to Firestore:', err);
+      throw new Error('Failed to save launch event to durable database.');
+    }
+  }
+}
+
+async function deleteLaunchEventFromDurableDatabase(eventId: string): Promise<void> {
+  serverLaunchEvents.delete(eventId);
+  saveLaunchEventsToDisk();
+  if (firestoreDb) {
+    try {
+      await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'launch_events', eventId));
+    } catch (err) {
+      console.warn('[DURABLE DB] Error deleting launch event from Firestore:', err);
+    }
+  }
+}
+
 
 function sanitizeUser(u: ServerUserRecord) {
   const { passwordHash: _, passwordSalt: __, ...safe } = u;
@@ -2597,8 +2939,18 @@ function sanitizeUser(u: ServerUserRecord) {
     subscriptionTier: effectiveTier,
     SubscriptionStatus: effectiveStatus,
     subscriptionStatus: effectiveStatus,
-    StripeCustomerId: u.stripeCustomerId || null,
-    stripeCustomerId: u.stripeCustomerId || null,
+    StripeCustomerId: (STRIPE_IS_LIVE_KEY
+      ? (u.stripeCustomerIdLive || (u.stripeCustomerId && u.stripeCustomerId !== u.stripeCustomerIdTest ? u.stripeCustomerId : null))
+      : STRIPE_IS_SANDBOX_KEY
+      ? (u.stripeCustomerIdTest || (u.stripeCustomerId && u.stripeCustomerId !== u.stripeCustomerIdLive ? u.stripeCustomerId : null))
+      : (u.stripeCustomerId || null)),
+    stripeCustomerId: (STRIPE_IS_LIVE_KEY
+      ? (u.stripeCustomerIdLive || (u.stripeCustomerId && u.stripeCustomerId !== u.stripeCustomerIdTest ? u.stripeCustomerId : null))
+      : STRIPE_IS_SANDBOX_KEY
+      ? (u.stripeCustomerIdTest || (u.stripeCustomerId && u.stripeCustomerId !== u.stripeCustomerIdLive ? u.stripeCustomerId : null))
+      : (u.stripeCustomerId || null)),
+    stripeCustomerIdLive: u.stripeCustomerIdLive || null,
+    stripeCustomerIdTest: u.stripeCustomerIdTest || null,
     StripeSubscriptionId: u.stripeSubscriptionId || null,
     stripeSubscriptionId: u.stripeSubscriptionId || null,
     IsTester: isTester,
@@ -3192,7 +3544,8 @@ app.post('/api/account/delete', async (req, res) => {
     }
   }
 
-  // Step 4b: Delete from server user accounts and durable database
+  // Step 4b: Delete from server user accounts, waitlist, and durable database
+  await deleteWaitlistEntryFromDurableDatabase(userId);
   await deleteUserFromDurableDatabase(userId);
 
   // Step 5: Revoke and purge live session cache
@@ -3575,7 +3928,13 @@ app.get('/api/owner/registered-users', async (req, res) => {
       subscriptionStatus: (grantedTesterRecords.has((u.email || '').toLowerCase().trim()) || u.testerAccessGranted === true)
         ? (u.subscriptionStatus === 'canceled' ? 'active' : (u.subscriptionStatus || 'active'))
         : (u.subscriptionStatus || 'none'),
-      stripeCustomerId: u.stripeCustomerId || null,
+      stripeCustomerId: (STRIPE_IS_LIVE_KEY
+        ? (u.stripeCustomerIdLive || (u.stripeCustomerId && u.stripeCustomerId !== u.stripeCustomerIdTest ? u.stripeCustomerId : null))
+        : STRIPE_IS_SANDBOX_KEY
+        ? (u.stripeCustomerIdTest || (u.stripeCustomerId && u.stripeCustomerId !== u.stripeCustomerIdLive ? u.stripeCustomerId : null))
+        : (u.stripeCustomerId || null)),
+      stripeCustomerIdLive: u.stripeCustomerIdLive || null,
+      stripeCustomerIdTest: u.stripeCustomerIdTest || null,
       isTester: Boolean(u.isTester || isTesterAccount(u) || grantedTesterRecords.has((u.email || '').toLowerCase().trim())),
       testerAccessGranted: Boolean(u.testerAccessGranted || grantedTesterRecords.has((u.email || '').toLowerCase().trim())),
       testerAccessGrantedAt: u.testerAccessGrantedAt || grantedTesterRecords.get((u.email || '').toLowerCase().trim())?.grantedAt || null,
@@ -3786,6 +4145,7 @@ app.post('/api/owner/testers', async (req, res) => {
 // API: Stripe Public Configuration & Price Map
 app.get('/api/stripe/config', async (_req, res) => {
   await ensureStripePricesResolved();
+  const webhookConfig = getStripeWebhookSecretConfig();
   res.json({
     success: true,
     isConfigured: Boolean(stripe),
@@ -3797,6 +4157,12 @@ app.get('/api/stripe/config', async (_req, res) => {
     appUrl: APP_URL,
     webhookRoute: STRIPE_WEBHOOK_ROUTE,
     webhookUrl: `${APP_URL}${STRIPE_WEBHOOK_ROUTE}`,
+    webhookRawBodyProtected: true,
+    hasWebhookSecret: webhookConfig.hasSecret,
+    webhookSecretFormatValid: webhookConfig.validFormatCount > 0,
+    serverStartedAt: SERVER_STARTED_AT,
+    premiumPlusPaused: true,
+    premiumPlusPauseMessage: 'Event membership coming soon.',
     prices: {
       premium: {
         id: STRIPE_PRICES.PREMIUM,
@@ -3814,9 +4180,11 @@ app.get('/api/stripe/config', async (_req, res) => {
         amount: 14.99,
         interval: 'month',
         currency: 'USD',
+        pausedForNewPurchases: true,
+        pauseMessage: 'Event membership coming soon.',
         features: [
           'Everything in Premium',
-          'Live Speed Dating (Fri, Sat, Sun at 7:00 PM EST)',
+          'Live Speed Dating',
           '5-Minute Video Rounds',
           'Multi-Night Registration',
           'Round Replays & Skips',
@@ -3826,10 +4194,452 @@ app.get('/api/stripe/config', async (_req, res) => {
   });
 });
 
+// ============================================================================
+// LAUNCH WAITING LIST & FOUNDER-CONFIRMED LAUNCH EVENTS APIs
+// Notice: Zero automated notifications or invitations are dispatched here.
+// ============================================================================
+
+app.get('/api/waitlist/me', (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.json({
+      success: true,
+      authenticated: false,
+      joined: false,
+      entry: null,
+    });
+  }
+  const existing = serverWaitlist.get(authUser.userId);
+  return res.json({
+    success: true,
+    authenticated: true,
+    joined: Boolean(existing),
+    entry: existing
+      ? {
+          userId: existing.userId,
+          joinedAt: existing.joinedAt,
+          updatedAt: existing.updatedAt,
+        }
+      : null,
+  });
+});
+
+app.post('/api/waitlist/join', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({
+      success: false,
+      code: 'UNAUTHORIZED',
+      error: 'Please sign in to join the Event Waiting List.',
+    });
+  }
+
+  const user = serverUsers.get(authUser.userId);
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      code: 'USER_NOT_FOUND',
+      error: 'Member account not found.',
+    });
+  }
+
+  if (bannedUsers.has(user.userId) || bannedUsers.has(user.email.toLowerCase())) {
+    return res.status(403).json({
+      success: false,
+      code: 'ACCOUNT_SUSPENDED',
+      error: 'This account is not eligible to join the waiting list.',
+    });
+  }
+
+  const now = Date.now();
+  const existing = serverWaitlist.get(user.userId);
+  if (existing) {
+    // Save each person's interest once — refresh profile snapshot idempotently without duplicating
+    const refreshed: ServerWaitlistEntry = {
+      ...existing,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName || '',
+      gender: user.gender,
+      interestedIn: user.interestedIn,
+      age: user.age,
+      location: user.location,
+      relationshipIntent: user.relationshipIntent || '',
+      subscriptionTier: user.subscriptionTier,
+      updatedAt: now,
+    };
+    await saveWaitlistEntryToDurableDatabase(refreshed);
+    return res.json({
+      success: true,
+      joined: true,
+      alreadyJoined: true,
+      entry: {
+        userId: refreshed.userId,
+        joinedAt: refreshed.joinedAt,
+        updatedAt: refreshed.updatedAt,
+      },
+      message: "You're already on the Event Waiting List!",
+    });
+  }
+
+  const newEntry: ServerWaitlistEntry = {
+    userId: user.userId,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName || '',
+    gender: user.gender,
+    interestedIn: user.interestedIn,
+    age: user.age,
+    location: user.location,
+    relationshipIntent: user.relationshipIntent || '',
+    subscriptionTier: user.subscriptionTier,
+    joinedAt: now,
+    updatedAt: now,
+  };
+
+  await saveWaitlistEntryToDurableDatabase(newEntry);
+
+  // IMPORTANT: Do not send invitations or notifications yet.
+  return res.json({
+    success: true,
+    joined: true,
+    alreadyJoined: false,
+    entry: {
+      userId: newEntry.userId,
+      joinedAt: newEntry.joinedAt,
+      updatedAt: newEntry.updatedAt,
+    },
+    message: "You're on the Event Waiting List! Your interest has been saved.",
+  });
+});
+
+const handleLeaveWaitlist = async (req: express.Request, res: express.Response) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({
+      success: false,
+      code: 'UNAUTHORIZED',
+      error: 'Please sign in to update your waiting list status.',
+    });
+  }
+
+  const existed = serverWaitlist.has(authUser.userId);
+  await deleteWaitlistEntryFromDurableDatabase(authUser.userId);
+
+  return res.json({
+    success: true,
+    joined: false,
+    removed: existed,
+    message: 'You have left the Event Waiting List.',
+  });
+};
+
+app.post('/api/waitlist/leave', handleLeaveWaitlist);
+app.delete('/api/waitlist', handleLeaveWaitlist);
+
+// Private Founder/Admin-Only Waitlist Review Endpoint
+app.get('/api/owner/waitlist', (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({
+      success: false,
+      code: 'UNAUTHORIZED',
+      error: 'Authentication required.',
+    });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({
+      success: false,
+      code: 'OWNER_ONLY',
+      error: 'Forbidden: Only the Speed Meet Love founder/owner can view the private event waiting list.',
+    });
+  }
+
+  // Enrich each waitlist member with latest server profile details
+  const rawEntries = Array.from(serverWaitlist.values()).map(entry => {
+    const latest = serverUsers.get(entry.userId);
+    return {
+      userId: entry.userId,
+      email: latest?.email || entry.email,
+      firstName: latest?.firstName || entry.firstName,
+      lastName: latest?.lastName || entry.lastName || '',
+      gender: latest?.gender || entry.gender || 'Woman',
+      interestedIn: latest?.interestedIn || entry.interestedIn || 'Men',
+      age: typeof latest?.age === 'number' ? latest.age : entry.age,
+      location: latest?.location || entry.location || '',
+      relationshipIntent: latest?.relationshipIntent || entry.relationshipIntent || '',
+      subscriptionTier: latest?.subscriptionTier || entry.subscriptionTier || 'Free',
+      joinedAt: entry.joinedAt,
+      updatedAt: entry.updatedAt || entry.joinedAt,
+    };
+  });
+
+  // Compute mutual compatibility across waitlist participants
+  let compatiblePairSet = new Set<string>();
+  const enriched = rawEntries.map(member => {
+    const compatibleWithNames: string[] = [];
+    for (const other of rawEntries) {
+      if (other.userId === member.userId) continue;
+      if (areParticipantsCompatible(member, other)) {
+        compatibleWithNames.push(other.firstName || other.email);
+        const pairKey = [member.userId, other.userId].sort().join('::');
+        compatiblePairSet.add(pairKey);
+      }
+    }
+    const fullName = `${member.firstName} ${member.lastName}`.trim() || member.email;
+    return {
+      ...member,
+      fullName,
+      compatibleCount: compatibleWithNames.length,
+      compatibleWithNames,
+    };
+  });
+
+  enriched.sort((a, b) => b.joinedAt - a.joinedAt);
+
+  const summary = {
+    totalWaitlisted: enriched.length,
+    womenSeekingMen: enriched.filter(m => m.gender === 'Woman' && m.interestedIn === 'Men').length,
+    menSeekingWomen: enriched.filter(m => m.gender === 'Man' && m.interestedIn === 'Women').length,
+    lgbtqOrEveryone: enriched.filter(
+      m =>
+        m.gender === 'Non-Binary' ||
+        m.interestedIn === 'Everyone' ||
+        (m.gender === 'Woman' && m.interestedIn === 'Women') ||
+        (m.gender === 'Man' && m.interestedIn === 'Men')
+    ).length,
+    thirtyPlusCount: enriched.filter(m => m.age >= 30).length,
+    compatiblePairsCount: compatiblePairSet.size,
+  };
+
+  return res.json({
+    success: true,
+    entries: enriched,
+    summary,
+  });
+});
+
+// Public Launch Events (Only founder-confirmed manual events; zero auto-recurring events)
+app.get('/api/launch-events', (_req, res) => {
+  const confirmed = Array.from(serverLaunchEvents.values())
+    .filter(evt => evt.Confirmed === true)
+    .sort((a, b) => a.EventDate.localeCompare(b.EventDate) || a.CreatedAt - b.CreatedAt);
+  return res.json({
+    success: true,
+    events: confirmed,
+  });
+});
+
+// Founder/Admin-Only Launch Event Management (draft + confirmed)
+app.get('/api/owner/launch-events', (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required.' });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Owner access only.' });
+  }
+  const all = Array.from(serverLaunchEvents.values()).sort(
+    (a, b) => b.CreatedAt - a.CreatedAt
+  );
+  return res.json({ success: true, events: all });
+});
+
+app.post('/api/owner/launch-events', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required.' });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Only the founder/owner can schedule launch events.' });
+  }
+
+  const body = req.body || {};
+  const eventName = typeof body.EventName === 'string' && body.EventName.trim() ? body.EventName.trim() : '';
+  const eventDate = typeof body.EventDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.EventDate.trim()) ? body.EventDate.trim() : '';
+  if (!eventName || !eventDate) {
+    return res.status(400).json({
+      success: false,
+      error: 'EventName and a valid EventDate (YYYY-MM-DD) are required.',
+    });
+  }
+
+  const dayOfWeek: 'Friday' | 'Saturday' | 'Sunday' =
+    body.DayOfWeek === 'Saturday' || body.DayOfWeek === 'Sunday' ? body.DayOfWeek : 'Friday';
+  const eventType: ServerLaunchEventRecord['EventType'] =
+    ['Straight', 'LGBTQ+', '30 & Older', 'Age-specific', 'Premium-only'].includes(body.EventType)
+      ? body.EventType
+      : 'Straight';
+  const confirmed = Boolean(body.Confirmed);
+  const now = Date.now();
+  const minAge = typeof body.MinAge === 'number' && body.MinAge >= 18 ? body.MinAge : eventType === '30 & Older' ? 30 : 18;
+  const maxAge = typeof body.MaxAge === 'number' && body.MaxAge >= minAge ? body.MaxAge : 65;
+
+  const newEvent: ServerLaunchEventRecord = {
+    EventID: `evt_launch_${now.toString(36)}`,
+    EventName: eventName,
+    DayOfWeek: dayOfWeek,
+    EventDate: eventDate,
+    EventStartTime: typeof body.EventStartTime === 'string' && body.EventStartTime.trim() ? body.EventStartTime.trim() : '19:00',
+    EventEndTime: typeof body.EventEndTime === 'string' && body.EventEndTime.trim() ? body.EventEndTime.trim() : '20:15',
+    TimeZone: typeof body.TimeZone === 'string' && body.TimeZone.trim() ? body.TimeZone.trim() : '7:00 PM Eastern Time (America/New_York)',
+    MaxParticipants: typeof body.MaxParticipants === 'number' && body.MaxParticipants >= 2 ? Math.floor(body.MaxParticipants) : 20,
+    ParticipantsList: [],
+    EventStatus: 'Upcoming',
+    RoundsGenerated: false,
+    HostID: authUser.userId,
+    EventType: eventType,
+    Description:
+      typeof body.Description === 'string' && body.Description.trim()
+        ? body.Description.trim()
+        : 'Inaugural Speed Meet Love live event. Five-minute compatible one-on-one video rounds with up to 2-minute breaks.',
+    TotalRounds: typeof body.TotalRounds === 'number' && body.TotalRounds >= 1 ? Math.floor(body.TotalRounds) : 5,
+    RoundDurationSeconds: 300,
+    BreakDurationSeconds: 120,
+    MinAge: minAge,
+    MaxAge: maxAge,
+    LocationName: typeof body.LocationName === 'string' && body.LocationName.trim() ? body.LocationName.trim() : `Virtual Lounge · ${dayOfWeek} 7:00 PM EST`,
+    Confirmed: confirmed,
+    ConfirmedAt: confirmed ? now : null,
+    IsManualLaunch: true,
+    CreatedAt: now,
+    CreatedBy: authUser.email,
+  };
+
+  await saveLaunchEventToDurableDatabase(newEvent);
+
+  // IMPORTANT: Do not send invitations or notifications when scheduling/confirming yet.
+  return res.json({
+    success: true,
+    event: newEvent,
+    message: confirmed
+      ? `Launch event "${newEvent.EventName}" confirmed and published (no notifications sent).`
+      : `Draft launch event "${newEvent.EventName}" saved privately for owner review.`,
+  });
+});
+
+app.patch('/api/owner/launch-events/:eventId', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required.' });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Owner access only.' });
+  }
+
+  const existing = serverLaunchEvents.get(req.params.eventId);
+  if (!existing) {
+    return res.status(404).json({ success: false, error: 'Launch event not found.' });
+  }
+
+  const body = req.body || {};
+  const nextConfirmed = body.Confirmed !== undefined ? Boolean(body.Confirmed) : existing.Confirmed;
+  const updated: ServerLaunchEventRecord = {
+    ...existing,
+    ...(typeof body.EventName === 'string' && body.EventName.trim() ? { EventName: body.EventName.trim() } : {}),
+    ...(typeof body.EventDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.EventDate.trim()) ? { EventDate: body.EventDate.trim() } : {}),
+    ...(typeof body.EventStartTime === 'string' && body.EventStartTime.trim() ? { EventStartTime: body.EventStartTime.trim() } : {}),
+    ...(typeof body.EventEndTime === 'string' && body.EventEndTime.trim() ? { EventEndTime: body.EventEndTime.trim() } : {}),
+    ...(typeof body.TimeZone === 'string' && body.TimeZone.trim() ? { TimeZone: body.TimeZone.trim() } : {}),
+    ...(body.DayOfWeek === 'Friday' || body.DayOfWeek === 'Saturday' || body.DayOfWeek === 'Sunday' ? { DayOfWeek: body.DayOfWeek } : {}),
+    ...(typeof body.Description === 'string' ? { Description: body.Description.trim() } : {}),
+    ...(typeof body.MaxParticipants === 'number' && body.MaxParticipants >= 2 ? { MaxParticipants: Math.floor(body.MaxParticipants) } : {}),
+    Confirmed: nextConfirmed,
+    ConfirmedAt: nextConfirmed ? (existing.ConfirmedAt || Date.now()) : null,
+  };
+
+  await saveLaunchEventToDurableDatabase(updated);
+
+  // IMPORTANT: Do not send invitations or notifications yet.
+  return res.json({
+    success: true,
+    event: updated,
+    message: nextConfirmed
+      ? `Launch event "${updated.EventName}" confirmed (no notifications sent).`
+      : `Launch event "${updated.EventName}" moved back to private draft.`,
+  });
+});
+
+app.delete('/api/owner/launch-events/:eventId', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required.' });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Owner access only.' });
+  }
+
+  const existed = serverLaunchEvents.has(req.params.eventId);
+  await deleteLaunchEventFromDurableDatabase(req.params.eventId);
+  return res.json({
+    success: true,
+    deleted: existed,
+  });
+});
+
+app.post('/api/launch-events/:eventId/register', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Please sign in to register.' });
+  }
+  const evt = serverLaunchEvents.get(req.params.eventId);
+  if (!evt || !evt.Confirmed) {
+    return res.status(404).json({ success: false, error: 'Confirmed launch event not found.' });
+  }
+  const user = serverUsers.get(authUser.userId);
+  if (!user) {
+    return res.status(404).json({ success: false, error: 'User account not found.' });
+  }
+  const access = hasPaidOrTesterAccess(user, 'Premium Plus');
+  if (!access.allowed) {
+    return res.status(403).json({
+      success: false,
+      code: 'PREMIUM_PLUS_REQUIRED',
+      error: 'Event membership coming soon.',
+    });
+  }
+  if ((evt.EventType === '30 & Older' || evt.MinAge >= 30) && (!user.age || user.age < 30)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Only members aged 30 or older may register for this event.',
+    });
+  }
+  if (evt.ParticipantsList.includes(user.userId)) {
+    return res.json({ success: true, event: evt, alreadyRegistered: true });
+  }
+  if (evt.ParticipantsList.length >= evt.MaxParticipants) {
+    return res.status(400).json({ success: false, error: 'Event is full.' });
+  }
+  const updated: ServerLaunchEventRecord = {
+    ...evt,
+    ParticipantsList: [...evt.ParticipantsList, user.userId],
+  };
+  await saveLaunchEventToDurableDatabase(updated);
+  return res.json({ success: true, event: updated });
+});
+
+app.post('/api/launch-events/:eventId/leave', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required.' });
+  }
+  const evt = serverLaunchEvents.get(req.params.eventId);
+  if (!evt) {
+    return res.json({ success: true });
+  }
+  const updated: ServerLaunchEventRecord = {
+    ...evt,
+    ParticipantsList: evt.ParticipantsList.filter(id => id !== authUser.userId),
+  };
+  await saveLaunchEventToDurableDatabase(updated);
+  return res.json({ success: true, event: updated });
+});
+
 // API: Verify Stripe Prices Against Configured Stripe Account & Mode
 app.get('/api/stripe/verify-prices', async (_req, res) => {
   await ensureStripePricesResolved();
   const expectedAmounts = getStripeExpectedAmounts();
+  const webhookConfig = getStripeWebhookSecretConfig();
   const result: any = {
     success: true,
     allVerified: false,
@@ -3837,9 +4647,15 @@ app.get('/api/stripe/verify-prices', async (_req, res) => {
     isLiveMode: STRIPE_MODE === 'live',
     sandboxMode: STRIPE_MODE === 'sandbox',
     expectedPrices: expectedAmounts,
+    serverStartedAt: SERVER_STARTED_AT,
     stripeConfig: {
       hasSecretKey: Boolean(STRIPE_SECRET_KEY),
-      hasWebhookSecret: Boolean(STRIPE_WEBHOOK_SECRET),
+      hasWebhookSecret: webhookConfig.hasSecret,
+      webhookSecretCount: webhookConfig.secrets.length,
+      webhookSecretFormatValid: webhookConfig.validFormatCount > 0,
+      webhookSecretHadWrapper: webhookConfig.hadWrapper,
+      webhookSecretLooksPlaceholder: webhookConfig.looksPlaceholder,
+      webhookRawBodyProtected: true,
       hasPublishableKey: Boolean(STRIPE_PUBLISHABLE_KEY),
       publishableKeyMisconfigured: Boolean(RAW_STRIPE_PUBLISHABLE_KEY && !STRIPE_PUBLISHABLE_KEY),
       isLiveKey: STRIPE_IS_LIVE_KEY,
@@ -3847,7 +4663,8 @@ app.get('/api/stripe/verify-prices', async (_req, res) => {
     },
     sandboxConfig: {
       hasSecretKey: Boolean(STRIPE_SECRET_KEY),
-      hasWebhookSecret: Boolean(STRIPE_WEBHOOK_SECRET),
+      hasWebhookSecret: webhookConfig.hasSecret,
+      webhookSecretFormatValid: webhookConfig.validFormatCount > 0,
       hasPublishableKey: Boolean(STRIPE_PUBLISHABLE_KEY),
       isLiveKey: STRIPE_IS_LIVE_KEY,
       isSandboxTestKey: STRIPE_IS_SANDBOX_KEY,
@@ -3952,6 +4769,192 @@ app.get('/api/stripe/verify-prices', async (_req, res) => {
   }
 });
 
+// Per-user+mode lock prevents duplicate Stripe customer creation on concurrent clicks/retries
+const inFlightCustomerResolutions = new Map<string, Promise<string | null>>();
+
+function isConfirmedMissingCustomerError(err: any): boolean {
+  if (!err) return false;
+  const type = String(err.type || err.raw?.type || '').toLowerCase();
+  const code = String(err.code || err.raw?.code || '').toLowerCase();
+  const statusCode = err.statusCode || err.raw?.statusCode;
+  const param = String(err.param || err.raw?.param || '').toLowerCase();
+  const msg = String(err.message || err.raw?.message || '').toLowerCase();
+
+  // Only recover on Stripe 400/404 invalid_request_error for missing customer; never on 401/403/429/5xx/network
+  if (statusCode && statusCode !== 400 && statusCode !== 404) return false;
+  if (type && type !== 'invalid_request_error' && type !== 'stripeinvalidrequesterror') return false;
+  if (param && param !== 'customer' && param !== 'id') return false;
+  if (msg.includes('no such price') || msg.includes('no such session')) return false;
+
+  return msg.includes('no such customer') && (!code || code === 'resource_missing');
+}
+
+function getCandidateCustomerIdForCurrentMode(user: ServerUserRecord): string | undefined {
+  if (STRIPE_IS_LIVE_KEY) {
+    if (user.stripeCustomerIdLive) return user.stripeCustomerIdLive;
+    if (user.stripeCustomerId && user.stripeCustomerId !== user.stripeCustomerIdTest) {
+      return user.stripeCustomerId;
+    }
+    return undefined;
+  }
+  if (STRIPE_IS_SANDBOX_KEY) {
+    if (user.stripeCustomerIdTest) return user.stripeCustomerIdTest;
+    if (user.stripeCustomerId && user.stripeCustomerId !== user.stripeCustomerIdLive) {
+      return user.stripeCustomerId;
+    }
+    return undefined;
+  }
+  return user.stripeCustomerId;
+}
+
+async function ensureStripeCustomerForUser(
+  user: ServerUserRecord,
+  options: { createIfMissing: boolean; ignoreCustomerId?: string }
+): Promise<string | null> {
+  if (!stripe) return null;
+
+  const isLiveMode = STRIPE_IS_LIVE_KEY;
+  const modeKey: 'live' | 'test' = isLiveMode ? 'live' : 'test';
+  const lockKey = `${user.userId}:${modeKey}`;
+
+  // Serialize concurrent attempts for the same user+mode so retries reuse the created customer
+  while (inFlightCustomerResolutions.has(lockKey)) {
+    try {
+      await inFlightCustomerResolutions.get(lockKey);
+    } catch {
+      break;
+    }
+  }
+
+  const runResolution = (async (): Promise<string | null> => {
+    const candidateId = getCandidateCustomerIdForCurrentMode(user);
+    let replacedFromId: string | undefined;
+
+    if (candidateId && candidateId !== options.ignoreCustomerId) {
+      try {
+        const retrieved = await stripe.customers.retrieve(candidateId);
+        const isDeleted = Boolean((retrieved as Stripe.DeletedCustomer).deleted);
+        const retrievedLivemode = (retrieved as Stripe.Customer).livemode;
+        const modeMatches =
+          !(STRIPE_IS_LIVE_KEY || STRIPE_IS_SANDBOX_KEY) || retrievedLivemode === isLiveMode;
+
+        if (!isDeleted && modeMatches) {
+          let needsSave = false;
+          if (isLiveMode && user.stripeCustomerIdLive !== candidateId) {
+            user.stripeCustomerIdLive = candidateId;
+            needsSave = true;
+          } else if (!isLiveMode && user.stripeCustomerIdTest !== candidateId) {
+            user.stripeCustomerIdTest = candidateId;
+            needsSave = true;
+          }
+          if (user.stripeCustomerId !== candidateId) {
+            user.stripeCustomerId = candidateId;
+            needsSave = true;
+          }
+          if (needsSave) {
+            await saveUserToDurableDatabase(user);
+          }
+          return candidateId;
+        }
+
+        // Confirmed deleted in current mode or mismatched mode
+        replacedFromId = candidateId;
+        console.warn(
+          `[Stripe Customer] Saved customer ${candidateId} for user ${user.userId} is ${
+            isDeleted ? 'deleted in Stripe' : 'from a different Stripe mode'
+          } (${modeKey}); resolving replacement.`
+        );
+      } catch (err: any) {
+        if (isConfirmedMissingCustomerError(err)) {
+          replacedFromId = candidateId;
+          // Preserve a legacy sandbox/test ID in stripeCustomerIdTest rather than losing it,
+          // while clearing it from the active live field.
+          if (isLiveMode && !user.stripeCustomerIdTest && candidateId === user.stripeCustomerId) {
+            user.stripeCustomerIdTest = candidateId;
+          } else if (!isLiveMode && !user.stripeCustomerIdLive && candidateId === user.stripeCustomerId) {
+            user.stripeCustomerIdLive = candidateId;
+          }
+          console.warn(
+            `[Stripe Customer] Saved customer ${candidateId} for user ${user.userId} is missing in ${modeKey} Stripe account; resolving replacement.`
+          );
+        } else {
+          // Unrelated Stripe error (auth, rate limit, network, server 5xx): never replace saved customer
+          throw err;
+        }
+      }
+    } else if (options.ignoreCustomerId) {
+      replacedFromId = options.ignoreCustomerId;
+    }
+
+    // Look up existing active customer in the current Stripe account & mode by email before creating
+    const existingList = await stripe.customers.list({ email: user.email, limit: 10 });
+    const activeMatches = existingList.data.filter(
+      (c) =>
+        !c.deleted &&
+        c.id !== options.ignoreCustomerId &&
+        (!(STRIPE_IS_LIVE_KEY || STRIPE_IS_SANDBOX_KEY) || c.livemode === isLiveMode)
+    );
+    const matchedCustomer =
+      activeMatches.find((c) => c.metadata?.userId === user.userId) || activeMatches[0];
+
+    let resolvedId: string | null = matchedCustomer?.id || null;
+
+    if (!resolvedId && options.createIfMissing) {
+      const idempotencyBucket = Math.floor(Date.now() / 60000);
+      const idempotencyKey = `cust_${user.userId}_${modeKey}_${replacedFromId || 'init'}_${idempotencyBucket}`;
+      const created = await stripe.customers.create(
+        {
+          email: user.email,
+          name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.firstName,
+          metadata: {
+            userId: user.userId,
+            app: 'Speed Meet Love',
+            mode: modeKey,
+            ...(replacedFromId ? { replacedMissingCustomerId: replacedFromId } : {}),
+          },
+        },
+        { idempotencyKey }
+      );
+      resolvedId = created.id;
+      console.log(
+        `[Stripe Customer] Created ${modeKey} customer ${resolvedId} for user ${user.userId}${
+          replacedFromId ? ` (replaced ${replacedFromId})` : ''
+        }`
+      );
+    }
+
+    if (resolvedId) {
+      if (isLiveMode) {
+        user.stripeCustomerIdLive = resolvedId;
+      } else {
+        user.stripeCustomerIdTest = resolvedId;
+      }
+      user.stripeCustomerId = resolvedId;
+      await saveUserToDurableDatabase(user);
+    } else if (replacedFromId) {
+      // Clear stale missing ID from active mode field so Portal doesn't keep hitting 404
+      if (isLiveMode && user.stripeCustomerIdLive === replacedFromId) {
+        user.stripeCustomerIdLive = undefined;
+      } else if (!isLiveMode && user.stripeCustomerIdTest === replacedFromId) {
+        user.stripeCustomerIdTest = undefined;
+      }
+      if (user.stripeCustomerId === replacedFromId) {
+        user.stripeCustomerId = undefined;
+      }
+      await saveUserToDurableDatabase(user);
+    }
+
+    return resolvedId;
+  })();
+
+  inFlightCustomerResolutions.set(lockKey, runResolution);
+  try {
+    return await runResolution;
+  } finally {
+    inFlightCustomerResolutions.delete(lockKey);
+  }
+}
+
 // API: Authenticated Stripe Checkout Session Creation
 app.post('/api/stripe/create-checkout-session', async (req, res) => {
   const authUser = verifyAuthenticatedUser(req);
@@ -4002,6 +5005,21 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
     });
   }
 
+  // Pause new paid Premium Plus purchases while gathering first launch waitlist members.
+  // Existing subscribers' records, Stripe portal, webhooks, and Premium ($9.99/mo) remain active.
+  if (
+    requestedTier === 'Premium Plus' ||
+    resolvedPriceId === STRIPE_PRICES.PREMIUM_PLUS ||
+    resolvedPriceId === SANDBOX_FALLBACK_PRICES.PREMIUM_PLUS
+  ) {
+    return res.status(403).json({
+      success: false,
+      paused: true,
+      code: 'PREMIUM_PLUS_PAUSED',
+      error: 'Event membership coming soon.',
+    });
+  }
+
   const expectedPlan = getStripeExpectedAmounts()[resolvedPriceId];
 
   if (!stripe) {
@@ -4014,54 +5032,58 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
   }
 
   try {
-    // 1. Ensure or retrieve Stripe customer ID
-    let customerId = user.stripeCustomerId;
+    // 1. Verify or safely create Stripe customer ID for the active Stripe mode (test vs live)
+    let customerId = await ensureStripeCustomerForUser(user, { createIfMissing: true });
     if (!customerId) {
-      // Check if existing customer exists in Stripe with this email
-      const existingList = await stripe.customers.list({ email: user.email, limit: 1 });
-      if (existingList.data.length > 0) {
-        customerId = existingList.data[0].id;
-      } else {
-        const newCustomer = await stripe.customers.create({
-          email: user.email,
-          name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.firstName,
-          metadata: {
-            userId: user.userId,
-            app: 'Speed Meet Love',
-          },
-        });
-        customerId = newCustomer.id;
-      }
-      user.stripeCustomerId = customerId;
-      await saveUserToDurableDatabase(user);
+      throw new Error('Unable to resolve or create Stripe customer for checkout.');
     }
 
     const reqOrigin = req.get('origin');
     const appUrl = (reqOrigin && reqOrigin.includes('localhost') ? reqOrigin : APP_URL).replace(/\/$/, '');
 
-    // 2. Create Stripe Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      customer: customerId,
-      client_reference_id: user.userId,
-      line_items: [{ price: resolvedPriceId, quantity: 1 }],
-      metadata: {
-        userId: user.userId,
-        email: user.email,
-        tier: expectedPlan.tier,
-        priceId: resolvedPriceId,
-      },
-      subscription_data: {
+    const createSessionForCustomer = (targetCustomerId: string) =>
+      stripe.checkout.sessions.create({
+        mode: 'subscription',
+        customer: targetCustomerId,
+        client_reference_id: user.userId,
+        line_items: [{ price: resolvedPriceId, quantity: 1 }],
         metadata: {
           userId: user.userId,
           email: user.email,
           tier: expectedPlan.tier,
           priceId: resolvedPriceId,
         },
-      },
-      success_url: `${appUrl}/pricing?session_id={CHECKOUT_SESSION_ID}&status=success`,
-      cancel_url: `${appUrl}/pricing?canceled=true`,
-    });
+        subscription_data: {
+          metadata: {
+            userId: user.userId,
+            email: user.email,
+            tier: expectedPlan.tier,
+            priceId: resolvedPriceId,
+          },
+        },
+        success_url: `${appUrl}/pricing?session_id={CHECKOUT_SESSION_ID}&status=success`,
+        cancel_url: `${appUrl}/pricing?canceled=true`,
+      });
+
+    // 2. Create Stripe Checkout Session (retry once only if Stripe reports confirmed missing customer)
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await createSessionForCustomer(customerId);
+    } catch (sessionErr: any) {
+      if (isConfirmedMissingCustomerError(sessionErr)) {
+        const replacementId = await ensureStripeCustomerForUser(user, {
+          createIfMissing: true,
+          ignoreCustomerId: customerId,
+        });
+        if (!replacementId) {
+          throw sessionErr;
+        }
+        customerId = replacementId;
+        session = await createSessionForCustomer(customerId);
+      } else {
+        throw sessionErr;
+      }
+    }
 
     return res.json({
       success: true,
@@ -4069,10 +5091,11 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
       sessionId: session.id,
       tier: expectedPlan.tier,
       priceId: resolvedPriceId,
+      customerId,
     });
   } catch (err: any) {
     console.error('[Stripe Checkout Error]', err);
-    return res.status(500).json({
+    return res.status(err?.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500).json({
       success: false,
       code: 'STRIPE_CHECKOUT_FAILED',
       error: err.message || 'Failed to create Stripe Checkout session',
@@ -4105,15 +5128,7 @@ app.post('/api/stripe/create-portal-session', async (req, res) => {
   }
 
   try {
-    let customerId = user.stripeCustomerId;
-    if (!customerId) {
-      const existingList = await stripe.customers.list({ email: user.email, limit: 1 });
-      if (existingList.data.length > 0) {
-        customerId = existingList.data[0].id;
-        user.stripeCustomerId = customerId;
-        await saveUserToDurableDatabase(user);
-      }
-    }
+    const customerId = await ensureStripeCustomerForUser(user, { createIfMissing: false });
 
     if (!customerId) {
       return res.status(400).json({
@@ -4151,14 +5166,20 @@ async function applySubscriptionUpdate(
   priceId: string | undefined,
   status: string,
   currentPeriodEndSeconds?: number,
-  userIdHint?: string
+  userIdHint?: string,
+  isLiveEvent: boolean = STRIPE_IS_LIVE_KEY
 ): Promise<ServerUserRecord | null> {
   let user: ServerUserRecord | undefined;
   if (userIdHint && serverUsers.has(userIdHint)) {
     user = serverUsers.get(userIdHint);
   } else {
     for (const u of serverUsers.values()) {
-      if (u.stripeCustomerId === stripeCustomerId || u.stripeSubscriptionId === stripeSubscriptionId) {
+      if (
+        u.stripeCustomerId === stripeCustomerId ||
+        u.stripeCustomerIdLive === stripeCustomerId ||
+        u.stripeCustomerIdTest === stripeCustomerId ||
+        u.stripeSubscriptionId === stripeSubscriptionId
+      ) {
         user = u;
         break;
       }
@@ -4170,6 +5191,11 @@ async function applySubscriptionUpdate(
     return null;
   }
 
+  if (isLiveEvent) {
+    user.stripeCustomerIdLive = stripeCustomerId;
+  } else {
+    user.stripeCustomerIdTest = stripeCustomerId;
+  }
   user.stripeCustomerId = stripeCustomerId;
   user.stripeSubscriptionId = stripeSubscriptionId;
   user.stripePriceId = priceId || user.stripePriceId;
@@ -4202,31 +5228,86 @@ async function applySubscriptionUpdate(
 }
 
 // API: Signature-Verified Stripe Webhook Receiver
-app.post('/api/stripe/webhook', async (req, res) => {
+app.post([STRIPE_WEBHOOK_ROUTE, `${STRIPE_WEBHOOK_ROUTE}/`], async (req, res) => {
   await ensureStripePricesResolved();
-  const sig = req.headers['stripe-signature'];
+  const rawSigHeader = req.headers['stripe-signature'];
+  const sig = Array.isArray(rawSigHeader) ? rawSigHeader[0] : rawSigHeader;
+  const webhookConfig = getStripeWebhookSecretConfig();
+  const webhookSecrets = webhookConfig.secrets;
   let event: Stripe.Event;
 
+  const rawPayload = Buffer.isBuffer(req.body)
+    ? req.body
+    : Buffer.isBuffer((req as any).rawBody)
+    ? (req as any).rawBody
+    : typeof req.body === 'string'
+    ? req.body
+    : null;
+
   // Signature verification when STRIPE_WEBHOOK_SECRET is set (strictly required in live mode)
-  if (STRIPE_IS_LIVE_KEY && !STRIPE_WEBHOOK_SECRET) {
+  if (STRIPE_IS_LIVE_KEY && webhookSecrets.length === 0) {
     console.error('[Stripe Webhook] Rejected request: STRIPE_WEBHOOK_SECRET is required in live mode.');
     return res.status(500).send('Webhook Error: STRIPE_WEBHOOK_SECRET is not configured for live mode.');
   }
-  if (STRIPE_WEBHOOK_SECRET && stripe) {
+
+  if (webhookSecrets.length > 0 && stripe) {
     if (!sig) {
+      console.error('[Stripe Webhook] Rejected request: Missing stripe-signature header.');
       return res.status(400).send('Webhook Error: Missing stripe-signature header');
     }
-    try {
-      event = stripe.webhooks.constructEvent(req.body, sig as string, STRIPE_WEBHOOK_SECRET);
-    } catch (err: any) {
-      console.error('[Stripe Webhook Signature Verification Failed]:', err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
+
+    if (!rawPayload || rawPayload.length === 0) {
+      console.error('[Stripe Webhook] Rejected request: Raw request body unavailable or empty.', {
+        isBuffer: Buffer.isBuffer(req.body),
+        hasRawBodyBuffer: Buffer.isBuffer((req as any).rawBody),
+        bodyType: typeof req.body,
+        contentType: req.headers['content-type'] || '',
+      });
+      return res.status(400).send('Webhook Error: Missing raw request body for signature verification.');
     }
+
+    let verifiedEvent: Stripe.Event | null = null;
+    let lastVerificationError: any = null;
+
+    for (const candidateSecret of webhookSecrets) {
+      try {
+        verifiedEvent = stripe.webhooks.constructEvent(rawPayload, sig, candidateSecret);
+        break;
+      } catch (err: any) {
+        lastVerificationError = err;
+      }
+    }
+
+    if (!verifiedEvent) {
+      const sigStr = typeof sig === 'string' ? sig : '';
+      const sigParts = sigStr.split(',').map((p) => p.trim());
+      const v1Count = sigParts.filter((p) => p.startsWith('v1=')).length;
+      const hasTimestamp = sigParts.some((p) => /^t=\d+$/.test(p));
+
+      // Safe diagnostics only — never log signing secrets, signature hashes, or PII
+      console.error('[Stripe Webhook Signature Verification Failed]', {
+        reason: lastVerificationError?.message || 'Signature mismatch',
+        isRawBuffer: Buffer.isBuffer(rawPayload),
+        payloadBytes: Buffer.isBuffer(rawPayload) ? rawPayload.length : Buffer.byteLength(rawPayload, 'utf8'),
+        hasStripeSignature: Boolean(sigStr),
+        sigHasTimestamp: hasTimestamp,
+        sigV1Count: v1Count,
+        configuredSecretCount: webhookSecrets.length,
+        webhookSecretFormatValid: webhookConfig.validFormatCount > 0,
+        webhookSecretHadWrapper: webhookConfig.hadWrapper,
+        webhookSecretLooksPlaceholder: webhookConfig.looksPlaceholder,
+        contentType: req.headers['content-type'] || '',
+        requestPath: req.path,
+      });
+      return res.status(400).send(`Webhook Error: ${lastVerificationError?.message || 'Signature verification failed.'}`);
+    }
+
+    event = verifiedEvent;
   } else {
     // In local sandbox / testing without webhook secret:
     try {
-      event = typeof req.body === 'string' || Buffer.isBuffer(req.body)
-        ? JSON.parse(req.body.toString('utf-8'))
+      event = rawPayload
+        ? JSON.parse(rawPayload.toString('utf-8'))
         : req.body;
     } catch (err: any) {
       return res.status(400).send(`Webhook Error: Unable to parse payload: ${err.message}`);
@@ -4235,6 +5316,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
 
   try {
     console.log(`[Stripe Webhook] Processing event: ${event.type}`);
+    const isLiveEvent = typeof event.livemode === 'boolean' ? event.livemode : STRIPE_IS_LIVE_KEY;
 
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -4244,7 +5326,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
         const userIdHint = session.client_reference_id || session.metadata?.userId;
         const priceId = session.metadata?.priceId;
 
-        await applySubscriptionUpdate(customerId, subscriptionId, priceId, 'active', undefined, userIdHint);
+        await applySubscriptionUpdate(customerId, subscriptionId, priceId, 'active', undefined, userIdHint, isLiveEvent);
         break;
       }
 
@@ -4258,7 +5340,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
         const currentPeriodEnd = (subscription as any).current_period_end;
         const userIdHint = subscription.metadata?.userId;
 
-        await applySubscriptionUpdate(customerId, subscriptionId, priceId, status, currentPeriodEnd, userIdHint);
+        await applySubscriptionUpdate(customerId, subscriptionId, priceId, status, currentPeriodEnd, userIdHint, isLiveEvent);
         break;
       }
 
@@ -4268,7 +5350,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
         const subscriptionId = subscription.id;
         const userIdHint = subscription.metadata?.userId;
 
-        await applySubscriptionUpdate(customerId, subscriptionId, undefined, 'canceled', undefined, userIdHint);
+        await applySubscriptionUpdate(customerId, subscriptionId, undefined, 'canceled', undefined, userIdHint, isLiveEvent);
         break;
       }
 
@@ -4691,7 +5773,8 @@ const handleMatchQueue = (req: express.Request, res: express.Response) => {
     });
   }
 
-  // Search queue for an eligible partner who is also ready
+  // Search queue for an eligible AND compatible partner who is also ready
+  const launchEventRecord = serverLaunchEvents.get(eventId);
   let matchedPartner: QueueDater | null = null;
   for (const [candidateId, candidate] of queue.entries()) {
     if (candidateId === userId) continue;
@@ -4705,14 +5788,34 @@ const handleMatchQueue = (req: express.Request, res: express.Response) => {
         break;
       }
     } else {
-      // General speed dating: match compatible consenting dater
-      matchedPartner = candidate;
-      break;
+      // General speed dating: strictly require mutually compatible consenting daters
+      const isCompatible = areParticipantsCompatible(
+        {
+          userId,
+          gender: targetUser?.gender || gender,
+          interestedIn: targetUser?.interestedIn || interestedIn,
+          age: targetUser?.age ?? userAge,
+        },
+        {
+          userId: candidate.userId,
+          gender: serverUsers.get(candidate.userId)?.gender || candidate.gender,
+          interestedIn: serverUsers.get(candidate.userId)?.interestedIn || candidate.interestedIn,
+          age: serverUsers.get(candidate.userId)?.age ?? candidate.userAge,
+        },
+        {
+          eventType: launchEventRecord?.EventType || req.body?.eventType,
+          minAge: launchEventRecord?.MinAge,
+        }
+      );
+      if (isCompatible) {
+        matchedPartner = candidate;
+        break;
+      }
     }
   }
 
   if (matchedPartner) {
-    // Both daters are authenticated, registered, Premium Plus, and mutually ready!
+    // Both daters are authenticated, registered, Premium Plus, compatible, and mutually ready!
     const sortedPair = [userId, matchedPartner.userId].sort().join('_');
     const matchId = `${eventId}_r${roundIndex}_${sortedPair}`;
     const roomName = `sml_${eventId}_r${roundIndex}_${sortedPair}`;
@@ -4764,7 +5867,7 @@ const handleMatchQueue = (req: express.Request, res: express.Response) => {
   return res.json({
     success: true,
     status: 'waiting',
-    message: 'Waiting for partner mutual readiness (round break completion)...',
+    message: 'Waiting for a compatible participant',
   });
 };
 
@@ -4806,7 +5909,7 @@ app.get('/api/events/:eventId/match-status/:userId', (req, res) => {
     success: true,
     status: inQueue ? 'waiting' : 'idle',
     inQueue,
-    message: inQueue ? 'Waiting for partner mutual readiness...' : 'Not in queue',
+    message: inQueue ? 'Waiting for a compatible participant' : 'Not in queue',
   });
 });
 
@@ -5099,13 +6202,52 @@ app.post('/api/livekit/token', async (req, res) => {
       }
     }
 
-    // 6. Security Check: Matching Eligibility
+    // 6. Security Check: Matching Eligibility & Partner Compatibility
     if (!partnerId || partnerId === userId) {
       return res.status(400).json({
         success: false,
         code: 'INVALID_PARTNER',
-        error: 'Matching eligibility error: A valid, distinct speed dating partner is required.',
+        error: 'Waiting for a compatible participant',
       });
+    }
+
+    if (!isStagingEvent) {
+      const eventQueue = liveEventQueues.get(eventId);
+      const qUser = eventQueue?.get(userId);
+      const qPartner = eventQueue?.get(partnerId);
+      const partnerRecord = serverUsers.get(partnerId);
+      const launchEvt = serverLaunchEvents.get(eventId);
+
+      const resolvedUser = targetUser
+        ? { userId: targetUser.userId, gender: targetUser.gender, interestedIn: targetUser.interestedIn, age: targetUser.age }
+        : qUser
+        ? { userId: qUser.userId, gender: qUser.gender, interestedIn: qUser.interestedIn, age: qUser.userAge }
+        : null;
+      const resolvedPartner = partnerRecord
+        ? { userId: partnerRecord.userId, gender: partnerRecord.gender, interestedIn: partnerRecord.interestedIn, age: partnerRecord.age }
+        : qPartner
+        ? { userId: qPartner.userId, gender: qPartner.gender, interestedIn: qPartner.interestedIn, age: qPartner.userAge }
+        : null;
+
+      if (!resolvedUser || !resolvedPartner) {
+        return res.status(403).json({
+          success: false,
+          code: 'INCOMPATIBLE_PARTNER',
+          error: 'Waiting for a compatible participant',
+        });
+      }
+
+      const compatible = areParticipantsCompatible(resolvedUser, resolvedPartner, {
+        eventType: launchEvt?.EventType || eventType,
+        minAge: launchEvt?.MinAge,
+      });
+      if (!compatible) {
+        return res.status(403).json({
+          success: false,
+          code: 'INCOMPATIBLE_PARTNER',
+          error: 'Waiting for a compatible participant',
+        });
+      }
     }
 
     // 7. Security Check: Mutual Explicit Consent

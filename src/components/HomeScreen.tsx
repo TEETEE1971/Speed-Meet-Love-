@@ -15,7 +15,6 @@ import {
   ChevronRight,
   Flame,
   Compass,
-  Zap,
 } from 'lucide-react';
 import { FloatingHearts } from './FloatingHearts';
 import { RainbowHeart } from './RainbowHeart';
@@ -28,7 +27,6 @@ interface HomeScreenProps {
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
   const {
-    events,
     currentUser,
     isAuthenticated,
     openAuthModal,
@@ -38,105 +36,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
     canAccessLiveSpeedDating,
     showNotification,
     isEventLive,
+    waitlistJoined,
+    waitlistLoading,
+    joinWaitlist,
+    leaveWaitlist,
+    confirmedLaunchEvents,
   } = useApp();
 
   const isEligible = currentUser ? canAccessLiveSpeedDating(currentUser) : false;
+  const hasExistingPremiumPlus = currentUser?.SubscriptionTier === 'Premium Plus';
 
-  // Exact 4 upcoming weekend speed-dating events (Requirement: "four upcoming event cards")
-  const primaryFourEvents: SpeedEvent[] = [
-    // 1. Friday Night Sparks (Straight)
-    events.find(e => e.EventID === 'evt_live_now') || {
-      EventID: 'evt_live_now',
-      EventName: 'Friday Night Sparks: Mid-20s to Mid-30s Singles',
-      DayOfWeek: 'Friday',
-      EventDate: '2026-10-30',
-      EventStartTime: '19:00',
-      EventEndTime: '20:15',
-      TimeZone: '7:00 PM Eastern Time (America/New_York)',
-      MaxParticipants: 16,
-      ParticipantsList: ['usr_02', 'usr_03', 'usr_06'],
-      EventStatus: 'Upcoming',
-      RoundsGenerated: false,
-      HostID: 'host_speedmeet_01',
-      EventType: 'Straight',
-      Description: 'Friday night speed dating for Premium Plus members! Rotate through 5-minute one-on-one video rounds with up to 2-minute breaks between dates, progressing automatically when your vote is confirmed saved.',
-      TotalRounds: 5,
-      RoundDurationSeconds: 300,
-      BreakDurationSeconds: 120,
-      MinAge: 25,
-      MaxAge: 35,
-      LocationName: 'Virtual Lounge · Friday 7:00 PM ET',
-    },
-    // 2. Friday Night LGBTQ+ Rainbow Mixer (with Rainbow Heart & Rainbow RSVP button)
-    events.find(e => e.EventID === 'evt_fri_lgbtq') || {
-      EventID: 'evt_fri_lgbtq',
-      EventName: 'Friday Night: LGBTQ+ Rainbow Mixer',
-      DayOfWeek: 'Friday',
-      EventDate: '2026-10-30',
-      EventStartTime: '19:00',
-      EventEndTime: '20:15',
-      TimeZone: '7:00 PM Eastern Time (America/New_York)',
-      MaxParticipants: 20,
-      ParticipantsList: ['usr_07', 'usr_08'],
-      EventStatus: 'Upcoming',
-      RoundsGenerated: false,
-      HostID: 'host_speedmeet_01',
-      EventType: 'LGBTQ+',
-      Description: 'Welcoming Friday 7:00 PM LGBTQ+ speed dating event. Five-minute one-on-one video rounds, private like or pass, and relaxed waiting room in an inclusive space.',
-      TotalRounds: 5,
-      RoundDurationSeconds: 300,
-      BreakDurationSeconds: 120,
-      MinAge: 21,
-      MaxAge: 45,
-      LocationName: 'Virtual Lounge · Friday 7:00 PM ET',
-    },
-    // 3. Friday Night 30 & Older Singles Mixer
-    events.find(e => e.EventID === 'evt_fri_30_older') || {
-      EventID: 'evt_fri_30_older',
-      EventName: 'Friday Night: 30 & Older Singles Mixer',
-      DayOfWeek: 'Friday',
-      EventDate: '2026-10-30',
-      EventStartTime: '19:00',
-      EventEndTime: '20:15',
-      TimeZone: '7:00 PM Eastern Time (America/New_York)',
-      MaxParticipants: 16,
-      ParticipantsList: ['usr_04', 'usr_06', 'usr_09'],
-      EventStatus: 'Upcoming',
-      RoundsGenerated: false,
-      HostID: 'host_speedmeet_01',
-      EventType: '30 & Older',
-      Description: 'Friday 7:00 PM dedicated speed dating reserved exclusively for daters aged 30 and older. 5-minute video rounds with comfortable 2-minute breaks and private ballots.',
-      TotalRounds: 5,
-      RoundDurationSeconds: 300,
-      BreakDurationSeconds: 120,
-      MinAge: 30,
-      MaxAge: 55,
-      LocationName: 'Virtual Lounge · Friday 7:00 PM ET',
-    },
-    // 4. Saturday Night Connections
-    events.find(e => e.EventID === 'evt_sat_creatives') || {
-      EventID: 'evt_sat_creatives',
-      EventName: 'Saturday Night Connections: Tech, Design & Creators',
-      DayOfWeek: 'Saturday',
-      EventDate: '2026-10-31',
-      EventStartTime: '19:00',
-      EventEndTime: '20:15',
-      TimeZone: '7:00 PM Eastern Time (America/New_York)',
-      MaxParticipants: 18,
-      ParticipantsList: ['usr_02', 'usr_03', 'usr_05'],
-      EventStatus: 'Upcoming',
-      RoundsGenerated: false,
-      HostID: 'host_speedmeet_02',
-      EventType: 'Straight',
-      Description: 'Saturday 7:00 PM speed dating for ambitious innovators, creatives, and engineers. Five-minute video rounds with comfortable 2-minute breaks and consent-based waiting room.',
-      TotalRounds: 5,
-      RoundDurationSeconds: 300,
-      BreakDurationSeconds: 120,
-      MinAge: 25,
-      MaxAge: 40,
-      LocationName: 'Virtual Lounge · Saturday 7:00 PM ET',
-    },
-  ];
+  const launchEvents = confirmedLaunchEvents;
 
   const handleRSVP = (evt: SpeedEvent) => {
     if (!currentUser || !isAuthenticated) {
@@ -144,7 +54,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
       return;
     }
     if (!isEligible) {
-      showNotification('Speed dating is exclusive to Premium Plus ($14.99/mo). Upgrade to RSVP!', 'pink');
+      showNotification('Event membership coming soon.', 'pink');
       setCurrentView('pricing');
       return;
     }
@@ -176,12 +86,24 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
       openAuthModal('signin');
       return;
     }
-    const liveOrFirst = primaryFourEvents.find(e => e.EventStatus === 'Live') || primaryFourEvents[0];
+    const liveOrFirst = launchEvents.find(e => isEventLive(e) || e.EventStatus === 'Live') || launchEvents[0];
     if (liveOrFirst) {
       setSelectedEventId(liveOrFirst.EventID);
       setCurrentView('lobby');
     } else {
       setCurrentView('friday');
+    }
+  };
+
+  const handleWaitlistAction = async () => {
+    if (!currentUser || !isAuthenticated) {
+      openAuthModal('signin');
+      return;
+    }
+    if (waitlistJoined) {
+      await leaveWaitlist();
+    } else {
+      await joinWaitlist();
     }
   };
 
@@ -194,7 +116,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
           ========================================================================= */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-white via-[#FFF5F7] to-[#FFE8EC] border-2 border-rose-200 p-6 sm:p-12 lg:p-16 shadow-2xl">
         {/* Animated Floating Hearts */}
-        <FloatingHearts count={12} colors={['red', 'pink', 'rose']} />
+        <FloatingHearts count={12} colors={['turquoise', 'pink', 'red', 'yellow']} />
 
         <div className="relative z-10 max-w-5xl mx-auto text-center space-y-6 sm:space-y-8">
           
@@ -204,27 +126,33 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
           </div>
 
           {/* Schedule Eyebrow Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/95 border border-rose-200 shadow-xs">
-            <span className="flex h-2.5 w-2.5 rounded-full bg-red-600 animate-pulse" />
-            <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-red-600 font-heading">
-              Friday, Saturday & Sunday · 7:00 PM EST
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/95 border border-rose-300 shadow-xs">
+            <span className="flex h-2.5 w-2.5 rounded-full bg-[#B91C1C] animate-pulse" />
+            <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-[#B91C1C] font-heading">
+              {launchEvents.length > 0
+                ? `${launchEvents[0].DayOfWeek}, ${launchEvents[0].EventDate} · 7:00 PM EST`
+                : 'First event date coming soon.'}
             </span>
-            <Sparkles className="w-4 h-4 text-amber-500 fill-amber-400" />
+            <Sparkles className="w-4 h-4 text-[#B45309] fill-amber-400" />
           </div>
 
           {/* Bold Headline: Real People. Real Connections. In Minutes. */}
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-slate-900 font-heading tracking-tight leading-tight">
+          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-[#111827] font-heading tracking-tight leading-tight">
             Real People. Real Connections.{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-rose-600 to-[#FF2E93]">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#B91C1C] via-[#BE123C] to-[#BE185D]">
               In Minutes.
             </span>
           </h1>
 
-          {/* Clean Description */}
-          <p className="text-base sm:text-xl font-semibold text-slate-700 max-w-3xl mx-auto leading-relaxed">
-            Curated 5-minute live video dates every weekend. Rotate through one-on-one conversations,
-            take 2-minute comfort breaks, and unlock mutual matches confidentially.
-          </p>
+          {/* Launch Waiting List Announcement */}
+          <div className="max-w-3xl mx-auto p-4 sm:p-5 rounded-2xl bg-white/95 border-2 border-pink-300 shadow-md space-y-2">
+            <p className="text-sm sm:text-lg font-bold text-[#111827] leading-relaxed">
+              We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined.
+            </p>
+            <p className="text-xs sm:text-sm font-medium text-[#111827] leading-relaxed">
+              Curated 5-minute live video dates with comfortable 2-minute breaks and confidential mutual matching.
+            </p>
+          </div>
 
           {/* OVERLAPPING RECTANGULAR PROFILE PHOTOGRAPHS WITH CENTRAL KRISTY PHOTO */}
           <div className="pt-6 sm:pt-10 pb-10 sm:pb-14 flex flex-col items-center justify-center relative">
@@ -327,55 +255,84 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
             </div>
           </div>
 
-          {/* LARGE "JOIN AN EVENT" BUTTON (Exact Requirement) */}
+          {/* PRIMARY CTAs: Free Join the Event Waiting List + Browse Singles / Join Confirmed Event */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 pt-2">
-            <button
-              onClick={handleJoinAnEventClick}
-              className="btn-glossy-red-pink py-4 sm:py-5 px-10 text-lg sm:text-xl font-black w-full sm:w-auto shadow-2xl cursor-pointer ring-2 ring-white/60 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
-            >
-              <Video className="w-6 h-6 mr-1" />
-              <span>Join an Event</span>
-              <ArrowRight className="w-5 h-5 ml-1" />
-            </button>
+            {isAuthenticated && waitlistJoined ? (
+              <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+                <div className="py-3.5 px-6 rounded-full bg-emerald-50 border-2 border-emerald-400 text-[#065F46] font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-md w-full sm:w-auto">
+                  <CheckCircle className="w-5 h-5 text-[#047857] shrink-0" />
+                  <span>You’re on the Event Waiting List</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={waitlistLoading}
+                  onClick={handleWaitlistAction}
+                  className="py-3.5 px-6 rounded-full bg-white hover:bg-rose-50 text-[#BE123C] font-bold text-sm border-2 border-rose-300 shadow-sm transition-all cursor-pointer disabled:opacity-60 w-full sm:w-auto"
+                >
+                  {waitlistLoading ? 'Updating...' : 'Leave Waiting List'}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={waitlistLoading}
+                onClick={handleWaitlistAction}
+                className="btn-glossy-red-pink py-4 sm:py-5 px-9 text-base sm:text-lg font-black w-full sm:w-auto shadow-2xl cursor-pointer ring-2 ring-white/60 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                <Sparkles className="w-5 h-5" />
+                <span>{waitlistLoading ? 'Saving...' : 'Join the Event Waiting List'}</span>
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            )}
+
+            {launchEvents.length > 0 && (
+              <button
+                onClick={handleJoinAnEventClick}
+                className="w-full sm:w-auto py-4 sm:py-5 px-8 rounded-full bg-white hover:bg-rose-50 text-[#B91C1C] font-extrabold text-base border-2 border-rose-300 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Video className="w-5 h-5 text-[#B91C1C]" />
+                <span>Join Launch Event</span>
+              </button>
+            )}
 
             <button
               onClick={() => (onSelectView ? onSelectView('grid') : setCurrentView('browse'))}
-              className="w-full sm:w-auto py-4 sm:py-5 px-8 rounded-full bg-white hover:bg-rose-50 text-slate-900 hover:text-red-600 font-extrabold text-base border-2 border-rose-200 hover:border-red-500 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+              className="w-full sm:w-auto py-4 sm:py-5 px-8 rounded-full bg-white hover:bg-rose-50 text-[#111827] hover:text-[#B91C1C] font-extrabold text-base border-2 border-rose-200 hover:border-red-500 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
             >
-              <Compass className="w-5 h-5 text-red-600" />
+              <Compass className="w-5 h-5 text-[#B91C1C]" />
               <span>Browse Singles</span>
             </button>
           </div>
 
           {/* Three Core Speed-Dating Rules */}
-          <div className="pt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+          <div className="relative z-20 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
             <div className="p-4 rounded-2xl bg-white border border-rose-200 shadow-sm flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-red-50 text-[#B91C1C] flex items-center justify-center shrink-0">
                 <Clock className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs font-black text-slate-900 font-heading">5-Minute Video Rounds</p>
-                <p className="text-[11px] text-slate-600 font-semibold">Server-controlled countdown</p>
+                <p className="text-xs font-bold text-[#111827] font-heading">5-Minute Video Rounds</p>
+                <p className="text-[11px] text-[#111827] font-medium">Server-controlled countdown</p>
               </div>
             </div>
 
             <div className="p-4 rounded-2xl bg-white border border-rose-200 shadow-sm flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-pink-50 text-[#FF2E93] flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-pink-50 text-[#BE185D] flex items-center justify-center shrink-0">
                 <Heart className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs font-black text-slate-900 font-heading">2-Minute Breaks</p>
-                <p className="text-[11px] text-slate-600 font-semibold">Mutual readiness consent</p>
+                <p className="text-xs font-bold text-[#111827] font-heading">2-Minute Breaks</p>
+                <p className="text-[11px] text-[#111827] font-medium">Mutual readiness consent</p>
               </div>
             </div>
 
             <div className="p-4 rounded-2xl bg-white border border-rose-200 shadow-sm flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-[#BE123C] flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs font-black text-slate-900 font-heading">Confidential Voting</p>
-                <p className="text-[11px] text-slate-600 font-semibold">Mutual-like reveals only</p>
+                <p className="text-xs font-bold text-[#111827] font-heading">Confidential Voting</p>
+                <p className="text-[11px] text-[#111827] font-medium">Mutual-like reveals only</p>
               </div>
             </div>
           </div>
@@ -384,167 +341,210 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
       </section>
 
       {/* =========================================================================
-          FOUR UPCOMING SPEED DATING EVENT CARDS (Exact Requirement)
-          Featuring Rainbow LGBTQ+ Heart and Rainbow RSVP Button
+          LAUNCH SPEED DATING STATUS / CONFIRMED LAUNCH EVENTS
           ========================================================================= */}
       <section className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-red-600 font-heading">
-              <Heart className="w-4 h-4 text-red-600 fill-red-600" />
-              <span>Live Speed Dating Schedule</span>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#B91C1C] font-heading">
+              <Heart className="w-4 h-4 text-[#B91C1C] fill-[#B91C1C]" />
+              <span>Launch Event Schedule</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 font-heading tracking-tight mt-0.5">
-              Upcoming Speed Dating Events
+            <h2 className="text-2xl sm:text-3xl font-bold text-[#111827] font-heading tracking-tight mt-0.5">
+              {launchEvents.length > 0 ? 'Confirmed Launch Event' : 'First event date coming soon.'}
             </h2>
-            <p className="text-xs sm:text-sm font-semibold text-slate-700 mt-0.5">
-              Five-minute live video rounds, up to two-minute breaks, and confidential mutual matching.
+            <p className="text-xs sm:text-sm font-medium text-[#111827] mt-0.5">
+              We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined.
             </p>
           </div>
 
           <button
             onClick={() => setCurrentView('friday')}
-            className="self-start sm:self-auto text-xs font-extrabold text-red-600 hover:text-red-700 flex items-center gap-1 hover:underline cursor-pointer"
+            className="self-start sm:self-auto text-xs font-bold text-[#B91C1C] hover:text-red-800 flex items-center gap-1 hover:underline cursor-pointer"
           >
-            <span>View Full Weekend Calendar</span>
+            <span>View Events &amp; Waiting List</span>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
-        {/* EXACT FOUR UPCOMING EVENT CARDS GRID (2x2 on desktop, stacked on mobile) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {primaryFourEvents.map(evt => {
-            const isUserRegistered = currentUser ? evt.ParticipantsList.includes(currentUser.UserID) : false;
-            const isLGBTQ = evt.EventType === 'LGBTQ+';
-            const isLive = isEventLive(evt) || evt.EventStatus === 'Live';
+        {launchEvents.length === 0 ? (
+          <div className="rounded-3xl bg-white border-2 border-rose-200 p-7 sm:p-10 shadow-lg text-center space-y-5">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-pink-50 border border-pink-200 flex items-center justify-center text-[#BE185D]">
+              <Calendar className="w-8 h-8" />
+            </div>
+            <div className="space-y-2 max-w-xl mx-auto">
+              <h3 className="text-xl sm:text-2xl font-bold text-[#111827] font-heading">
+                First event date coming soon.
+              </h3>
+              <p className="text-sm font-medium text-[#111827] leading-relaxed">
+                We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
+              {isAuthenticated && waitlistJoined ? (
+                <>
+                  <span className="px-5 py-3 rounded-full bg-emerald-50 border border-emerald-300 text-[#065F46] font-bold text-xs sm:text-sm flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-[#047857]" />
+                    On the Event Waiting List (Free)
+                  </span>
+                  <button
+                    type="button"
+                    disabled={waitlistLoading}
+                    onClick={handleWaitlistAction}
+                    className="px-5 py-3 rounded-full bg-white hover:bg-rose-50 text-[#BE123C] border border-rose-300 font-bold text-xs sm:text-sm cursor-pointer disabled:opacity-60"
+                  >
+                    Leave Waiting List
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={waitlistLoading}
+                  onClick={handleWaitlistAction}
+                  className="btn-glossy-red-pink py-3.5 px-8 text-sm font-black cursor-pointer flex items-center justify-center gap-2 shadow-lg disabled:opacity-60"
+                >
+                  <Heart className="w-4 h-4 fill-white text-white" />
+                  <span>Join the Event Waiting List</span>
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {launchEvents.map(evt => {
+              const isUserRegistered = currentUser ? evt.ParticipantsList.includes(currentUser.UserID) : false;
+              const isLGBTQ = evt.EventType === 'LGBTQ+';
+              const isLive = isEventLive(evt) || evt.EventStatus === 'Live';
 
-            return (
-              <div
-                key={evt.EventID}
-                className={`rounded-3xl bg-white border-2 p-6 sm:p-7 shadow-lg hover:shadow-xl transition-all flex flex-col justify-between relative overflow-hidden ${
-                  isLGBTQ
-                    ? 'border-purple-200 hover:border-purple-400'
-                    : 'border-rose-100 hover:border-red-300'
-                }`}
-              >
-                <div>
-                  {/* Top Badge Strip */}
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
-                      {isLGBTQ ? (
-                        /* Rainbow LGBTQ+ Heart and Label (Requirement) */
-                        <span className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1 rounded-full bg-gradient-to-r from-red-500/10 via-emerald-500/10 to-purple-500/10 text-purple-900 border border-purple-200">
-                          <RainbowHeart size={16} />
-                          <span>LGBTQ+</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1 rounded-full bg-rose-50 text-red-600 border border-rose-200">
-                          <Heart className="w-3.5 h-3.5 text-red-600 fill-red-600" />
-                          <span>{evt.EventType}</span>
-                        </span>
-                      )}
+              return (
+                <div
+                  key={evt.EventID}
+                  className={`rounded-3xl bg-white border-2 p-6 sm:p-7 shadow-lg hover:shadow-xl transition-all flex flex-col justify-between relative overflow-hidden ${
+                    isLGBTQ
+                      ? 'border-purple-200 hover:border-purple-400'
+                      : 'border-rose-100 hover:border-red-300'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        {isLGBTQ ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1 rounded-full bg-gradient-to-r from-red-500/10 via-emerald-500/10 to-purple-500/10 text-purple-900 border border-purple-200">
+                            <RainbowHeart size={16} />
+                            <span>LGBTQ+</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200">
+                            <Heart className="w-3.5 h-3.5 text-[#B91C1C] fill-[#B91C1C]" />
+                            <span>{evt.EventType}</span>
+                          </span>
+                        )}
 
-                      {isLive && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-0.5 rounded-full bg-red-600 text-white animate-pulse">
-                          ● LIVE NOW
-                        </span>
-                      )}
+                        {isLive && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-red-600 text-white animate-pulse">
+                            ● LIVE NOW
+                          </span>
+                        )}
+                      </div>
+
+                      <span className="text-xs font-bold font-mono text-[#111827] bg-slate-100 px-2.5 py-1 rounded-xl">
+                        {evt.DayOfWeek} 7:00 PM EST
+                      </span>
                     </div>
 
-                    <span className="text-xs font-black font-mono text-slate-800 bg-slate-100 px-2.5 py-1 rounded-xl">
-                      {evt.DayOfWeek} 7:00 PM EST
-                    </span>
+                    <h3 className="text-lg sm:text-xl font-bold text-[#111827] font-heading leading-snug">
+                      {evt.EventName}
+                    </h3>
+
+                    <p className="text-xs sm:text-sm font-medium text-[#111827] mt-2 line-clamp-2 leading-relaxed">
+                      {evt.Description}
+                    </p>
+
+                    <div className="mt-4 space-y-2 text-xs font-semibold text-[#111827] bg-rose-50/70 p-3.5 rounded-2xl border border-rose-200">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-[#B91C1C]" />
+                          <span>{evt.EventDate}</span>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-[#B91C1C]" />
+                          <span>{evt.TimeZone}</span>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1.5 border-t border-rose-200">
+                        <span className="flex items-center gap-1.5">
+                          <Video className="w-3.5 h-3.5 text-[#B91C1C]" />
+                          <span>5-Min Rounds · 2-Min Breaks</span>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-[#B91C1C]" />
+                          <span>{evt.ParticipantsList.length} / {evt.MaxParticipants} Registered</span>
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Title & Description */}
-                  <h3 className="text-lg sm:text-xl font-black text-slate-900 font-heading leading-snug">
-                    {evt.EventName}
-                  </h3>
-
-                  <p className="text-xs sm:text-sm font-medium text-slate-700 mt-2 line-clamp-2 leading-relaxed">
-                    {evt.Description}
-                  </p>
-
-                  {/* Event Details: Date, Time, 5-Min Rounds */}
-                  <div className="mt-4 space-y-2 text-xs font-bold text-slate-800 bg-rose-50/70 p-3.5 rounded-2xl border border-rose-100">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-red-600" />
-                        <span>{evt.EventDate}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-red-600" />
-                        <span>7:00 PM Eastern Time</span>
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1.5 border-t border-rose-100">
-                      <span className="flex items-center gap-1.5">
-                        <Video className="w-3.5 h-3.5 text-red-600" />
-                        <span>5-Min Rounds · 2-Min Breaks</span>
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-red-600" />
-                        <span>{evt.ParticipantsList.length} / {evt.MaxParticipants} Registered</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action / RSVP Buttons */}
-                <div className="mt-6 pt-3 border-t border-rose-100">
-                  {isUserRegistered ? (
-                    <div className="flex items-center gap-2">
+                  <div className="mt-6 pt-3 border-t border-rose-100">
+                    {isUserRegistered ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleEnterEventLobby(evt)}
+                          className="btn-glossy-red-pink py-3 px-4 text-xs sm:text-sm font-black flex-1 cursor-pointer"
+                        >
+                          <Video className="w-4 h-4 mr-1.5" />
+                          <span>Enter Dating Lobby</span>
+                        </button>
+                        <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-3 py-2.5 rounded-2xl border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle className="w-3.5 h-3.5" /> RSVP Confirmed
+                        </span>
+                      </div>
+                    ) : !isEligible ? (
                       <button
-                        onClick={() => handleEnterEventLobby(evt)}
-                        className="btn-glossy-red-pink py-3 px-4 text-xs sm:text-sm font-black flex-1 cursor-pointer"
+                        type="button"
+                        onClick={handleWaitlistAction}
+                        className="w-full py-3.5 px-6 rounded-full bg-amber-50 border-2 border-amber-300 text-[#78350F] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer"
                       >
-                        <Video className="w-4 h-4 mr-1.5" />
-                        <span>Enter Dating Lobby</span>
+                        <Lock className="w-4 h-4 text-[#B45309]" />
+                        <span>Event membership coming soon. · Join the Event Waiting List</span>
                       </button>
-                      <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-3 py-2.5 rounded-2xl border border-emerald-200 flex items-center gap-1">
-                        <CheckCircle className="w-3.5 h-3.5" /> RSVP Confirmed
-                      </span>
-                    </div>
-                  ) : isLGBTQ ? (
-                    /* Rainbow LGBTQ+ RSVP Button (Requirement) */
-                    <button
-                      onClick={() => handleRSVP(evt)}
-                      className="btn-glossy-rainbow py-3.5 px-6 text-sm font-black w-full cursor-pointer flex items-center justify-center gap-2 shadow-lg"
-                    >
-                      <RainbowHeart size={18} />
-                      <span>RSVP for LGBTQ+ Mixer</span>
-                    </button>
-                  ) : (
-                    /* Glossy Red-to-Pink RSVP Button (Requirement) */
-                    <button
-                      onClick={() => handleRSVP(evt)}
-                      className="btn-glossy-red-pink py-3.5 px-6 text-sm font-black w-full cursor-pointer flex items-center justify-center gap-2 shadow-lg"
-                    >
-                      <Heart className="w-4 h-4 fill-white text-white" />
-                      <span>RSVP for Speed Dating</span>
-                    </button>
-                  )}
+                    ) : isLGBTQ ? (
+                      <button
+                        onClick={() => handleRSVP(evt)}
+                        className="btn-glossy-rainbow py-3.5 px-6 text-sm font-black w-full cursor-pointer flex items-center justify-center gap-2 shadow-lg"
+                      >
+                        <RainbowHeart size={18} />
+                        <span>RSVP for LGBTQ+ Mixer</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleRSVP(evt)}
+                        className="btn-glossy-red-pink py-3.5 px-6 text-sm font-black w-full cursor-pointer flex items-center justify-center gap-2 shadow-lg"
+                      >
+                        <Heart className="w-4 h-4 fill-white text-white" />
+                        <span>RSVP for Launch Event</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* =========================================================================
-          RED-AND-PINK "JOIN THE FUN!" PROMOTIONAL BANNER (Exact Requirement)
-          With Floating Hearts and Transparent Membership Info
+          RED-AND-PINK "JOIN THE FUN!" PROMOTIONAL BANNER
           ========================================================================= */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-red-600 via-rose-500 to-[#FF2E93] text-white p-6 sm:p-10 lg:p-12 shadow-2xl border-2 border-rose-300">
         {/* Floating Hearts in Banner */}
-        <FloatingHearts count={10} colors={['white', 'pink', 'rose']} />
+        <FloatingHearts count={10} colors={['turquoise', 'pink', 'red', 'yellow']} />
 
         <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-6 sm:gap-8">
           <div className="space-y-3 text-center lg:text-left max-w-2xl">
             <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-white/20 backdrop-blur-md text-white text-xs font-black uppercase tracking-wider border border-white/30">
               <Flame className="w-4 h-4 text-amber-300 fill-amber-300" />
-              <span>Weekend Speed Dating Passes</span>
+              <span>Founding Member Launch List</span>
             </div>
 
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white font-heading tracking-tight">
@@ -552,33 +552,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
             </h2>
 
             <p className="text-sm sm:text-base font-semibold text-rose-50 leading-relaxed">
-              Every Friday, Saturday, and Sunday at 7:00 PM EST. Get matched into curated 5-minute video
-              dates, submit confidential ballots, and unlock messaging with mutual sparks!
+              We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined. Save your free spot on the waiting list today.
             </p>
 
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 pt-2 text-xs font-bold text-white">
-              <span className="px-3 py-1.5 rounded-xl bg-black/20 backdrop-blur-xs">Free ($0) Browse</span>
+              <span className="px-3 py-1.5 rounded-xl bg-black/20 backdrop-blur-xs">Free ($0) Browse &amp; Waiting List</span>
               <span>·</span>
               <span className="px-3 py-1.5 rounded-xl bg-black/20 backdrop-blur-xs">Premium ($9.99/mo) Chat</span>
               <span>·</span>
               <span className="px-3 py-1.5 rounded-xl bg-white text-red-600 font-black shadow-sm">
-                Premium Plus ($14.99/mo) Live Video Speed Dating
+                Event membership coming soon.
               </span>
             </div>
           </div>
 
           <div className="shrink-0 flex flex-col sm:flex-row lg:flex-col gap-3 w-full sm:w-auto">
+            {hasExistingPremiumPlus ? (
+              <button
+                onClick={() => setCurrentView('pricing')}
+                className="py-4 px-8 rounded-full bg-white hover:bg-rose-50 text-red-600 font-black text-base shadow-xl transition-all cursor-pointer text-center"
+              >
+                Premium Plus Active
+              </button>
+            ) : (
+              <button
+                onClick={() => setCurrentView('pricing')}
+                className="py-4 px-7 rounded-full bg-white hover:bg-rose-50 text-[#9D174D] font-black text-sm sm:text-base shadow-xl transition-all cursor-pointer text-center"
+              >
+                Event membership coming soon.
+              </button>
+            )}
             <button
-              onClick={() => setCurrentView('pricing')}
-              className="py-4 px-8 rounded-full bg-white hover:bg-rose-50 text-red-600 hover:text-red-700 font-black text-base shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer text-center"
-            >
-              Get Premium Plus ($14.99)
-            </button>
-            <button
-              onClick={() => setCurrentView('friday')}
+              onClick={handleWaitlistAction}
               className="py-3.5 px-6 rounded-full bg-white/15 hover:bg-white/25 text-white font-bold text-xs sm:text-sm border border-white/40 backdrop-blur-md transition-all cursor-pointer text-center"
             >
-              View Full Weekend Schedule
+              {waitlistJoined ? 'On Waiting List (Leave)' : 'Join the Event Waiting List'}
             </button>
           </div>
         </div>

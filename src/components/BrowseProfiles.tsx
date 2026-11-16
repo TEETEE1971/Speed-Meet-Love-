@@ -330,14 +330,14 @@ export const BrowseProfiles: React.FC = () => {
       <div className="p-5 sm:p-6 rounded-3xl bg-white border-2 border-rose-100 shadow-md space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <span className="text-xs font-black uppercase tracking-wider text-red-600 flex items-center gap-1.5 font-heading">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+            <span className="text-xs font-bold uppercase tracking-wider text-[#B91C1C] flex items-center gap-1.5 font-heading">
+              <Sparkles className="w-3.5 h-3.5 text-[#B45309] fill-amber-400" />
               Discover & Connect
             </span>
-            <h1 className="text-2xl font-black text-slate-900 font-heading mt-0.5">
+            <h1 className="text-2xl font-bold text-[#111827] font-heading mt-0.5">
               Browse Dating Profiles
             </h1>
-            <p className="text-xs font-semibold text-slate-600 mt-0.5">
+            <p className="text-xs font-medium text-[#111827] mt-0.5">
               Explore single members. Like to find mutual sparks and unlock confidential mutual matches!
             </p>
           </div>
@@ -346,13 +346,13 @@ export const BrowseProfiles: React.FC = () => {
             {/* FIND MY MATCH BUTTON (Prominent Red-to-Hot-Pink Gradient Button) */}
             <button
               onClick={() => setIsFilterModalOpen(true)}
-              className="btn-glossy-red-pink py-2.5 px-5 rounded-2xl font-black text-xs text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2 ring-2 ring-rose-200"
+              className="btn-glossy-red-pink py-2.5 px-5 rounded-2xl font-bold text-xs text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2 ring-2 ring-rose-200"
               title="Open search and matching filters"
             >
               <SlidersHorizontal className="w-4 h-4 text-white" />
               <span>Find My Match</span>
               {activeChips.length > 0 && (
-                <span className="ml-1 w-5 h-5 rounded-full bg-white text-red-600 text-[10px] font-black flex items-center justify-center shadow-xs">
+                <span className="ml-1 w-5 h-5 rounded-full bg-white text-[#B91C1C] text-[10px] font-bold flex items-center justify-center shadow-xs">
                   {activeChips.length}
                 </span>
               )}
@@ -362,26 +362,26 @@ export const BrowseProfiles: React.FC = () => {
             <div className="flex items-center p-1 bg-rose-50 rounded-2xl border border-rose-200 text-xs font-bold">
               <button
                 onClick={() => setCurrentView('home')}
-                className="px-3 py-1.5 rounded-xl font-bold transition-all text-slate-700 hover:text-slate-950 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl font-bold transition-all text-[#111827] hover:text-[#B91C1C] cursor-pointer"
               >
                 🌟 Home
               </button>
               <button
                 onClick={() => setViewStyle('card')}
-                className={`px-3 py-1.5 rounded-xl font-black transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
                   viewStyle === 'card'
                     ? 'btn-glossy-red-pink text-white shadow-xs'
-                    : 'text-slate-700 hover:text-slate-950'
+                    : 'text-[#111827] hover:text-[#B91C1C]'
                 }`}
               >
                 Swipe Card
               </button>
               <button
                 onClick={() => setViewStyle('grid')}
-                className={`px-3 py-1.5 rounded-xl font-black transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
                   viewStyle === 'grid'
                     ? 'btn-glossy-red-pink text-white shadow-xs'
-                    : 'text-slate-700 hover:text-slate-950'
+                    : 'text-[#111827] hover:text-[#B91C1C]'
                 }`}
               >
                 All Profiles ({candidates.length})
@@ -394,7 +394,7 @@ export const BrowseProfiles: React.FC = () => {
         <div className="pt-3 border-t border-rose-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Gender Filter Buttons */}
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-slate-500 mr-1">Showing:</span>
+            <span className="text-xs font-bold text-[#111827] mr-1">Showing:</span>
             {['All', 'Women', 'Men'].map(g => (
               <button
                 key={g}
@@ -405,7 +405,7 @@ export const BrowseProfiles: React.FC = () => {
                 className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer ${
                   filterGender === g
                     ? 'bg-red-600 text-white shadow-xs'
-                    : 'bg-rose-50/80 text-slate-700 hover:bg-rose-100 border border-rose-200'
+                    : 'bg-rose-50/80 text-[#111827] hover:bg-rose-100 border border-rose-200'
                 }`}
               >
                 {g}
@@ -415,13 +415,13 @@ export const BrowseProfiles: React.FC = () => {
 
           {/* Matches count & clear filter shortcut */}
           <div className="flex items-center gap-2 text-xs">
-            <span className="font-bold text-slate-700">
-              <span className="text-red-600 font-black">{candidates.length}</span> singles match filters
+            <span className="font-semibold text-[#111827]">
+              <span className="text-[#B91C1C] font-bold">{candidates.length}</span> singles match filters
             </span>
             {activeChips.length > 0 && (
               <button
                 onClick={handleResetDefaults}
-                className="text-red-600 hover:underline font-bold ml-2 cursor-pointer flex items-center gap-1"
+                className="text-[#B91C1C] hover:underline font-bold ml-2 cursor-pointer flex items-center gap-1"
                 title="Reset to 30-55 and 50 miles"
               >
                 <RotateCcw className="w-3 h-3" /> Reset
@@ -433,19 +433,19 @@ export const BrowseProfiles: React.FC = () => {
         {/* Active Filter Chips with Quick Dismiss (X) */}
         {activeChips.length > 0 && (
           <div className="pt-2 flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+            <span className="text-[11px] font-bold text-[#111827] uppercase tracking-wider mr-1">
               Active Filters:
             </span>
             {activeChips.map(chip => (
               <span
                 key={chip.key + chip.label}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-300 text-[#9F1239] text-xs font-bold shadow-2xs"
               >
                 {chip.label}
                 <button
                   type="button"
                   onClick={() => removeSingleFilter(chip.key)}
-                  className="w-4 h-4 rounded-full hover:bg-rose-200/80 text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
+                  className="w-4 h-4 rounded-full hover:bg-rose-200/80 text-[#BE123C] flex items-center justify-center transition-colors cursor-pointer"
                   title={`Remove ${chip.label}`}
                 >
                   <X className="w-2.5 h-2.5 stroke-[3]" />
@@ -454,7 +454,7 @@ export const BrowseProfiles: React.FC = () => {
             ))}
             <button
               onClick={handleClearAll}
-              className="text-xs font-bold text-slate-500 hover:text-slate-800 hover:underline ml-1 cursor-pointer"
+              className="text-xs font-bold text-[#111827] hover:underline ml-1 cursor-pointer"
             >
               Clear All
             </button>
@@ -464,15 +464,15 @@ export const BrowseProfiles: React.FC = () => {
 
       {/* Candidates Display: Empty State OR Swipe Card OR Grid */}
       {candidates.length === 0 ? (
-        <div className="p-10 sm:p-14 rounded-3xl bg-white border-2 border-rose-100 shadow-md text-center space-y-4">
-          <div className="w-16 h-16 rounded-full bg-rose-50 mx-auto flex items-center justify-center text-red-500 border border-rose-100 shadow-xs">
+        <div className="p-10 sm:p-14 rounded-3xl bg-white border-2 border-rose-200 shadow-md text-center space-y-4">
+          <div className="w-16 h-16 rounded-full bg-rose-50 mx-auto flex items-center justify-center text-[#BE123C] border border-rose-200 shadow-xs">
             <Heart className="w-8 h-8" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-xl font-black text-slate-900 font-heading">
+            <h3 className="text-xl font-bold text-[#111827] font-heading">
               No profiles match your filters
             </h3>
-            <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
+            <p className="text-xs text-[#111827] font-medium max-w-md mx-auto leading-relaxed">
               We couldn't find registered singles matching every one of your chosen criteria.
               Try widening your age range, increasing distance, or resetting to demonstration defaults.
             </p>
@@ -480,20 +480,20 @@ export const BrowseProfiles: React.FC = () => {
           <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
             <button
               onClick={() => setIsFilterModalOpen(true)}
-              className="px-5 py-2.5 rounded-2xl btn-glossy-red-pink text-white font-black text-xs shadow-md cursor-pointer flex items-center gap-1.5"
+              className="px-5 py-2.5 rounded-2xl btn-glossy-red-pink text-white font-bold text-xs shadow-md cursor-pointer flex items-center gap-1.5"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-white" />
               Adjust Filters
             </button>
             <button
               onClick={handleResetDefaults}
-              className="px-5 py-2.5 rounded-2xl bg-white border-2 border-rose-200 hover:bg-rose-50 text-slate-800 font-bold text-xs transition-colors cursor-pointer"
+              className="px-5 py-2.5 rounded-2xl bg-white border-2 border-rose-300 hover:bg-rose-50 text-[#111827] font-bold text-xs transition-colors cursor-pointer"
             >
               Reset to Demo Defaults (30–55)
             </button>
             <button
               onClick={handleClearAll}
-              className="px-5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+              className="px-5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 font-bold text-xs transition-colors cursor-pointer"
             >
               Show All Singles
             </button>
@@ -521,14 +521,14 @@ export const BrowseProfiles: React.FC = () => {
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => handleBlock(activeProfile)}
-                    className="p-1.5 rounded-lg bg-white/80 hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                    className="p-1.5 rounded-lg bg-white/90 hover:bg-rose-50 text-[#111827] hover:text-[#BE123C] transition-colors cursor-pointer"
                     title="Block member"
                   >
                     <Ban className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleReport(activeProfile)}
-                    className="p-1.5 rounded-lg bg-white/80 hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                    className="p-1.5 rounded-lg bg-white/90 hover:bg-rose-50 text-[#111827] hover:text-[#BE123C] transition-colors cursor-pointer"
                     title="Report member"
                   >
                     <ShieldAlert className="w-4 h-4" />
@@ -558,21 +558,21 @@ export const BrowseProfiles: React.FC = () => {
                 )}
 
                 {activeProfile.SubscriptionTier === 'Premium Plus' && (
-                  <span className="absolute -bottom-2 inset-x-0 mx-auto w-fit bg-gradient-to-r from-amber-400 to-[#FF2E93] text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">
+                  <span className="absolute -bottom-2 inset-x-0 mx-auto w-fit bg-gradient-to-r from-[#B45309] to-[#BE185D] text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">
                     VIP PLUS
                   </span>
                 )}
               </div>
 
               <div className="text-center space-y-1 w-full">
-                <div className="text-xl font-bold text-slate-900 font-heading">
+                <div className="text-xl font-bold text-[#111827] font-heading">
                   {formatDisplayName(activeProfile)}
                 </div>
-                <div className="text-xs text-slate-700 flex items-center justify-center gap-1 font-semibold">
-                  <MapPin className="w-3.5 h-3.5 text-red-600" />
+                <div className="text-xs text-[#111827] flex items-center justify-center gap-1 font-semibold">
+                  <MapPin className="w-3.5 h-3.5 text-[#B91C1C]" />
                   <span>{activeProfile.Location || 'Location not specified'}</span>
                   {activeProfile.PrivacySettings?.shareLocation !== false && activeProfile.DistanceMiles && (
-                    <span className="text-red-600 font-bold ml-1">
+                    <span className="text-[#B91C1C] font-bold ml-1">
                       · {activeProfile.DistanceMiles} mi away
                     </span>
                   )}
@@ -581,17 +581,17 @@ export const BrowseProfiles: React.FC = () => {
                 {/* Candidate physical summary badge */}
                 <div className="pt-1 flex flex-wrap items-center justify-center gap-1">
                   {activeProfile.PrivacySettings?.showHeight !== false && activeProfile.HeightInches && (
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-slate-800 border border-rose-200">
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-[#111827] border border-rose-200">
                       📏 {formatHeightLabel(activeProfile.HeightInches)}
                     </span>
                   )}
                   {activeProfile.HairColor && (
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-slate-800 border border-rose-200">
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-[#111827] border border-rose-200">
                       {activeProfile.HairColor} hair
                     </span>
                   )}
                   {activeProfile.EyeColor && (
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-slate-800 border border-rose-200">
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-[#111827] border border-rose-200">
                       {activeProfile.EyeColor} eyes
                     </span>
                   )}
@@ -599,7 +599,7 @@ export const BrowseProfiles: React.FC = () => {
 
                 <button
                   onClick={() => openEditModal(activeProfile)}
-                  className="mt-2 text-[11px] font-bold text-red-600 hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                  className="mt-2 text-[11px] font-bold text-[#B91C1C] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer"
                 >
                   <Edit3 className="w-3 h-3" />
                   <span>Edit Profile Information</span>
@@ -612,19 +612,19 @@ export const BrowseProfiles: React.FC = () => {
               <div className="space-y-5">
                 <div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-red-600">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#B91C1C]">
                       About Me
                     </span>
                     <button
                       onClick={() => openEditModal(activeProfile)}
-                      className="text-[11px] font-bold text-slate-400 hover:text-red-600 flex items-center gap-1 cursor-pointer"
+                      className="text-[11px] font-bold text-[#111827] hover:text-[#B91C1C] flex items-center gap-1 cursor-pointer"
                     >
                       <Edit3 className="w-3 h-3" /> Edit
                     </button>
                   </div>
-                  <p className="text-sm text-slate-800 leading-relaxed mt-1 font-medium">
+                  <p className="text-sm text-[#111827] leading-relaxed mt-1 font-medium">
                     {activeProfile.Bio || (
-                      <span className="text-slate-400 italic">
+                      <span className="text-[#111827] font-medium italic">
                         Biography not provided yet. Tap "Edit Profile Information" to add details.
                       </span>
                     )}
@@ -633,47 +633,47 @@ export const BrowseProfiles: React.FC = () => {
 
                 {/* Characteristics & Lifestyle Traits Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
-                  <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-100">
-                    <span className="text-slate-500 block mb-0.5 text-[10px] font-bold uppercase">Occupation</span>
-                    <span className="font-bold text-slate-900 flex items-center gap-1 truncate">
-                      <Briefcase className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-200">
+                    <span className="text-[#111827] font-bold block mb-0.5 text-[10px] uppercase">Occupation</span>
+                    <span className="font-bold text-[#111827] flex items-center gap-1 truncate">
+                      <Briefcase className="w-3.5 h-3.5 text-[#B91C1C] shrink-0" />
                       <span className="truncate">{activeProfile.Occupation || 'Not specified'}</span>
                     </span>
                   </div>
 
-                  <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-100">
-                    <span className="text-slate-500 block mb-0.5 text-[10px] font-bold uppercase">Intent</span>
-                    <span className="font-bold text-slate-900 flex items-center gap-1 truncate">
-                      <Flame className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                  <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-200">
+                    <span className="text-[#111827] font-bold block mb-0.5 text-[10px] uppercase">Intent</span>
+                    <span className="font-bold text-[#111827] flex items-center gap-1 truncate">
+                      <Flame className="w-3.5 h-3.5 text-[#BE123C] shrink-0" />
                       <span className="truncate">{activeProfile.RelationshipIntent || activeProfile.Preferences?.intent || 'Dating'}</span>
                     </span>
                   </div>
 
                   {activeProfile.PrivacySettings?.showSmoking !== false && activeProfile.Smoking && (
-                    <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-100">
-                      <span className="text-slate-500 block mb-0.5 text-[10px] font-bold uppercase">Smoking</span>
-                      <span className="font-bold text-slate-900 flex items-center gap-1 truncate">
-                        <Cigarette className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-200">
+                      <span className="text-[#111827] font-bold block mb-0.5 text-[10px] uppercase">Smoking</span>
+                      <span className="font-bold text-[#111827] flex items-center gap-1 truncate">
+                        <Cigarette className="w-3.5 h-3.5 text-[#B45309] shrink-0" />
                         <span className="truncate">{activeProfile.Smoking}</span>
                       </span>
                     </div>
                   )}
 
                   {activeProfile.PrivacySettings?.showDrinking !== false && activeProfile.Drinking && (
-                    <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-100">
-                      <span className="text-slate-500 block mb-0.5 text-[10px] font-bold uppercase">Drinking</span>
-                      <span className="font-bold text-slate-900 flex items-center gap-1 truncate">
-                        <Wine className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                    <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-200">
+                      <span className="text-[#111827] font-bold block mb-0.5 text-[10px] uppercase">Drinking</span>
+                      <span className="font-bold text-[#111827] flex items-center gap-1 truncate">
+                        <Wine className="w-3.5 h-3.5 text-purple-700 shrink-0" />
                         <span className="truncate">{activeProfile.Drinking}</span>
                       </span>
                     </div>
                   )}
 
                   {activeProfile.PrivacySettings?.showChildren !== false && activeProfile.Children && (
-                    <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-100">
-                      <span className="text-slate-500 block mb-0.5 text-[10px] font-bold uppercase">Family</span>
-                      <span className="font-bold text-slate-900 flex items-center gap-1 truncate">
-                        <Baby className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-200">
+                      <span className="text-[#111827] font-bold block mb-0.5 text-[10px] uppercase">Family</span>
+                      <span className="font-bold text-[#111827] flex items-center gap-1 truncate">
+                        <Baby className="w-3.5 h-3.5 text-blue-700 shrink-0" />
                         <span className="truncate">{activeProfile.Children}</span>
                       </span>
                     </div>
@@ -681,9 +681,9 @@ export const BrowseProfiles: React.FC = () => {
                 </div>
 
                 {activeProfile.IcebreakerAnswer && (
-                  <div className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-100 text-xs space-y-1">
-                    <span className="font-bold text-red-600 block">Signature Prompt:</span>
-                    <p className="text-slate-800 italic font-medium">
+                  <div className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 text-xs space-y-1">
+                    <span className="font-bold text-[#B91C1C] block">Signature Prompt:</span>
+                    <p className="text-[#111827] italic font-medium">
                       "{activeProfile.IcebreakerAnswer}"
                     </p>
                   </div>
@@ -691,13 +691,13 @@ export const BrowseProfiles: React.FC = () => {
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#111827]">
                       Interests & Passions
                     </span>
                     {activeProfile.Interests.length === 0 && (
                       <button
                         onClick={() => openEditModal(activeProfile)}
-                        className="text-[11px] text-red-600 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                        className="text-[11px] text-[#B91C1C] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                       >
                         <Plus className="w-3 h-3" /> Add Interests
                       </button>
@@ -708,13 +708,13 @@ export const BrowseProfiles: React.FC = () => {
                       activeProfile.Interests.map(item => (
                         <span
                           key={item}
-                          className="px-2.5 py-1 rounded-xl bg-rose-50/60 border border-rose-200 text-slate-800 text-xs font-bold"
+                          className="px-2.5 py-1 rounded-xl bg-rose-50/80 border border-rose-200 text-[#111827] text-xs font-semibold"
                         >
                           {item}
                         </span>
                       ))
                     ) : (
-                      <span className="text-xs text-slate-400 italic">
+                      <span className="text-xs text-[#111827] font-medium italic">
                         No interests added yet. (Editable)
                       </span>
                     )}
@@ -723,8 +723,8 @@ export const BrowseProfiles: React.FC = () => {
 
                 {/* Privacy & Sandbox Notice for Kristy */}
                 {activeProfile.UserID === 'usr_kristy' && (
-                  <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-950 text-xs flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-300 text-[#111827] font-medium text-xs flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#B45309] shrink-0" />
                     <span>
                       <strong>Demonstration Profile Protected:</strong> Photo and profile are kept strictly within your private preview session and never published publicly without explicit approval.
                     </span>
@@ -733,12 +733,12 @@ export const BrowseProfiles: React.FC = () => {
               </div>
 
               {/* Action Buttons: Pass and Like */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-4">
+              <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-4">
                 <button
                   onClick={() => handlePass(activeProfile)}
-                  className="flex-1 py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                  className="flex-1 py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
                 >
-                  <X className="w-4 h-4 text-slate-500" />
+                  <X className="w-4 h-4 text-[#111827]" />
                   <span>Pass</span>
                 </button>
 
@@ -779,21 +779,21 @@ export const BrowseProfiles: React.FC = () => {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => openEditModal(candidate)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-pink-50 transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg text-[#111827] hover:text-[#B91C1C] hover:bg-pink-50 transition-colors cursor-pointer"
                       title="Edit Profile Info"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => handleBlock(candidate)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg text-[#111827] hover:text-[#BE123C] hover:bg-rose-50 transition-colors cursor-pointer"
                       title="Block"
                     >
                       <Ban className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => handleReport(candidate)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg text-[#111827] hover:text-[#BE123C] hover:bg-rose-50 transition-colors cursor-pointer"
                       title="Report"
                     >
                       <ShieldAlert className="w-3.5 h-3.5" />
@@ -803,44 +803,44 @@ export const BrowseProfiles: React.FC = () => {
 
                 <div>
                   <div className="flex items-center justify-between">
-                    <h3 className="font-black text-slate-900 font-heading text-base">
+                    <h3 className="font-bold text-[#111827] font-heading text-base">
                       {formatDisplayName(candidate)}
                     </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-red-600 border border-rose-200 font-mono">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 font-mono">
                       {candidate.SubscriptionTier}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600 mt-0.5 font-semibold">
+                  <p className="text-xs text-[#111827] mt-0.5 font-medium">
                     {candidate.Occupation || 'Occupation not set'} · {candidate.Location || 'Location not set'}
                   </p>
 
                   {/* Physical & Lifestyle summary pills */}
                   <div className="flex flex-wrap gap-1 mt-2">
                     {candidate.PrivacySettings?.showHeight !== false && candidate.HeightInches && (
-                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[10px] font-bold">
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-[#111827] text-[10px] font-bold">
                         {formatHeightLabel(candidate.HeightInches)}
                       </span>
                     )}
                     {candidate.HairColor && (
-                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[10px] font-bold">
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-[#111827] text-[10px] font-bold">
                         {candidate.HairColor}
                       </span>
                     )}
                     {candidate.RelationshipIntent && (
-                      <span className="px-2 py-0.5 rounded-md bg-rose-50 text-red-700 text-[10px] font-bold border border-rose-200">
+                      <span className="px-2 py-0.5 rounded-md bg-rose-50 text-[#991B1B] text-[10px] font-bold border border-rose-200">
                         {candidate.RelationshipIntent}
                       </span>
                     )}
                     {candidate.PrivacySettings?.shareLocation !== false && candidate.DistanceMiles && (
-                      <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-[10px] font-bold border border-amber-200">
+                      <span className="px-2 py-0.5 rounded-md bg-amber-50 text-[#78350F] text-[10px] font-bold border border-amber-200">
                         {candidate.DistanceMiles} mi
                       </span>
                     )}
                   </div>
 
-                  <p className="text-xs text-slate-700 line-clamp-2 mt-2 leading-relaxed font-medium">
+                  <p className="text-xs text-[#111827] line-clamp-2 mt-2 leading-relaxed font-medium">
                     {candidate.Bio || (
-                      <span className="text-slate-400 italic">
+                      <span className="text-[#111827] font-medium italic">
                         Bio not set yet. Tap edit to provide.
                       </span>
                     )}
@@ -852,25 +852,25 @@ export const BrowseProfiles: React.FC = () => {
                     candidate.Interests.slice(0, 3).map(i => (
                       <span
                         key={i}
-                        className="px-2 py-0.5 rounded-lg bg-rose-50/70 border border-rose-100 text-[10px] text-rose-800 font-bold"
+                        className="px-2 py-0.5 rounded-lg bg-rose-50/80 border border-rose-200 text-[10px] text-[#9F1239] font-semibold"
                       >
                         {i}
                       </span>
                     ))
                   ) : (
-                    <span className="text-[10px] text-slate-400 italic">
+                    <span className="text-[10px] text-[#111827] font-medium italic">
                       No interests set
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
                 <button
                   onClick={() => handlePass(candidate)}
-                  className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
+                  className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
                 >
-                  <X className="w-3.5 h-3.5 text-slate-400" />
+                  <X className="w-3.5 h-3.5 text-[#111827]" />
                   <span>Pass</span>
                 </button>
                 <button
@@ -892,21 +892,21 @@ export const BrowseProfiles: React.FC = () => {
           <div className="w-full max-w-lg rounded-3xl bg-white border border-rose-100 shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-rose-50 pb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-red-600">
+                <div className="w-8 h-8 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-[#B91C1C]">
                   <Edit3 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 font-heading">
+                  <h3 className="text-base font-bold text-[#111827] font-heading">
                     Edit {editingTargetUser.FirstName}'s Profile
                   </h3>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-[#111827] font-medium">
                     Fields remain uninvented and editable until you choose to provide them.
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setEditingTargetUser(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold flex items-center justify-center transition-colors cursor-pointer"
               >
                 ✕
               </button>
@@ -915,7 +915,7 @@ export const BrowseProfiles: React.FC = () => {
             <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
+                  <label className="block text-[#111827] font-semibold mb-1">
                     Age (Optional)
                   </label>
                   <input
@@ -925,12 +925,12 @@ export const BrowseProfiles: React.FC = () => {
                     value={editForm.Age}
                     onChange={e => setEditForm({ ...editForm, Age: e.target.value })}
                     placeholder="Leave blank or enter age"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-800 focus:outline-none focus:border-[#FF2E93]"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
+                  <label className="block text-[#111827] font-semibold mb-1">
                     Location
                   </label>
                   <input
@@ -938,14 +938,14 @@ export const BrowseProfiles: React.FC = () => {
                     value={editForm.Location}
                     onChange={e => setEditForm({ ...editForm, Location: e.target.value })}
                     placeholder="City, State"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-800 focus:outline-none focus:border-[#FF2E93]"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
+                  <label className="block text-[#111827] font-semibold mb-1">
                     Occupation
                   </label>
                   <input
@@ -953,18 +953,18 @@ export const BrowseProfiles: React.FC = () => {
                     value={editForm.Occupation}
                     onChange={e => setEditForm({ ...editForm, Occupation: e.target.value })}
                     placeholder="Occupation / Profession"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-800 focus:outline-none focus:border-[#FF2E93]"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
+                  <label className="block text-[#111827] font-semibold mb-1">
                     Dating Intent
                   </label>
                   <select
                     value={editForm.intent}
                     onChange={e => setEditForm({ ...editForm, intent: e.target.value as any })}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-800 focus:outline-none focus:border-[#FF2E93]"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
                   >
                     <option value="Serious Relationship">Serious Relationship</option>
                     <option value="Casual Dating">Casual Dating</option>
@@ -975,7 +975,7 @@ export const BrowseProfiles: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">
+                <label className="block text-[#111827] font-semibold mb-1">
                   Biography / About Me
                 </label>
                 <textarea
@@ -983,12 +983,12 @@ export const BrowseProfiles: React.FC = () => {
                   value={editForm.Bio}
                   onChange={e => setEditForm({ ...editForm, Bio: e.target.value })}
                   placeholder="Share a short bio..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-800 focus:outline-none focus:border-[#FF2E93]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">
+                <label className="block text-[#111827] font-semibold mb-1">
                   Interests & Passions (Comma-separated)
                 </label>
                 <input
@@ -996,15 +996,15 @@ export const BrowseProfiles: React.FC = () => {
                   value={editForm.Interests}
                   onChange={e => setEditForm({ ...editForm, Interests: e.target.value })}
                   placeholder="e.g. Travel, Coffee, Music, Hiking, Photography"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-800 focus:outline-none focus:border-[#FF2E93]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setEditingTargetUser(null)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>

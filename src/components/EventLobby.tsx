@@ -46,6 +46,7 @@ export const EventLobby: React.FC = () => {
     createStagingTestSession,
     joinStagingTestSession,
     setActiveRoundIndex,
+    isOwner,
   } = useApp();
 
   if (!currentUser) {
@@ -223,64 +224,66 @@ export const EventLobby: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Mode Banner Notice */}
-      <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs ${
-        appMode === 'demonstration'
-          ? 'bg-purple-50/70 border-purple-200 text-purple-900'
-          : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
-      }`}>
-        <div className="flex items-center gap-2">
-          <ShieldCheck className={`w-4 h-4 shrink-0 ${appMode === 'demonstration' ? 'text-purple-600' : 'text-emerald-600'}`} />
-          <span>
-            {appMode === 'demonstration' ? (
-              <>
-                <strong>Demonstration Sandbox Mode:</strong> Real video signaling is in simulation mode. 5-min rounds, 2-min breaks, and consent-based waiting room operate in real time with curated sample partners.
-              </>
-            ) : (
-              <>
-                <strong>Production Mode Active:</strong> Connecting real consenting members. Live video requires an active WebRTC SFU infrastructure provider (LiveKit / Twilio / Agora).
-              </>
-            )}
-          </span>
-        </div>
+      {/* Mode Banner Notice (Signed-in Owner only) */}
+      {isOwner && (
+        <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs ${
+          appMode === 'demonstration'
+            ? 'bg-purple-50/70 border-purple-200 text-purple-900'
+            : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+        }`}>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className={`w-4 h-4 shrink-0 ${appMode === 'demonstration' ? 'text-purple-600' : 'text-emerald-600'}`} />
+            <span>
+              {appMode === 'demonstration' ? (
+                <>
+                  <strong>Demonstration Sandbox Mode:</strong> Real video signaling is in simulation mode. 5-min rounds, 2-min breaks, and consent-based waiting room operate in real time with curated sample partners.
+                </>
+              ) : (
+                <>
+                  <strong>Production Mode Active:</strong> Connecting real consenting members. Live video requires an active WebRTC SFU infrastructure provider (LiveKit / Twilio / Agora).
+                </>
+              )}
+            </span>
+          </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="font-mono text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-white border border-slate-200">
-            {appMode === 'demonstration' ? 'Sandbox Mode' : 'Production Mode'}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="font-mono text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-white border border-slate-200">
+              {appMode === 'demonstration' ? 'Sandbox Mode' : 'Production Mode'}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       <button
         onClick={() => setCurrentView('friday')}
-        className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-[#FF2E93] transition-colors cursor-pointer"
+        className="flex items-center gap-1.5 text-xs font-semibold text-[#111827] hover:text-[#BE185D] transition-colors cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         <span>Back to Weekend Events</span>
       </button>
 
       {/* Main Waiting Room Header Card */}
-      <div className="rounded-3xl bg-white border border-pink-100 p-6 sm:p-8 space-y-5 shadow-sm">
+      <div className="rounded-3xl bg-white border border-pink-200 p-6 sm:p-8 space-y-5 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#FF2E93] font-heading">
-              <span className={`w-2.5 h-2.5 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-pink-400'}`} />
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#BE185D] font-heading">
+              <span className={`w-2.5 h-2.5 rounded-full ${isLive ? 'bg-emerald-600 animate-pulse' : 'bg-[#BE185D]'}`} />
               <span>{isLive ? 'Event is Live Now' : 'Pre-Event Waiting Room'}</span>
-              <span className="text-slate-300">·</span>
-              <span className="text-slate-700 bg-pink-50 px-2 py-0.5 rounded-md font-mono text-[11px]">
+              <span className="text-[#111827]">·</span>
+              <span className="text-[#111827] bg-pink-50 px-2 py-0.5 rounded-md font-mono text-[11px] border border-pink-200">
                 {activeEvent.DayOfWeek} at 7:00 PM Eastern Time
               </span>
-              <span className="text-slate-300">·</span>
-              <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 text-[10px]">
+              <span className="text-[#111827]">·</span>
+              <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-800 border border-purple-200 text-[10px]">
                 {activeEvent.EventType}
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-heading">
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#111827] font-heading">
               {activeEvent.EventName}
             </h1>
 
-            <p className="text-xs sm:text-sm text-slate-500">
+            <p className="text-xs sm:text-sm text-[#111827] font-medium">
               {activeEvent.LocationName} · 5-minute one-on-one video rounds · Up to 2-minute breaks · Automatic progression with mutual consent
             </p>
           </div>
@@ -290,18 +293,18 @@ export const EventLobby: React.FC = () => {
             {!isEligible ? (
               <button
                 onClick={() => setCurrentView('pricing')}
-                className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-[#FF2E93] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shrink-0 shadow-md cursor-pointer"
+                className="px-6 py-3 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-[#78350F] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shrink-0 shadow-xs cursor-pointer"
               >
-                <Crown className="w-4 h-4 fill-white" />
-                <span>Upgrade to Premium Plus ($14.99/mo)</span>
+                <Crown className="w-4 h-4 text-[#B45309]" />
+                <span>Event membership coming soon.</span>
               </button>
             ) : isStagingEvent && !isAuthorizedStagingUser ? (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-right">
-                <span className="text-xs font-bold text-amber-800 flex items-center gap-1.5 justify-end">
-                  <Lock className="w-3.5 h-3.5 text-amber-600" />
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-right">
+                <span className="text-xs font-bold text-[#78350F] flex items-center gap-1.5 justify-end">
+                  <Lock className="w-3.5 h-3.5 text-[#B45309]" />
                   Authorized Test Accounts Only
                 </span>
-                <p className="text-[10px] text-amber-700 mt-0.5">
+                <p className="text-[10px] text-[#111827] font-medium mt-0.5">
                   Restricted to Kristy, Marcus, and verified developer staging accounts.
                 </p>
               </div>
@@ -325,7 +328,7 @@ export const EventLobby: React.FC = () => {
                   <Sparkles className="w-4 h-4 fill-white" />
                   <span>Register for Event (Free with Plus)</span>
                 </button>
-                <p className="text-[10px] text-slate-400 text-center">
+                <p className="text-[10px] text-[#111827] font-medium text-center">
                   Included with your Premium Plus membership
                 </p>
               </div>
@@ -338,7 +341,7 @@ export const EventLobby: React.FC = () => {
                   <Play className="w-4 h-4 fill-white" />
                   <span>Begin Matchmaking (I'm Ready)</span>
                 </button>
-                <p className="text-[10px] text-slate-400 text-center">
+                <p className="text-[10px] text-[#111827] font-medium text-center">
                   {isStagingEvent
                     ? '2-Person LiveKit WebRTC Test · Connects directly to test partner'
                     : 'Explicit consent required · Calls never launch automatically'}
@@ -348,15 +351,15 @@ export const EventLobby: React.FC = () => {
               <div className="space-y-1.5 text-right">
                 <button
                   disabled
-                  className="px-6 py-3 rounded-2xl bg-slate-100 text-slate-400 border border-slate-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-not-allowed"
+                  className="px-6 py-3 rounded-2xl bg-slate-100 text-[#111827] border border-slate-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-not-allowed"
                 >
                   <Lock className="w-4 h-4" />
                   <span>Registered · Waiting for 7:00 PM ET Start</span>
                 </button>
-                {appMode === 'demonstration' && (
+                {isOwner && appMode === 'demonstration' && (
                   <button
                     onClick={() => toggleSimulateLiveEvent(activeEvent.EventID, !isSimulated)}
-                    className="text-[11px] text-[#FF2E93] hover:underline font-bold block mx-auto cursor-pointer"
+                    className="text-[11px] text-[#BE185D] hover:underline font-bold block mx-auto cursor-pointer"
                   >
                     {isSimulated ? 'Stop Demo Start' : '⚡ Simulate 7:00 PM Start (Demo Testing)'}
                   </button>
@@ -368,14 +371,14 @@ export const EventLobby: React.FC = () => {
 
         {/* Real-Time Countdown to 7:00 PM Eastern Time Widget */}
         {!isLive && (
-          <div className="pt-4 border-t border-pink-50">
+          <div className="pt-4 border-t border-pink-100">
             <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-pink-50 via-rose-50 to-[#FFF0F3] border border-pink-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <div className="text-xs font-bold uppercase tracking-wider text-[#FF2E93] flex items-center gap-1.5 font-heading">
+                <div className="text-xs font-bold uppercase tracking-wider text-[#BE185D] flex items-center gap-1.5 font-heading">
                   <Clock className="w-4 h-4" />
                   <span>Countdown to Event Start (7:00 PM Eastern Time)</span>
                 </div>
-                <p className="text-xs text-slate-600 mt-0.5">
+                <p className="text-xs text-[#111827] font-medium mt-0.5">
                   Scheduled for <strong>{activeEvent.DayOfWeek}, {activeEvent.EventDate} at 7:00 PM ET</strong> (America/New_York). Daylight saving time is handled automatically.
                 </p>
               </div>
@@ -383,23 +386,23 @@ export const EventLobby: React.FC = () => {
               {/* Countdown Digits */}
               <div className="flex items-center gap-2 shrink-0">
                 <div className="flex flex-col items-center bg-white px-3 py-2 rounded-xl border border-pink-200 shadow-2xs min-w-[50px]">
-                  <span className="font-mono text-lg font-black text-slate-900">{days}</span>
-                  <span className="text-[9px] uppercase font-bold text-slate-400">Days</span>
+                  <span className="font-mono text-lg font-extrabold text-[#111827]">{days}</span>
+                  <span className="text-[9px] uppercase font-bold text-[#111827]">Days</span>
                 </div>
-                <span className="font-bold text-pink-300">:</span>
+                <span className="font-bold text-[#BE185D]">:</span>
                 <div className="flex flex-col items-center bg-white px-3 py-2 rounded-xl border border-pink-200 shadow-2xs min-w-[50px]">
-                  <span className="font-mono text-lg font-black text-slate-900">{String(hours).padStart(2, '0')}</span>
-                  <span className="text-[9px] uppercase font-bold text-slate-400">Hours</span>
+                  <span className="font-mono text-lg font-extrabold text-[#111827]">{String(hours).padStart(2, '0')}</span>
+                  <span className="text-[9px] uppercase font-bold text-[#111827]">Hours</span>
                 </div>
-                <span className="font-bold text-pink-300">:</span>
+                <span className="font-bold text-[#BE185D]">:</span>
                 <div className="flex flex-col items-center bg-white px-3 py-2 rounded-xl border border-pink-200 shadow-2xs min-w-[50px]">
-                  <span className="font-mono text-lg font-black text-slate-900">{String(minutes).padStart(2, '0')}</span>
-                  <span className="text-[9px] uppercase font-bold text-slate-400">Mins</span>
+                  <span className="font-mono text-lg font-extrabold text-[#111827]">{String(minutes).padStart(2, '0')}</span>
+                  <span className="text-[9px] uppercase font-bold text-[#111827]">Mins</span>
                 </div>
-                <span className="font-bold text-pink-300">:</span>
+                <span className="font-bold text-[#BE185D]">:</span>
                 <div className="flex flex-col items-center bg-white px-3 py-2 rounded-xl border border-pink-200 shadow-2xs min-w-[50px]">
-                  <span className="font-mono text-lg font-black text-[#FF2E93]">{String(seconds).padStart(2, '0')}</span>
-                  <span className="text-[9px] uppercase font-bold text-slate-400">Secs</span>
+                  <span className="font-mono text-lg font-extrabold text-[#BE185D]">{String(seconds).padStart(2, '0')}</span>
+                  <span className="text-[9px] uppercase font-bold text-[#111827]">Secs</span>
                 </div>
               </div>
             </div>
@@ -484,13 +487,13 @@ export const EventLobby: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Device Check & Live Video Preview */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="rounded-3xl bg-white border border-pink-100 p-5 space-y-4 shadow-sm">
+          <div className="rounded-3xl bg-white border border-pink-200 p-5 space-y-4 shadow-sm">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 font-heading flex items-center gap-2">
-                <Video className="w-4 h-4 text-[#FF2E93]" />
+              <h3 className="text-sm font-bold text-[#111827] font-heading flex items-center gap-2">
+                <Video className="w-4 h-4 text-[#BE185D]" />
                 Audio & Video Self-Check
               </h3>
-              <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
+              <span className="text-[11px] text-[#047857] font-bold flex items-center gap-1">
                 <CheckCircle className="w-3.5 h-3.5" />
                 Device Ready
               </span>
@@ -547,11 +550,11 @@ export const EventLobby: React.FC = () => {
                         <div className="text-sm font-bold text-white">
                           {currentUser.FirstName} {currentUser.LastName}
                         </div>
-                        <div className="text-xs text-slate-400">
+                        <div className="text-xs text-slate-300">
                           {cameraActive ? 'Camera Connected' : 'Camera Muted'}
                         </div>
                       </div>
-                      <div className="text-[11px] text-slate-400 max-w-xs">
+                      <div className="text-[11px] text-slate-300 max-w-xs">
                         Each speed date lasts 5 minutes with optional icebreakers and a comfortable 2-minute break between dates.
                       </div>
                     </>
@@ -603,34 +606,34 @@ export const EventLobby: React.FC = () => {
 
             {/* Video Infrastructure Status Notice */}
             {appMode === 'production' ? (
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-1.5 text-xs text-amber-900">
-                <div className="font-bold flex items-center gap-1.5 text-amber-950">
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 space-y-1.5 text-xs text-[#111827] font-medium">
+                <div className="font-bold flex items-center gap-1.5 text-[#78350F]">
+                  <AlertCircle className="w-4 h-4 text-[#B45309]" />
                   LiveKit Video Infrastructure: Token Gateway Prepared
                 </div>
-                <p className="text-[11px] text-amber-800 leading-relaxed">
+                <p className="text-[11px] text-[#111827] leading-relaxed">
                   The server-side LiveKit token endpoint is active with 6 security verifications (adult age, event registration, category isolation, mutual consent, 7:00 PM ET start, and 420s short-lived tokens). Live video calls remain held in safe standby until environment credentials are provided.
                 </p>
               </div>
             ) : (
-              <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200 space-y-1 text-xs text-purple-900">
+              <div className="p-4 rounded-2xl bg-purple-50/70 border border-purple-300 space-y-1 text-xs text-[#111827] font-medium">
                 <div className="font-bold flex items-center gap-1.5 text-purple-950">
-                  <ShieldCheck className="w-4 h-4 text-purple-600" />
+                  <ShieldCheck className="w-4 h-4 text-purple-700" />
                   Demonstration Video Mode Active
                 </div>
-                <p className="text-[11px] text-purple-800">
+                <p className="text-[11px] text-[#111827]">
                   You can test local camera mirroring, audio self-check, icebreakers, 5-minute round timers, and private ballots.
                 </p>
               </div>
             )}
 
             {/* Speed dating rules */}
-            <div className="p-4 rounded-2xl bg-[#FFF8FA] border border-pink-100 space-y-2 text-xs">
-              <div className="font-bold text-slate-900 flex items-center gap-1.5 font-heading">
-                <Heart className="w-3.5 h-3.5 text-[#FF2E93] fill-[#FF2E93]" />
+            <div className="p-4 rounded-2xl bg-[#FFF8FA] border border-pink-200 space-y-2 text-xs">
+              <div className="font-bold text-[#111827] flex items-center gap-1.5 font-heading">
+                <Heart className="w-3.5 h-3.5 text-[#BE185D] fill-[#BE185D]" />
                 Speed Dating Rules & Format ({activeEvent.DayOfWeek} at 7:00 PM ET):
               </div>
-              <ul className="space-y-1.5 text-slate-600 list-disc list-inside text-[11px]">
+              <ul className="space-y-1.5 text-[#111827] font-medium list-disc list-inside text-[11px]">
                 <li>Exclusive to <strong>Premium Plus</strong> members ($14.99/mo).</li>
                 <li><strong>Five-minute one-on-one video dates</strong> with rotating partners.</li>
                 <li>Privately choose <strong>Like ❤️</strong> or <strong>Pass</strong> after each date.</li>
@@ -644,39 +647,39 @@ export const EventLobby: React.FC = () => {
 
         {/* Right Column: Checked-In Daters in Waiting Room */}
         <div className="lg:col-span-5 space-y-4">
-          <div className="rounded-3xl bg-white border border-pink-100 p-5 space-y-4 shadow-sm">
+          <div className="rounded-3xl bg-white border border-pink-200 p-5 space-y-4 shadow-sm">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 font-heading flex items-center gap-2">
-                <Users className="w-4 h-4 text-[#FF2E93]" />
+              <h3 className="text-sm font-bold text-[#111827] font-heading flex items-center gap-2">
+                <Users className="w-4 h-4 text-[#BE185D]" />
                 Checked-In Waiting Room ({attendees.length})
               </h3>
-              <span className="text-[11px] text-slate-400 font-mono">{activeEvent.DayOfWeek} 7:00 PM</span>
+              <span className="text-[11px] text-[#111827] font-semibold font-mono">{activeEvent.DayOfWeek} 7:00 PM</span>
             </div>
 
             <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
               {attendees.length === 0 ? (
-                <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="p-6 text-center text-xs text-[#111827] font-medium bg-slate-50 rounded-2xl border border-slate-200">
                   Waiting for other attendees to check in...
                 </div>
               ) : (
                 attendees.map(u => (
                   <div
                     key={u.UserID}
-                    className="p-3 rounded-2xl bg-white border border-slate-100 hover:border-pink-200 flex items-center justify-between transition-colors text-xs"
+                    className="p-3 rounded-2xl bg-white border border-slate-200 hover:border-pink-300 flex items-center justify-between transition-colors text-xs"
                   >
                     <div className="flex items-center gap-2.5">
                       <Avatar user={u} size="sm" showBadge />
                       <div>
-                        <div className="font-bold text-slate-900">
+                        <div className="font-bold text-[#111827]">
                           {u.FirstName} {u.LastName ? `${u.LastName[0]}.` : ''}
                         </div>
-                        <div className="text-[11px] text-slate-500">
+                        <div className="text-[11px] text-[#111827] font-medium">
                           {u.Gender}, {u.Age} · {u.Location.split(',')[0]}
                         </div>
                       </div>
                     </div>
 
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-[#047857] border border-emerald-300 font-bold">
                       In Waiting Room
                     </span>
                   </div>
@@ -684,7 +687,7 @@ export const EventLobby: React.FC = () => {
               )}
             </div>
 
-            <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+            <div className="pt-2 border-t border-slate-200 text-[11px] text-[#111827] font-medium flex items-center justify-between">
               <span>Timezone: <strong>{activeEvent.TimeZone}</strong></span>
               <span>5-Min Rounds</span>
             </div>

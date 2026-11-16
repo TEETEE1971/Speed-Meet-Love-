@@ -79,11 +79,11 @@ export const MessagingPortal: React.FC = () => {
   if (userMatches.length === 0) {
     return (
       <div className="max-w-xl mx-auto p-12 rounded-3xl bg-white border border-pink-100 shadow-sm text-center space-y-4 my-8">
-        <div className="w-16 h-16 rounded-full bg-pink-50 mx-auto flex items-center justify-center text-[#FF2E93]">
+        <div className="w-16 h-16 rounded-full bg-pink-50 mx-auto flex items-center justify-center text-[#BE185D]">
           <Heart className="w-8 h-8" />
         </div>
-        <h2 className="text-2xl font-bold text-slate-900 font-heading">No Mutual Matches Yet</h2>
-        <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
+        <h2 className="text-2xl font-bold text-[#111827] font-heading">No Mutual Matches Yet</h2>
+        <p className="text-xs sm:text-sm text-[#111827] font-medium max-w-md mx-auto">
           Private messaging unlocks once you and another member mutually like each other and both hold an eligible paid membership (Premium or Premium Plus).
         </p>
         <button
@@ -105,32 +105,32 @@ export const MessagingPortal: React.FC = () => {
       <div className="flex items-center justify-between">
         <button
           onClick={() => setCurrentView('matches')}
-          className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-[#FF2E93] transition-colors"
+          className="flex items-center gap-1.5 text-xs font-semibold text-[#111827] hover:text-[#BE185D] transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Mutual Matches
         </button>
 
-        <span className="text-[11px] text-slate-500 font-mono">
-          Tier: <strong className="text-slate-800">{currentUser.SubscriptionTier}</strong>
+        <span className="text-[11px] text-[#111827] font-medium font-mono">
+          Tier: <strong className="text-[#111827]">{currentUser.SubscriptionTier}</strong>
         </span>
       </div>
 
-      <div className="rounded-3xl bg-white border border-pink-100 shadow-md overflow-hidden h-[680px] flex flex-col md:flex-row">
+      <div className="rounded-3xl bg-white border border-pink-200 shadow-md overflow-hidden h-[680px] flex flex-col md:flex-row">
         
         {/* Left Sidebar: Mutual Matches */}
         <div className="w-full md:w-80 bg-[#FFF8FA] border-r border-pink-100 flex flex-col">
           <div className="p-4 border-b border-pink-100 flex items-center justify-between bg-white">
             <div>
-              <h2 className="text-base font-bold text-slate-900 font-heading flex items-center gap-2">
-                <Heart className="w-4 h-4 text-[#FF2E93] fill-[#FF2E93]" />
+              <h2 className="text-base font-bold text-[#111827] font-heading flex items-center gap-2">
+                <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D]" />
                 Mutual Matches
               </h2>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-[#111827] font-medium">
                 {userMatches.length} mutual connections
               </p>
             </div>
-            <span className="text-[10px] font-mono text-[#FF2E93] px-2 py-0.5 rounded-full bg-pink-50 border border-pink-100 font-bold">
+            <span className="text-[10px] font-mono text-[#BE185D] px-2 py-0.5 rounded-full bg-pink-50 border border-pink-200 font-bold">
               Chat
             </span>
           </div>
@@ -152,28 +152,28 @@ export const MessagingPortal: React.FC = () => {
                   onClick={() => setSelectedMatchId(m.MatchID)}
                   className={`w-full text-left p-3.5 flex items-center gap-3 transition-colors ${
                     isSelected
-                      ? 'bg-white border-l-4 border-l-[#FF2E93] shadow-xs'
+                      ? 'bg-white border-l-4 border-l-[#BE185D] shadow-xs'
                       : 'hover:bg-pink-50/60'
                   }`}
                 >
                   <Avatar user={mPartner} size="md" showBadge />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-slate-900 truncate">
+                      <span className="font-bold text-xs text-[#111827] truncate">
                         {mPartner.LastName ? `${mPartner.FirstName} ${mPartner.LastName}` : mPartner.FirstName}
                       </span>
-                      <span className="text-[10px] text-[#FF2E93] font-mono font-bold">
+                      <span className="text-[10px] text-[#BE185D] font-mono font-bold">
                         {m.ChemistryScore}%
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between mt-0.5">
-                      <p className="text-[11px] text-slate-500 truncate max-w-[140px]">
+                      <p className="text-[11px] text-[#111827] font-medium truncate max-w-[140px]">
                         {mCheck.allowed
                           ? lastMsg ? lastMsg.MessageText : 'Ready to message'
                           : '🔒 Messaging locked'}
                       </p>
-                      <span className="text-[9px] font-mono text-slate-400 uppercase">
+                      <span className="text-[9px] font-mono text-[#111827] font-semibold uppercase">
                         {mPartner.SubscriptionTier}
                       </span>
                     </div>
@@ -183,11 +183,11 @@ export const MessagingPortal: React.FC = () => {
             })}
           </div>
 
-          <div className="p-3 border-t border-pink-100 bg-white text-[11px] text-slate-500 flex items-center justify-between">
+          <div className="p-3 border-t border-pink-100 bg-white text-[11px] text-[#111827] font-medium flex items-center justify-between">
             <span>Eligible Paid Membership Rule</span>
             <button
               onClick={() => setCurrentView('pricing')}
-              className="text-[#FF2E93] hover:underline font-semibold"
+              className="text-[#BE185D] hover:underline font-bold"
             >
               Pricing
             </button>
@@ -203,17 +203,17 @@ export const MessagingPortal: React.FC = () => {
                 <Avatar user={partner} size="md" showBadge />
                 <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-sm text-slate-900 font-heading">
+                      <h3 className="font-bold text-sm text-[#111827] font-heading">
                         {partner.LastName ? `${partner.FirstName} ${partner.LastName}` : partner.FirstName}
                       </h3>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-50 text-[#FF2E93] border border-pink-100 font-mono font-bold">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-50 text-[#BE185D] border border-pink-200 font-mono font-bold">
                         {activeMatch.ChemistryScore}% Match
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 font-mono text-slate-600">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 font-mono text-[#111827] font-semibold">
                         Tier: {partner.SubscriptionTier}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-[11px] text-[#111827] font-medium">
                       {partner.Occupation || 'Occupation not set'}{partner.Location ? ` · ${partner.Location}` : ''}
                     </div>
                 </div>
@@ -224,7 +224,7 @@ export const MessagingPortal: React.FC = () => {
                 {!isPartnerPaid && (
                   <button
                     onClick={() => upgradeOtherUser(partner.UserID, 'Premium')}
-                    className="hidden sm:inline-flex px-2.5 py-1 rounded-lg bg-pink-50 hover:bg-pink-100 border border-pink-200 text-[10px] text-[#FF2E93] font-semibold"
+                    className="hidden sm:inline-flex px-2.5 py-1 rounded-lg bg-pink-50 hover:bg-pink-100 border border-pink-200 text-[10px] text-[#BE185D] font-bold"
                     title="Simulate partner buying Premium"
                   >
                     + Simulate {partner.FirstName} Paid
@@ -232,14 +232,14 @@ export const MessagingPortal: React.FC = () => {
                 )}
                 <button
                   onClick={() => blockUser(partner.UserID)}
-                  className="p-2 rounded-xl hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                  className="p-2 rounded-xl hover:bg-rose-50 text-[#111827] hover:text-[#BE123C] transition-colors"
                   title="Block member"
                 >
                   <Ban className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setReportModalTarget(partner)}
-                  className="p-2 rounded-xl hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                  className="p-2 rounded-xl hover:bg-rose-50 text-[#111827] hover:text-[#BE123C] transition-colors"
                   title="Report member"
                 >
                   <ShieldAlert className="w-4 h-4" />
@@ -250,18 +250,18 @@ export const MessagingPortal: React.FC = () => {
             {/* Access Rule Enforcement Gate */}
             {!messagingAccess.allowed ? (
               <div className="flex-1 flex items-center justify-center p-6 sm:p-8 bg-[#FFF8FA]">
-                <div className="max-w-md w-full p-6 sm:p-8 rounded-3xl bg-white border border-pink-100 shadow-md text-center space-y-4">
-                  <div className="w-14 h-14 rounded-2xl bg-pink-50 mx-auto flex items-center justify-center text-[#FF2E93]">
+                <div className="max-w-md w-full p-6 sm:p-8 rounded-3xl bg-white border border-pink-200 shadow-md text-center space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-pink-50 mx-auto flex items-center justify-center text-[#BE185D]">
                     <Lock className="w-7 h-7" />
                   </div>
 
                   <div>
-                    <h3 className="text-xl font-bold text-slate-900 font-heading">
+                    <h3 className="text-xl font-bold text-[#111827] font-heading">
                       {!isUserPaid
                         ? 'Upgrade to Unlock Private Messaging'
                         : 'Waiting on Eligible Paid Membership'}
                     </h3>
-                    <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                    <p className="text-xs text-[#111827] font-medium mt-2 leading-relaxed">
                       {!isUserPaid
                         ? 'Free tier members can view mutual matches, but private messaging requires an eligible paid membership (Premium $9.99/mo or Premium Plus $14.99/mo).'
                         : `${partner.FirstName} currently holds a Free membership. Private messaging unlocks only when both users hold an eligible paid membership.`}
@@ -278,7 +278,7 @@ export const MessagingPortal: React.FC = () => {
                       </button>
                       <button
                         onClick={() => setCurrentView('pricing')}
-                        className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200"
+                        className="px-4 py-2.5 rounded-xl bg-slate-100 text-[#111827] text-xs font-semibold hover:bg-slate-200 border border-slate-300"
                       >
                         Compare Tiers
                       </button>
@@ -299,12 +299,12 @@ export const MessagingPortal: React.FC = () => {
               <>
                 {/* Messages Feed */}
                 <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 bg-[#FFF8FA]">
-                  <div className="p-3.5 rounded-2xl bg-white border border-pink-100 text-center max-w-md mx-auto space-y-1 shadow-xs">
-                    <div className="flex items-center justify-center gap-1 text-xs font-bold text-[#FF2E93]">
-                      <Heart className="w-3.5 h-3.5 fill-[#FF2E93]" />
+                  <div className="p-3.5 rounded-2xl bg-white border border-pink-200 text-center max-w-md mx-auto space-y-1 shadow-xs">
+                    <div className="flex items-center justify-center gap-1 text-xs font-bold text-[#BE185D]">
+                      <Heart className="w-3.5 h-3.5 fill-[#BE185D]" />
                       <span>Eligible Paid Membership Verified</span>
                     </div>
-                    <p className="text-[11px] text-slate-600">
+                    <p className="text-[11px] text-[#111827] font-medium">
                       Both you and {partner.FirstName} hold active paid memberships. Private conversation is unlocked.
                     </p>
                   </div>
@@ -322,17 +322,17 @@ export const MessagingPortal: React.FC = () => {
                         className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                       >
                         <div
-                          className={`max-w-[78%] p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-xs ${
+                          className={`max-w-[78%] p-3.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed shadow-xs ${
                             isMe
                               ? 'btn-pink-gradient text-white rounded-br-none'
-                              : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none'
+                              : 'bg-white border border-slate-300 text-[#111827] rounded-bl-none'
                           }`}
                         >
                           {msg.MessageText}
                         </div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1 px-1">
+                        <div className="flex items-center gap-1 text-[10px] text-[#111827] font-medium mt-1 px-1">
                           <span>{formattedTime}</span>
-                          {isMe && <CheckCheck className="w-3 h-3 text-[#FF2E93]" />}
+                          {isMe && <CheckCheck className="w-3 h-3 text-[#BE185D]" />}
                         </div>
                       </div>
                     );
@@ -342,8 +342,8 @@ export const MessagingPortal: React.FC = () => {
 
                 {/* Icebreaker suggestions */}
                 <div className="px-4 py-2 border-t border-pink-100 bg-[#FFF5F7] flex items-center gap-2 overflow-x-auto text-[11px]">
-                  <span className="text-[#FF2E93] shrink-0 font-bold flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-amber-500" />
+                  <span className="text-[#BE185D] shrink-0 font-bold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-[#B45309]" />
                     Starters:
                   </span>
                   {[
@@ -354,7 +354,7 @@ export const MessagingPortal: React.FC = () => {
                     <button
                       key={i}
                       onClick={() => handleQuickIcebreaker(prompt)}
-                      className="whitespace-nowrap px-2.5 py-1 rounded-xl bg-white hover:bg-pink-50 text-slate-700 border border-pink-100 transition-colors shadow-xs"
+                      className="whitespace-nowrap px-2.5 py-1 rounded-xl bg-white hover:bg-pink-50 text-[#111827] font-medium border border-pink-200 transition-colors shadow-xs"
                     >
                       {prompt}
                     </button>
@@ -371,7 +371,7 @@ export const MessagingPortal: React.FC = () => {
                     placeholder={`Message ${partner.FirstName}...`}
                     value={inputVal}
                     onChange={e => setInputVal(e.target.value)}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF2E93]"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-xs sm:text-sm font-medium text-[#111827] placeholder-slate-500 focus:outline-none focus:border-[#BE185D]"
                   />
                   <button
                     type="submit"
@@ -386,7 +386,7 @@ export const MessagingPortal: React.FC = () => {
             )}
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center p-8 text-center text-slate-400 text-xs">
+          <div className="flex-1 flex items-center justify-center p-8 text-center text-[#111827] font-medium text-xs">
             Select a match from the left sidebar to start chatting.
           </div>
         )}

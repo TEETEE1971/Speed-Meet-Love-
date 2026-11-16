@@ -15,6 +15,12 @@ service cloud.firestore {
     match /granted_testers/{emailDocId} {
       allow read, write: if true;
     }
+    match /event_waitlist/{userId} {
+      allow read, write: if true;
+    }
+    match /launch_events/{eventId} {
+      allow read, write: if true;
+    }
     match /system_test/{testId} {
       allow read, write: if true;
     }

@@ -37,6 +37,7 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
     setCurrentView,
     setSelectedEventId,
     canAccessLiveSpeedDating,
+    isOwner,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,6 +45,10 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [selectedEventForDetail, setSelectedEventForDetail] = useState<SpeedEvent | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'schema'>('table');
+
+  if (!isOwner) {
+    return null;
+  }
 
   const filteredEvents = events.filter(evt => {
     const matchesSearch =
@@ -74,14 +79,14 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
       {/* Header bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-3xl bg-white border border-pink-100 shadow-xs">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-[#FF2E93] uppercase tracking-wider mb-1 font-heading">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#BE185D] uppercase tracking-wider mb-1 font-heading">
             <Database className="w-3.5 h-3.5" />
             <span>Relational Events Table · Fri, Sat & Sun at 7:00 PM EST</span>
           </div>
-          <h2 className="text-xl md:text-2xl font-bold text-slate-900 font-heading tracking-tight">
+          <h2 className="text-xl md:text-2xl font-bold text-[#111827] font-heading tracking-tight">
             Events Table
           </h2>
-          <p className="text-sm text-slate-600 mt-0.5">
+          <p className="text-sm text-[#111827] font-medium mt-0.5">
             Core Fields: EventID, EventName, DayOfWeek, EventDate, EventStartTime, TimeZone, BreakDurationSeconds, ParticipantsList, EventStatus, RoundsGenerated.
           </p>
         </div>
@@ -91,7 +96,7 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
             <button
               onClick={() => setViewMode('table')}
               className={`px-3 py-1.5 font-semibold rounded-xl transition-all ${
-                viewMode === 'table' ? 'btn-pink-gradient font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                viewMode === 'table' ? 'btn-pink-gradient font-bold shadow-xs' : 'text-[#111827] font-medium hover:text-[#BE185D]'
               }`}
             >
               Data Grid
@@ -99,7 +104,7 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
             <button
               onClick={() => setViewMode('schema')}
               className={`px-3 py-1.5 font-semibold rounded-xl transition-all ${
-                viewMode === 'schema' ? 'btn-pink-gradient font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                viewMode === 'schema' ? 'btn-pink-gradient font-bold shadow-xs' : 'text-[#111827] font-medium hover:text-[#BE185D]'
               }`}
             >
               Schema DDL
@@ -108,7 +113,7 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
 
           <button
             onClick={exportEventsJson}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs text-slate-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs font-semibold text-[#111827] transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
             Export JSON
@@ -127,16 +132,16 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
       {viewMode === 'schema' ? (
         <div className="p-6 rounded-3xl bg-white border border-pink-100 space-y-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900 font-heading flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#FF2E93]" />
+            <h3 className="text-base font-bold text-[#111827] font-heading flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#BE185D]" />
               Events Table Architectural Definition
             </h3>
-            <span className="text-xs text-slate-500 font-mono">TABLE: speed_events</span>
+            <span className="text-xs text-[#111827] font-medium font-mono">TABLE: speed_events</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-[#FFF8FA] p-4 rounded-2xl border border-pink-100 font-mono text-xs text-slate-800 overflow-x-auto">
-              <p className="text-[#FF2E93] font-bold mb-2">// SQL / Relational DDL (Friday 5-Min Rounds)</p>
+            <div className="bg-[#FFF8FA] p-4 rounded-2xl border border-pink-100 font-mono text-xs font-medium text-[#111827] overflow-x-auto">
+              <p className="text-[#BE185D] font-bold mb-2">// SQL / Relational DDL (Friday 5-Min Rounds)</p>
               <pre>{`CREATE TABLE speed_events (
   event_id VARCHAR(64) PRIMARY KEY,
   event_name VARCHAR(255) NOT NULL,
@@ -159,8 +164,8 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
 );`}</pre>
             </div>
 
-            <div className="bg-[#FFF8FA] p-4 rounded-2xl border border-pink-100 font-mono text-xs text-slate-800 overflow-x-auto">
-              <p className="text-emerald-700 font-bold mb-2">// TypeScript Data Model & Constraints</p>
+            <div className="bg-[#FFF8FA] p-4 rounded-2xl border border-pink-100 font-mono text-xs font-medium text-[#111827] overflow-x-auto">
+              <p className="text-[#047857] font-bold mb-2">// TypeScript Data Model & Constraints</p>
               <pre>{`export interface SpeedEvent {
   EventID: string;            // Primary Key: e.g. "evt_live_now"
   EventName: string;          // Formatted event title
@@ -183,19 +188,19 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
           {/* Filters & Search Toolbar */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-[#111827] absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Search events by name, ID or venue..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#FF2E93]"
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-[#111827] placeholder-slate-500 focus:outline-none focus:border-[#BE185D]"
               />
             </div>
 
             <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 shrink-0">
-                <Filter className="w-3.5 h-3.5 text-[#FF2E93]" />
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#111827] shrink-0">
+                <Filter className="w-3.5 h-3.5 text-[#BE185D]" />
                 <span>Type:</span>
               </div>
               {['All', 'Straight', 'LGBTQ+', '30 & Older', 'Age-specific'].map(type => (
@@ -205,14 +210,14 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
                   className={`px-2.5 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
                     filterType === type
                       ? 'btn-pink-gradient font-bold'
-                      : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+                      : 'bg-white text-[#111827] hover:text-[#BE185D] border border-slate-300'
                   }`}
                 >
                   {type}
                 </button>
               ))}
 
-              <div className="h-4 w-px bg-slate-200 mx-1 shrink-0" />
+              <div className="h-4 w-px bg-slate-300 mx-1 shrink-0" />
 
               {['All', 'Upcoming', 'Live', 'Completed'].map(st => (
                 <button
@@ -220,8 +225,8 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
                   onClick={() => setFilterStatus(st)}
                   className={`px-2.5 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
                     filterStatus === st
-                      ? 'bg-slate-900 text-white font-bold'
-                      : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+                      ? 'bg-[#111827] text-white font-bold'
+                      : 'bg-white text-[#111827] hover:text-[#BE185D] border border-slate-300'
                   }`}
                 >
                   {st}
@@ -235,7 +240,7 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-pink-100 bg-[#FFF8FA] text-slate-600 font-bold uppercase tracking-wider font-heading">
+                  <tr className="border-b border-pink-100 bg-[#FFF8FA] text-[#111827] font-bold uppercase tracking-wider font-heading">
                     <th className="py-3 px-4 whitespace-nowrap">EventID</th>
                     <th className="py-3 px-4 min-w-[200px]">EventName & Venue</th>
                     <th className="py-3 px-3 whitespace-nowrap">Friday Date & Time</th>
@@ -248,10 +253,10 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
                     <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-normal">
+                <tbody className="divide-y divide-slate-200 font-medium text-[#111827]">
                   {filteredEvents.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-12 text-center text-slate-400">
+                      <td colSpan={10} className="py-12 text-center text-[#111827] font-medium">
                         No events match current filter.
                       </td>
                     </tr>
@@ -266,37 +271,37 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
                           className="hover:bg-pink-50/50 transition-colors group cursor-pointer"
                           onClick={() => setSelectedEventForDetail(evt)}
                         >
-                          <td className="py-3 px-4 font-mono font-medium text-[#FF2E93] whitespace-nowrap">
+                          <td className="py-3 px-4 font-mono font-bold text-[#BE185D] whitespace-nowrap">
                             {evt.EventID}
                           </td>
 
                           <td className="py-3 px-4">
-                            <div className="font-bold text-slate-900 text-sm group-hover:text-[#FF2E93] transition-colors">
+                            <div className="font-bold text-[#111827] text-sm group-hover:text-[#BE185D] transition-colors">
                               {evt.EventName}
                             </div>
-                            <div className="text-[11px] text-slate-500 mt-0.5">
+                            <div className="text-[11px] text-[#111827] font-medium mt-0.5">
                               {evt.LocationName} · 5m Rounds · Ages {evt.MinAge}-{evt.MaxAge}
                             </div>
                           </td>
 
-                          <td className="py-3 px-3 whitespace-nowrap tabular-nums text-slate-700">
-                            <div className="flex items-center gap-1 font-medium">
-                              <Calendar className="w-3 h-3 text-[#FF2E93]" />
+                          <td className="py-3 px-3 whitespace-nowrap tabular-nums text-[#111827] font-medium">
+                            <div className="flex items-center gap-1 font-semibold">
+                              <Calendar className="w-3 h-3 text-[#BE185D]" />
                               <span>{evt.EventDate}</span>
                             </div>
-                            <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5 font-mono">
-                              <Clock className="w-3 h-3 text-slate-400" />
+                            <div className="flex items-center gap-1 text-[11px] text-[#111827] font-medium mt-0.5 font-mono">
+                              <Clock className="w-3 h-3 text-[#111827]" />
                               <span>{evt.EventStartTime} - {evt.EventEndTime}</span>
                             </div>
                           </td>
 
                           <td className="py-3 px-3 whitespace-nowrap tabular-nums">
                             <div className="flex items-center gap-1.5">
-                              <Users className="w-3.5 h-3.5 text-slate-400" />
-                              <span className="font-semibold text-slate-900">
+                              <Users className="w-3.5 h-3.5 text-[#111827]" />
+                              <span className="font-bold text-[#111827]">
                                 {evt.ParticipantsList.length}
                               </span>
-                              <span className="text-slate-400">/ {evt.MaxParticipants}</span>
+                              <span className="text-[#111827] font-medium">/ {evt.MaxParticipants}</span>
                             </div>
                           </td>
 
@@ -312,12 +317,12 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
 
                           <td className="py-3 px-3 whitespace-nowrap">
                             <span
-                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                                 evt.EventStatus === 'Live'
-                                  ? 'bg-pink-100 text-[#FF2E93] animate-pulse font-bold'
+                                  ? 'bg-pink-100 text-[#BE185D] animate-pulse'
                                   : evt.EventStatus === 'Upcoming'
-                                  ? 'bg-slate-100 text-slate-700'
-                                  : 'bg-slate-100 text-slate-400'
+                                  ? 'bg-slate-100 text-[#111827]'
+                                  : 'bg-slate-100 text-[#111827]'
                               }`}
                             >
                               {evt.EventStatus}
@@ -326,24 +331,24 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
 
                           <td className="py-3 px-3 whitespace-nowrap">
                             {evt.RoundsGenerated ? (
-                              <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold">
+                              <span className="inline-flex items-center gap-1 text-[#047857] font-bold">
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 <span>Yes</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-slate-400">
+                              <span className="inline-flex items-center gap-1 text-[#111827] font-medium">
                                 <XCircle className="w-3.5 h-3.5" />
                                 <span>No</span>
                               </span>
                             )}
                           </td>
 
-                          <td className="py-3 px-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                          <td className="py-3 px-3 font-mono text-[11px] text-[#111827] font-medium whitespace-nowrap">
                             {evt.HostID}
                           </td>
 
                           <td className="py-3 px-3 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium font-mono bg-pink-50 text-pink-700 border border-pink-100">
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono bg-pink-50 text-[#9D174D] border border-pink-200">
                               {evt.EventType}
                             </span>
                           </td>
@@ -356,7 +361,7 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
                               {!isEligible ? (
                                 <button
                                   onClick={() => setCurrentView('pricing')}
-                                  className="px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-semibold"
+                                  className="px-2.5 py-1 rounded-xl bg-amber-50 text-[#92400E] border border-amber-300 text-[11px] font-bold"
                                 >
                                   Plus Needed
                                 </button>
@@ -376,7 +381,7 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
                                   {isRegistered ? (
                                     <button
                                       onClick={() => leaveEvent(evt.EventID)}
-                                      className="px-2.5 py-1 rounded-xl bg-slate-100 text-rose-600 border border-slate-200 text-[11px]"
+                                      className="px-2.5 py-1 rounded-xl bg-slate-100 text-[#BE123C] font-bold border border-slate-300 text-[11px]"
                                     >
                                       Withdraw
                                     </button>
@@ -410,45 +415,45 @@ export const EventsTableInspector: React.FC<Props> = ({ onOpenCreateModal }) => 
           <div className="w-full max-w-2xl rounded-3xl bg-white border border-pink-100 shadow-2xl p-6 sm:p-7 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-xs font-mono text-[#FF2E93]">{selectedEventForDetail.EventID}</span>
-                <h3 className="text-xl font-bold text-slate-900 font-heading mt-0.5">{selectedEventForDetail.EventName}</h3>
-                <p className="text-xs text-slate-500">{selectedEventForDetail.LocationName}</p>
+                <span className="text-xs font-mono font-bold text-[#BE185D]">{selectedEventForDetail.EventID}</span>
+                <h3 className="text-xl font-bold text-[#111827] font-heading mt-0.5">{selectedEventForDetail.EventName}</h3>
+                <p className="text-xs text-[#111827] font-medium">{selectedEventForDetail.LocationName}</p>
               </div>
               <button
                 onClick={() => setSelectedEventForDetail(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold flex items-center justify-center"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-xs text-slate-700 bg-[#FFF8FA] p-3.5 rounded-2xl border border-pink-100">
+            <p className="text-xs text-[#111827] font-medium bg-[#FFF8FA] p-3.5 rounded-2xl border border-pink-100">
               {selectedEventForDetail.Description}
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div className="bg-[#FFF8FA] p-3 rounded-2xl border border-pink-100">
-                <span className="text-slate-400 block mb-1">Status</span>
-                <span className="font-bold text-slate-900">{selectedEventForDetail.EventStatus}</span>
+                <span className="text-[#111827] font-medium block mb-1">Status</span>
+                <span className="font-bold text-[#111827]">{selectedEventForDetail.EventStatus}</span>
               </div>
               <div className="bg-[#FFF8FA] p-3 rounded-2xl border border-pink-100">
-                <span className="text-slate-400 block mb-1">Tier Required</span>
-                <span className="font-bold text-amber-700">Premium Plus</span>
+                <span className="text-[#111827] font-medium block mb-1">Tier Required</span>
+                <span className="font-bold text-[#B45309]">Premium Plus</span>
               </div>
               <div className="bg-[#FFF8FA] p-3 rounded-2xl border border-pink-100">
-                <span className="text-slate-400 block mb-1">Round Length</span>
-                <span className="font-bold text-[#FF2E93]">5 Minutes (300s)</span>
+                <span className="text-[#111827] font-medium block mb-1">Round Length</span>
+                <span className="font-bold text-[#BE185D]">5 Minutes (300s)</span>
               </div>
               <div className="bg-[#FFF8FA] p-3 rounded-2xl border border-pink-100">
-                <span className="text-slate-400 block mb-1">Date & Time</span>
-                <span className="font-bold text-slate-900">{selectedEventForDetail.EventDate} ({selectedEventForDetail.EventStartTime})</span>
+                <span className="text-[#111827] font-medium block mb-1">Date & Time</span>
+                <span className="font-bold text-[#111827]">{selectedEventForDetail.EventDate} ({selectedEventForDetail.EventStartTime})</span>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
               <button
                 onClick={() => setSelectedEventForDetail(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold"
+                className="px-4 py-2 rounded-xl bg-slate-100 text-[#111827] text-xs font-semibold"
               >
                 Close
               </button>

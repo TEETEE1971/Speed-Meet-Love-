@@ -55,25 +55,25 @@ export const MatchResults: React.FC = () => {
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="rounded-3xl bg-white border border-pink-100 p-6 sm:p-8 text-center space-y-3 shadow-xs">
+      <div className="rounded-3xl bg-white border border-pink-200 p-6 sm:p-8 text-center space-y-3 shadow-xs">
         <div className="w-16 h-16 rounded-full btn-pink-gradient mx-auto flex items-center justify-center text-white shadow-md shadow-pink-500/20">
           <Heart className="w-8 h-8 fill-white" />
         </div>
 
         <div className="space-y-1">
-          <span className="text-xs font-bold uppercase tracking-widest text-[#FF2E93] font-heading">
+          <span className="text-xs font-bold uppercase tracking-widest text-[#BE185D] font-heading">
             Mutual Attraction
           </span>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 font-heading">
+          <h1 className="text-3xl sm:text-4xl font-bold text-[#111827] font-heading">
             Your Mutual Matches
           </h1>
-          <p className="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto">
+          <p className="text-xs sm:text-sm text-[#111827] font-medium max-w-lg mx-auto">
             These singles liked you back! Free members can see all their mutual matches; paid members (Premium & Premium Plus) can exchange private messages.
           </p>
         </div>
 
-        <div className="flex items-center justify-center gap-3 pt-2">
-          <div className="px-4 py-1.5 rounded-full bg-pink-50 border border-pink-200 text-xs font-bold text-[#FF2E93]">
+        <div className="flex items-center justify-center gap-3 pt-2 flex-wrap">
+          <div className="px-4 py-1.5 rounded-full bg-pink-50 border border-pink-300 text-xs font-bold text-[#BE185D]">
             {userMatches.length} Mutual Matches
           </div>
           <button
@@ -85,9 +85,9 @@ export const MatchResults: React.FC = () => {
           </button>
           <button
             onClick={() => setCurrentView('browse')}
-            className="px-4 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-4 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-[#111827] border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <Compass className="w-3.5 h-3.5 text-[#FF2E93]" />
+            <Compass className="w-3.5 h-3.5 text-[#BE185D]" />
             <span>Browse More Singles</span>
           </button>
         </div>
@@ -99,12 +99,12 @@ export const MatchResults: React.FC = () => {
       {/* Mutual Matches Gallery */}
       <div className="space-y-4">
         {userMatches.length === 0 ? (
-          <div className="p-12 rounded-3xl bg-white border border-pink-100 text-center space-y-4 shadow-xs">
-            <div className="w-16 h-16 rounded-full bg-pink-50 mx-auto flex items-center justify-center text-slate-400">
-              <Heart className="w-8 h-8 text-pink-300" />
+          <div className="p-12 rounded-3xl bg-white border border-pink-200 text-center space-y-4 shadow-xs">
+            <div className="w-16 h-16 rounded-full bg-pink-50 mx-auto flex items-center justify-center text-[#BE185D]">
+              <Heart className="w-8 h-8 text-[#BE185D]" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900 font-heading">No Mutual Matches Yet</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            <h3 className="text-lg font-bold text-[#111827] font-heading">No Mutual Matches Yet</h3>
+            <p className="text-xs text-[#111827] font-medium max-w-sm mx-auto">
               Browse dating profiles or participate in Friday-night speed dating to spark mutual connections.
             </p>
             <button
@@ -126,7 +126,7 @@ export const MatchResults: React.FC = () => {
               return (
                 <div
                   key={match.MatchID}
-                  className="rounded-3xl bg-white border border-pink-100 hover:border-pink-300 p-6 space-y-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                  className="rounded-3xl bg-white border border-pink-200 hover:border-pink-400 p-6 space-y-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
                 >
                   <div className="space-y-4">
                     {/* Top Row: Partner Header & Chemistry Score */}
@@ -134,36 +134,36 @@ export const MatchResults: React.FC = () => {
                       <div className="flex items-center gap-3.5">
                         <Avatar user={partner} size="xl" showBadge />
                         <div>
-                          <h3 className="text-lg font-bold text-slate-900 font-heading flex items-center gap-1.5">
+                          <h3 className="text-lg font-bold text-[#111827] font-heading flex items-center gap-1.5">
                             <span>{partner.LastName ? `${partner.FirstName} ${partner.LastName}` : partner.FirstName}</span>
-                            <span className="text-xs text-pink-500">❤️</span>
+                            <span className="text-xs text-[#BE123C]">❤️</span>
                           </h3>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-[#111827] font-medium">
                             {partner.Occupation || 'Occupation not set'}{partner.Age && partner.Age > 0 ? ` · ${partner.Age} years old` : ''}
                           </p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
+                          <p className="text-[11px] text-[#111827] font-medium mt-0.5">
                             {partner.Location || 'Location not set'}
                           </p>
                         </div>
                       </div>
 
                       <div className="flex flex-col items-end gap-1">
-                        <div className="px-3 py-1 rounded-full bg-pink-50 border border-pink-200 text-[#FF2E93] text-xs font-bold tabular-nums flex items-center gap-1">
-                          <Flame className="w-3.5 h-3.5 fill-[#FF2E93] text-[#FF2E93]" />
+                        <div className="px-3 py-1 rounded-full bg-pink-50 border border-pink-300 text-[#BE185D] text-xs font-bold tabular-nums flex items-center gap-1">
+                          <Flame className="w-3.5 h-3.5 fill-[#BE185D] text-[#BE185D]" />
                           <span>{match.ChemistryScore}% Match</span>
                         </div>
 
                         <div className="flex items-center gap-1 mt-1">
                           <button
                             onClick={() => blockUser(partner.UserID)}
-                            className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                            className="p-1 rounded text-[#111827] hover:text-[#BE123C] transition-colors"
                             title="Block member"
                           >
                             <Ban className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => setReportModalTarget(partner)}
-                            className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                            className="p-1 rounded text-[#111827] hover:text-[#BE123C] transition-colors"
                             title="Report member"
                           >
                             <ShieldAlert className="w-3.5 h-3.5" />
@@ -173,26 +173,26 @@ export const MatchResults: React.FC = () => {
                     </div>
 
                     {/* Bio & Spark Note */}
-                    <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-100 text-xs space-y-1">
-                      <div className="text-slate-500 font-semibold flex items-center gap-1 text-[11px]">
-                        <Sparkles className="w-3 h-3 text-amber-500" />
+                    <div className="p-3.5 rounded-2xl bg-[#FFF8FA] border border-pink-200 text-xs space-y-1">
+                      <div className="text-[#111827] font-semibold flex items-center gap-1 text-[11px]">
+                        <Sparkles className="w-3 h-3 text-[#B45309]" />
                         <span>Spark Note:</span>
                       </div>
-                      <p className="text-slate-700 italic">
+                      <p className="text-[#111827] font-medium italic">
                         "{match.SparkNote || partner.Bio}"
                       </p>
                     </div>
 
                     {/* Shared Interests */}
                     <div>
-                      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <div className="text-[11px] font-bold text-[#111827] uppercase tracking-wider mb-1.5">
                         Shared Chemistry
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {match.MutualInterests.map(interest => (
                           <span
                             key={interest}
-                            className="px-2.5 py-1 rounded-xl bg-pink-50 border border-pink-100 text-xs text-pink-700 font-medium"
+                            className="px-2.5 py-1 rounded-xl bg-pink-50 border border-pink-200 text-xs text-[#9D174D] font-semibold"
                           >
                             {interest}
                           </span>
@@ -202,16 +202,16 @@ export const MatchResults: React.FC = () => {
                   </div>
 
                   {/* Footer Action */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                  <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1.5 text-xs">
                       {check.allowed ? (
-                        <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                        <span className="text-[#047857] font-bold flex items-center gap-1">
                           <Unlock className="w-3.5 h-3.5" />
                           Chat Ready
                         </span>
                       ) : (
-                        <span className="text-slate-500 flex items-center gap-1 text-[11px]">
-                          <Lock className="w-3.5 h-3.5 text-[#FF2E93]" />
+                        <span className="text-[#111827] font-semibold flex items-center gap-1 text-[11px]">
+                          <Lock className="w-3.5 h-3.5 text-[#BE185D]" />
                           Paid Tier Required
                         </span>
                       )}

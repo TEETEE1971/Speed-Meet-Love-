@@ -350,10 +350,10 @@ export const SecondChanceDateRoom: React.FC = () => {
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 font-heading">
+            <h2 className="text-2xl sm:text-3xl font-bold text-[#111827] font-heading">
               10-Minute Second Chance Date Completed! 💘
             </h2>
-            <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
+            <p className="text-xs sm:text-sm text-[#111827] font-medium max-w-md mx-auto">
               Your 10-minute video session with <strong>{partner.FirstName}</strong> has concluded. Your mutual match is safely preserved in <strong>My Matches</strong> so you can continue messaging anytime.
             </p>
           </div>
@@ -376,7 +376,7 @@ export const SecondChanceDateRoom: React.FC = () => {
 
             <button
               onClick={() => setCurrentView('results')}
-              className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
             >
               <span>Return to Match Reveal</span>
               <ChevronRight className="w-4 h-4" />
@@ -393,22 +393,22 @@ export const SecondChanceDateRoom: React.FC = () => {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setCurrentView('results')}
-                className="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+                className="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] flex items-center justify-center transition-colors cursor-pointer"
                 title="Back to Match Reveal"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-50 text-red-600 border border-rose-200 font-heading">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 font-heading">
                     Second Chance Date
                   </span>
-                  <span className="text-xs text-slate-400">·</span>
-                  <span className="text-xs font-semibold text-slate-600">
+                  <span className="text-xs text-[#111827] font-bold">·</span>
+                  <span className="text-xs font-semibold text-[#111827]">
                     10-Minute Private Video Connection
                   </span>
                 </div>
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-heading mt-0.5">
+                <h1 className="text-xl sm:text-2xl font-bold text-[#111827] font-heading mt-0.5">
                   Reconnecting with {partner.FirstName}
                 </h1>
               </div>
@@ -419,14 +419,14 @@ export const SecondChanceDateRoom: React.FC = () => {
               <div
                 className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl border-2 font-mono font-black text-base sm:text-lg transition-colors shadow-2xs ${
                   timeLeft < 60
-                    ? 'bg-rose-50 border-rose-400 text-rose-600 animate-pulse'
-                    : 'bg-pink-50 border-rose-300 text-red-600'
+                    ? 'bg-rose-50 border-rose-400 text-[#BE123C] animate-pulse'
+                    : 'bg-pink-50 border-rose-300 text-[#B91C1C]'
                 }`}
                 title="Server-authoritative 10-minute timer. Never resets on refresh or reconnect."
               >
-                <Clock className="w-4 h-4 text-red-600" />
+                <Clock className="w-4 h-4 text-[#B91C1C]" />
                 <span className="tracking-tight">{formatMinutes(timeLeft)}</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Server Synced Timer" />
+                <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" title="Server Synced Timer" />
               </div>
 
               {/* Real-time Heart Reaction Button */}
@@ -443,7 +443,7 @@ export const SecondChanceDateRoom: React.FC = () => {
               <button
                 onClick={handleConcludeDate}
                 disabled={isConcluding}
-                className="px-3 sm:px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-xs font-bold text-slate-700 hover:text-red-600 transition-colors cursor-pointer"
+                className="px-3 sm:px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-xs font-bold text-[#111827] hover:text-[#B91C1C] transition-colors cursor-pointer"
               >
                 Conclude Date
               </button>
@@ -560,14 +560,14 @@ export const SecondChanceDateRoom: React.FC = () => {
 
               {/* Spark Conversation Prompt */}
               <div className="p-4 rounded-3xl bg-white border border-rose-200 shadow-2xs flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-red-600 shrink-0">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-[#B91C1C] shrink-0">
                   <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-heading">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#111827] font-heading">
                     10-Minute Deep Dive Spark
                   </div>
-                  <p className="text-xs sm:text-sm font-bold text-slate-800">
+                  <p className="text-xs sm:text-sm font-bold text-[#111827]">
                     “What’s something unexpected you loved finding out about each other in the first 5 minutes?”
                   </p>
                 </div>
@@ -580,26 +580,26 @@ export const SecondChanceDateRoom: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <Avatar user={partner} size="md" showBadge />
                   <div>
-                    <h3 className="font-extrabold text-slate-900 font-heading text-base">
+                    <h3 className="font-bold text-[#111827] font-heading text-base">
                       {partner.FirstName} {partner.LastName}
                     </h3>
-                    <p className="text-xs text-slate-500">{partner.Occupation} · {partner.Age} years old</p>
+                    <p className="text-xs text-[#111827] font-medium">{partner.Occupation} · {partner.Age} years old</p>
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-700 bg-rose-50/50 p-3.5 rounded-2xl border border-rose-100 leading-relaxed">
+                <div className="text-xs text-[#111827] font-medium bg-rose-50/50 p-3.5 rounded-2xl border border-rose-100 leading-relaxed">
                   {partner.Bio}
                 </div>
 
                 <div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 font-heading">
+                  <div className="text-[10px] font-bold text-[#111827] uppercase tracking-wider mb-1.5 font-heading">
                     Shared Chemistry
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {partner.Interests.map(interest => (
                       <span
                         key={interest}
-                        className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-rose-100 text-red-700 border border-rose-200"
+                        className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-rose-100 text-[#991B1B] border border-rose-200"
                       >
                         {interest} ✨
                       </span>
@@ -608,13 +608,13 @@ export const SecondChanceDateRoom: React.FC = () => {
                 </div>
 
                 <div className="pt-3 border-t border-rose-100 text-xs space-y-2">
-                  <div className="flex items-center justify-between text-slate-600">
+                  <div className="flex items-center justify-between text-[#111827] font-medium">
                     <span>Second Date Duration:</span>
-                    <span className="font-bold text-slate-900">10 Minutes (600s)</span>
+                    <span className="font-bold text-[#111827]">10 Minutes (600s)</span>
                   </div>
-                  <div className="flex items-center justify-between text-slate-600">
+                  <div className="flex items-center justify-between text-[#111827] font-medium">
                     <span>Mutual Match Saved:</span>
-                    <span className="font-bold text-emerald-600 flex items-center gap-1">
+                    <span className="font-bold text-[#047857] flex items-center gap-1">
                       <CheckCircle className="w-3.5 h-3.5" />
                       Permanent
                     </span>

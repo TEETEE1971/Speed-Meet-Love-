@@ -44,7 +44,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="speed-meet-love.ai.studio" />
+                <data android:scheme="https" android:host="speedmeetlove.com" />
             </intent-filter>
         </activity>
     </application>
