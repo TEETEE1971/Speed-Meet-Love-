@@ -53,10 +53,12 @@ interface StripeConfigResponse {
 export const SubscriptionScreen: React.FC = () => {
   const {
     currentUser,
+    isAuthenticated,
     setSubscriptionTier,
     showNotification,
     appMode,
     openAuthModal,
+    setIsEmailVerificationModalOpen,
     authToken,
     syncAuthSession,
     waitlistJoined,
@@ -76,6 +78,20 @@ export const SubscriptionScreen: React.FC = () => {
 
   const currentTier = currentUser?.SubscriptionTier || 'Free';
   const isTester = Boolean(currentUser?.IsTester || currentUser?.UserID === 'usr_kristy');
+  const hasActiveLaunchGrant = Boolean(
+    isAuthenticated &&
+      currentUser?.EmailVerified &&
+      currentUser?.LaunchOfferGranted &&
+      currentUser?.LaunchOfferActive &&
+      currentUser?.LaunchOfferGrantNumber
+  );
+  const launchGrantExpiresLabel = currentUser?.LaunchOfferExpiresAt
+    ? new Date(currentUser.LaunchOfferExpiresAt).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : null;
 
   // Load public Stripe configuration & authoritative price IDs from backend config endpoint
   const fetchStripeConfig = async (): Promise<StripeConfigResponse | null> => {
@@ -401,8 +417,42 @@ export const SubscriptionScreen: React.FC = () => {
           Free allows browsing and joining the free event waiting list. Upgrade to Premium ($9.99/mo) for private messaging after mutual matches. New Premium Plus event memberships are paused while we welcome our first members.
         </p>
 
-        {/* Customer Billing Portal Shortcut if already subscribed */}
-        {(currentTier === 'Premium' || currentTier === 'Premium Plus') && !isAndroid && (
+        {(!isAuthenticated || !currentUser?.EmailVerified) && (
+          <div className="max-w-3xl mx-auto p-4 rounded-2xl bg-gradient-to-r from-pink-50 via-rose-50 to-teal-50 border-2 border-pink-300 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+            <div className="flex items-start gap-2.5 text-xs sm:text-sm font-bold text-[#111827]">
+              <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D] shrink-0 mt-0.5" />
+              <span>
+                Our first 50 eligible members receive one month of Premium FREE! Sign up and verify your email to discover if you’ve claimed a spot.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => (isAuthenticated ? setIsEmailVerificationModalOpen(true) : openAuthModal('signup'))}
+              className="px-4 py-2 rounded-full bg-[#BE185D] hover:bg-rose-700 text-white font-bold text-xs shrink-0 cursor-pointer shadow-xs transition-colors"
+            >
+              {isAuthenticated ? 'Verify Email' : 'Sign Up Now'}
+            </button>
+          </div>
+        )}
+
+        {hasActiveLaunchGrant && currentUser?.LaunchOfferGrantNumber && (
+          <div className="max-w-2xl mx-auto p-4 rounded-2xl bg-gradient-to-r from-pink-50 via-white to-teal-50 border-2 border-teal-300 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#111827]">
+            <div className="flex items-center gap-2 font-bold">
+              <Sparkles className="w-4 h-4 text-[#BE185D] shrink-0" />
+              <span>
+                Launch Offer Active: Recipient <strong>#{currentUser.LaunchOfferGrantNumber}</strong> — 30 Days of Premium FREE!
+              </span>
+            </div>
+            {launchGrantExpiresLabel && (
+              <span className="px-2.5 py-1 rounded-full bg-teal-100 text-[#0F766E] border border-teal-300 font-bold text-[11px] shrink-0">
+                Active through {launchGrantExpiresLabel}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Customer Billing Portal Shortcut if already subscribed via Stripe */}
+        {(currentTier === 'Premium' || currentTier === 'Premium Plus') && !isAndroid && Boolean(currentUser?.StripeCustomerId || currentUser?.SubscriptionStatus === 'active') && (
           <div className="pt-2">
             <button
               type="button"
@@ -513,7 +563,7 @@ export const SubscriptionScreen: React.FC = () => {
               </div>
               {currentTier === 'Premium' && (
                 <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-pink-50 text-[#BE185D] border border-pink-300 font-bold">
-                  Active
+                  {hasActiveLaunchGrant ? `Active · #${currentUser?.LaunchOfferGrantNumber}` : 'Active'}
                 </span>
               )}
             </div>
@@ -523,7 +573,11 @@ export const SubscriptionScreen: React.FC = () => {
                 <span className="text-4xl font-extrabold text-[#111827] font-heading">$9.99</span>
                 <span className="text-xs text-[#111827] font-medium">/ month</span>
               </div>
-              <p className="text-xs text-[#111827] font-medium mt-1">Private messaging unlocked with mutual matches</p>
+              <p className="text-xs text-[#111827] font-medium mt-1">
+                {hasActiveLaunchGrant && launchGrantExpiresLabel
+                  ? `Free 30-day Launch Member grant active through ${launchGrantExpiresLabel}`
+                  : 'Private messaging unlocked with mutual matches'}
+              </p>
             </div>
 
             <div className="space-y-3 pt-4 border-t border-slate-200 text-xs text-[#111827] font-medium">
@@ -555,7 +609,7 @@ export const SubscriptionScreen: React.FC = () => {
           <div className="pt-6">
             {isAndroid ? (
               <div className="p-3 rounded-2xl bg-slate-50 border border-slate-300 text-center text-[11px] text-[#111827] font-medium">
-                <span>Google Play Billing coming soon</span>
+                <span>{hasActiveLaunchGrant ? `Free Month Active (#${currentUser?.LaunchOfferGrantNumber})` : 'Google Play Billing coming soon'}</span>
               </div>
             ) : (
               <button
@@ -573,7 +627,7 @@ export const SubscriptionScreen: React.FC = () => {
                     <span>Connecting Stripe...</span>
                   </>
                 ) : currentTier === 'Premium' ? (
-                  'Current Plan'
+                  hasActiveLaunchGrant ? `Free Month Active (#${currentUser?.LaunchOfferGrantNumber})` : 'Current Plan'
                 ) : (
                   <>
                     <CreditCard className="w-3.5 h-3.5" />

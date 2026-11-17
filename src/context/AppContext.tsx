@@ -79,6 +79,12 @@ interface AppContextType {
   authModalTab: 'signin' | 'signup';
   setAuthModalTab: (tab: 'signin' | 'signup') => void;
   openAuthModal: (tab?: 'signin' | 'signup') => void;
+  isEmailVerificationModalOpen: boolean;
+  setIsEmailVerificationModalOpen: (open: boolean) => void;
+  emailVerificationSent: boolean | null;
+  verifyEmail: (payload: { token?: string; code?: string; email?: string }) => Promise<{ success: boolean; error?: string; user?: User }>;
+  resendVerificationEmail: (email?: string) => Promise<{ success: boolean; error?: string; emailSent?: boolean }>;
+  markLaunchOfferCelebrated: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   signUp: (formData: any) => Promise<{ success: boolean; error?: string; user?: User }>;
   sendPasswordResetEmail: (email: string) => Promise<{ success: boolean; message: string; error?: string }>;
@@ -825,6 +831,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalTab, setAuthModalTab] = useState<'signin' | 'signup'>('signin');
+  const [isEmailVerificationModalOpen, setIsEmailVerificationModalOpen] = useState<boolean>(false);
+  const [emailVerificationSent, setEmailVerificationSent] = useState<boolean | null>(null);
 
   const openAuthModal = useCallback((tab: 'signin' | 'signup' = 'signin') => {
     setAuthModalTab(tab);
@@ -1033,6 +1041,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isPaidOrTester = (u: User) =>
       u.SubscriptionTier === 'Premium' ||
       u.SubscriptionTier === 'Premium Plus' ||
+      Boolean(u.LaunchOfferActive && (!u.LaunchOfferExpiresAt || Date.now() < u.LaunchOfferExpiresAt)) ||
       Boolean(u.IsTester) ||
       u.UserID === 'usr_kristy' ||
       isOwner;
@@ -1147,16 +1156,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateAnyUser = (userId: string, updated: Partial<User>) => {
-    setUsers(prev =>
-      prev.map(u => (u.UserID === userId ? { ...u, ...updated } : u))
-    );
-    showNotification('Profile updated successfully!', 'success');
+    if (!currentUser || userId !== currentUser.UserID) {
+      showNotification('Permission denied: You can only edit your own profile.', 'info');
+      return;
+    }
+    void updateUserProfile(updated);
   };
 
   const updateUserPreferences = (userId: string, prefs: Partial<UserPreferences>) => {
+    if (!currentUser || userId !== currentUser.UserID) {
+      showNotification('Permission denied: You can only update your own search preferences.', 'info');
+      return;
+    }
     setUsers(prev =>
       prev.map(u => {
-        if (u.UserID === userId) {
+        if (u.UserID === currentUser.UserID) {
           const updatedPrefs: UserPreferences = {
             ...u.Preferences,
             ...prefs,
@@ -2613,6 +2627,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Only founder inherits founder seed record; normal registered members have their own isolated record
     const initialMatch = isFounder ? INITIAL_USERS.find(iu => iu.UserID === 'usr_kristy') : undefined;
 
+    const emailVerified = Boolean(apiUser.EmailVerified ?? apiUser.emailVerified);
+    const launchOfferGranted = emailVerified && Boolean(apiUser.LaunchOfferGranted ?? apiUser.launchOfferGranted);
+    const launchOfferGrantNumber = launchOfferGranted && typeof (apiUser.LaunchOfferGrantNumber ?? apiUser.launchOfferGrantNumber) === 'number'
+      ? (apiUser.LaunchOfferGrantNumber ?? apiUser.launchOfferGrantNumber)
+      : null;
+
     return {
       ...(initialMatch || {}),
       UserID: userId,
@@ -2629,6 +2649,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       StripeCustomerId: apiUser.StripeCustomerId || apiUser.stripeCustomerId || undefined,
       IsTester: Boolean(apiUser.IsTester || apiUser.isTester),
       IsOwner: Boolean(apiUser.IsOwner || apiUser.isOwner || isFounder),
+      EmailVerified: emailVerified,
+      EmailVerifiedAt: emailVerified ? (apiUser.EmailVerifiedAt ?? apiUser.emailVerifiedAt ?? null) : null,
+      LaunchOfferGranted: launchOfferGranted,
+      LaunchOfferGrantNumber: launchOfferGrantNumber,
+      LaunchOfferGrantedAt: launchOfferGranted ? (apiUser.LaunchOfferGrantedAt ?? apiUser.launchOfferGrantedAt ?? null) : null,
+      LaunchOfferExpiresAt: launchOfferGranted ? (apiUser.LaunchOfferExpiresAt ?? apiUser.launchOfferExpiresAt ?? null) : null,
+      LaunchOfferActive: launchOfferGranted && Boolean(apiUser.LaunchOfferActive ?? apiUser.launchOfferActive),
+      LaunchOfferExpired: launchOfferGranted && Boolean(apiUser.LaunchOfferExpired ?? apiUser.launchOfferExpired),
+      LaunchOfferCelebrationPending: launchOfferGranted && Boolean(apiUser.LaunchOfferCelebrationPending ?? apiUser.launchOfferCelebrationPending),
+      LaunchOfferCelebrationShownAt: launchOfferGranted ? (apiUser.LaunchOfferCelebrationShownAt ?? apiUser.launchOfferCelebrationShownAt ?? null) : null,
       Bio: bio,
       Occupation: occupation,
       Interests: interests,
@@ -2668,24 +2698,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Validate stored session token on startup
+  // Handle email verification link (/verify-email?token=...) and hydrate session sequentially to avoid race conditions
   useEffect(() => {
-    const token = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
-    if (!token) {
-      setCurrentUserId('');
-      setAppModeState('production');
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
-      return;
-    }
-
+    if (typeof window === 'undefined') return;
     let isMounted = true;
-    fetch('/api/auth/me', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then(res => res.json())
-      .then(data => {
+
+    const initializeAuthAndVerification = async () => {
+      const storedToken = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+      const params = new URLSearchParams(window.location.search);
+      const linkVerifyToken = window.location.pathname === '/verify-email' ? params.get('token') : null;
+
+      if (linkVerifyToken) {
+        window.history.replaceState({}, '', '/');
+        try {
+          const vRes = await fetch('/api/auth/verify-email', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
+            },
+            body: JSON.stringify({ token: linkVerifyToken }),
+          });
+          const vData = await vRes.json().catch(() => ({}));
+          if (!isMounted) return;
+          if (vRes.ok && vData.success) {
+            if (vData.user) {
+              const verifiedNormalized = normalizeUserFromApi(vData.user);
+              setUsers(prev => {
+                const exists = prev.some(u => u.UserID === verifiedNormalized.UserID);
+                return exists
+                  ? prev.map(u => (u.UserID === verifiedNormalized.UserID ? { ...u, ...verifiedNormalized } : u))
+                  : [verifiedNormalized, ...prev];
+              });
+            }
+            setIsEmailVerificationModalOpen(false);
+            if (!storedToken) {
+              showNotification('Email verified! Please sign in to view your account status.', 'success');
+              openAuthModal('signin');
+            } else {
+              showNotification('Email verified successfully!', 'success');
+            }
+          } else {
+            showNotification(vData.error || 'Email verification link is invalid or expired.', 'pink');
+          }
+        } catch {
+          if (isMounted) {
+            showNotification('Could not verify your email link right now. Please try again.', 'pink');
+          }
+        }
+      }
+
+      if (!storedToken) {
+        if (isMounted) {
+          setCurrentUserId('');
+          setAppModeState('production');
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
+        }
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: {
+            Authorization: `Bearer ${storedToken}`,
+          },
+        });
+        const data = await res.json();
         if (!isMounted) return;
         if (data.success && data.user) {
           const normalized = normalizeUserFromApi(data.user);
@@ -2695,7 +2773,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             (normalized.Email && normalized.Email.toLowerCase().trim() === 'kristylten@gmail.com') ||
             userId === 'usr_kristy'
           );
-          setAuthToken(token);
+          setAuthToken(storedToken);
           setCurrentUserId(userId);
           localStorage.setItem(`${STORAGE_KEY_PREFIX}current_user_id`, userId);
           setUsers(prev => {
@@ -2715,15 +2793,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           localStorage.removeItem(`${STORAGE_KEY_PREFIX}current_user_id`);
           localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
         }
-      })
-      .catch(() => {
+      } catch {
         // Network offline or server restarting: keep cached token
-      });
+      }
+    };
+
+    initializeAuthAndVerification();
 
     return () => {
       isMounted = false;
     };
-  }, [normalizeUserFromApi]);
+  }, [normalizeUserFromApi, openAuthModal, showNotification]);
 
   const signIn = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string; user?: User }> => {
     try {
@@ -2799,12 +2879,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setUsers(prev => [normalized, ...prev.filter(u => u.UserID !== userId)]);
 
-      showNotification(`Welcome to Speed Meet Love, ${normalized.FirstName}!`, 'pink');
+      const delivered = Boolean(data.verificationDelivery?.emailSent);
+      setEmailVerificationSent(delivered);
+
+      if (!normalized.EmailVerified) {
+        setIsEmailVerificationModalOpen(true);
+      }
+
+      showNotification(
+        delivered
+          ? `Welcome to Speed Meet Love, ${normalized.FirstName}! Check your email to verify your address.`
+          : `Welcome to Speed Meet Love, ${normalized.FirstName}! Please verify your email address to complete activation.`,
+        'pink'
+      );
       return { success: true, user: normalized };
     } catch (err: any) {
       return { success: false, error: err.message || 'Network error during registration.' };
     }
   }, [normalizeUserFromApi, showNotification]);
+
+  const verifyEmail = useCallback(async (payload: { token?: string; code?: string; email?: string }): Promise<{ success: boolean; error?: string; user?: User }> => {
+    try {
+      const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+      const res = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Email verification failed.' };
+      }
+
+      let normalized: User | undefined;
+      if (data.user) {
+        normalized = normalizeUserFromApi(data.user);
+        setUsers(prev => {
+          const exists = prev.some(u => u.UserID === normalized!.UserID);
+          return exists ? prev.map(u => (u.UserID === normalized!.UserID ? { ...u, ...normalized! } : u)) : [normalized!, ...prev];
+        });
+      }
+      setEmailVerificationSent(null);
+      setIsEmailVerificationModalOpen(false);
+      showNotification('Email verified successfully!', 'success');
+      return { success: true, user: normalized };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error verifying email.' };
+    }
+  }, [authToken, normalizeUserFromApi, showNotification]);
+
+  const resendVerificationEmail = useCallback(async (email?: string): Promise<{ success: boolean; error?: string; emailSent?: boolean }> => {
+    try {
+      const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+      const res = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(email ? { email } : {}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setEmailVerificationSent(false);
+        return { success: false, error: data.error || 'Failed to resend verification email.' };
+      }
+      const sent = Boolean(data.verificationDelivery?.emailSent);
+      setEmailVerificationSent(sent);
+      if (data.user) {
+        const normalized = normalizeUserFromApi(data.user);
+        setUsers(prev => prev.map(u => (u.UserID === normalized.UserID ? { ...u, ...normalized } : u)));
+      }
+      return { success: true, emailSent: sent };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error resending verification email.' };
+    }
+  }, [authToken, normalizeUserFromApi]);
+
+  const markLaunchOfferCelebrated = useCallback(async () => {
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+    if (!token) return;
+    // Optimistically clear local flag so modal closes responsively
+    if (currentUser) {
+      setUsers(prev =>
+        prev.map(u =>
+          u.UserID === currentUser.UserID
+            ? { ...u, LaunchOfferCelebrationPending: false, LaunchOfferCelebrationShownAt: Date.now() }
+            : u
+        )
+      );
+    }
+    try {
+      const res = await fetch('/api/account/launch-offer/celebrated', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.user) {
+        const normalized = normalizeUserFromApi(data.user);
+        setUsers(prev => prev.map(u => (u.UserID === normalized.UserID ? { ...u, ...normalized } : u)));
+      }
+    } catch {
+      // Non-fatal
+    }
+  }, [authToken, currentUser, normalizeUserFromApi]);
 
   const sendPasswordResetEmail = useCallback(async (email: string): Promise<{ success: boolean; message: string; error?: string }> => {
     try {
@@ -2847,6 +3031,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAuthToken(null);
     setCurrentUserId('');
+    setEmailVerificationSent(null);
+    setIsEmailVerificationModalOpen(false);
     setWaitlistJoined(false);
     setWaitlistEntry(null);
     setOwnerLaunchEvents([]);
@@ -3131,9 +3317,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const syncAuthSession = useCallback(async (user: User): Promise<string | null> => {
     try {
+      const existingToken = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+      if (!existingToken) return null;
       const res = await fetch('/api/auth/session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${existingToken}`,
+        },
         body: JSON.stringify({
           userId: user.UserID,
           email: user.Email || `${user.UserID}@speedmeetlove.app`,
@@ -3151,14 +3342,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('Failed to sync auth session token:', err);
     }
     return null;
-  }, []);
+  }, [authToken]);
 
-  // Sync token whenever active member changes (in demonstration mode only)
+  // Sync token whenever active member changes (in demonstration mode only for verified founder)
   useEffect(() => {
-    if (appMode === 'demonstration' && currentUser?.UserID) {
+    if (isOwner && appMode === 'demonstration' && currentUser?.UserID) {
       syncAuthSession(currentUser);
     }
-  }, [appMode, currentUser?.UserID, currentUser?.Email, syncAuthSession]);
+  }, [isOwner, appMode, currentUser?.UserID, currentUser?.Email, syncAuthSession]);
 
   const deleteAccount = async (confirmEmail: string): Promise<{
     success: boolean;
@@ -3290,6 +3481,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         authModalTab,
         setAuthModalTab,
         openAuthModal,
+        isEmailVerificationModalOpen,
+        setIsEmailVerificationModalOpen,
+        emailVerificationSent,
+        verifyEmail,
+        resendVerificationEmail,
+        markLaunchOfferCelebrated,
         signIn,
         signUp,
         sendPasswordResetEmail,

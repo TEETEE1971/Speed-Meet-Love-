@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { trackScreenPageView } from './utils/analytics';
 import { Navbar } from './components/Navbar';
 import { HomeScreen } from './components/HomeScreen';
 import { BrowseProfiles } from './components/BrowseProfiles';
@@ -33,14 +34,50 @@ import { ContactPage } from './components/ContactPage';
 import { OwnerReportsView } from './components/OwnerReportsView';
 import { AuthModal } from './components/AuthModal';
 import { AuthGate } from './components/AuthGate';
-import { Heart, Zap, Sparkles } from 'lucide-react';
+import { EmailVerificationModal } from './components/EmailVerificationModal';
+import { LaunchOfferCelebrationModal } from './components/LaunchOfferCelebrationModal';
+import { Heart, Zap, Sparkles, Mail } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const { currentView, setCurrentView, notification, clearNotification, isAuthenticated, isOwner, confirmedLaunchEvents } = useApp();
+  const {
+    currentUser,
+    currentView,
+    setCurrentView,
+    notification,
+    clearNotification,
+    isAuthenticated,
+    isOwner,
+    confirmedLaunchEvents,
+    setIsEmailVerificationModalOpen,
+  } = useApp();
+
+  useEffect(() => {
+    trackScreenPageView(currentView);
+  }, [currentView]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FFF8FA] text-[#111827] font-medium">
       <Navbar />
+
+      {isAuthenticated && currentUser && !currentUser.EmailVerified && !isOwner && !currentUser.IsTester && (
+        <div className="bg-gradient-to-r from-pink-50 via-rose-50 to-teal-50 border-b border-pink-200 px-4 py-2.5">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#111827] font-medium">
+            <div className="flex items-center gap-2 text-center sm:text-left">
+              <Mail className="w-4 h-4 text-[#BE185D] shrink-0" />
+              <span>
+                Please verify your email address (<strong>{currentUser.Email}</strong>) to complete your account verification.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsEmailVerificationModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-full bg-[#BE185D] hover:bg-rose-700 text-white font-bold text-xs shadow-xs cursor-pointer transition-colors shrink-0"
+            >
+              Verify Email
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Global floating toast notification */}
       {notification && (
@@ -120,6 +157,10 @@ const MainContent: React.FC = () => {
 
       {/* Real Email/Password Authentication Modal */}
       <AuthModal />
+
+      {/* Email Verification & First-50 Launch Celebration Modals */}
+      <EmailVerificationModal />
+      <LaunchOfferCelebrationModal />
 
       {/* Speed Meet Love Brand Footer */}
       <footer className="border-t-2 border-rose-200 py-8 bg-white text-xs text-[#111827] font-medium mt-auto shadow-inner">

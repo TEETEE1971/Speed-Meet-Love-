@@ -77,6 +77,11 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
     demoRecordsExcluded?: number;
     persistenceNotice?: string;
   } | null>(null);
+  const [launchOfferSummary, setLaunchOfferSummary] = useState<{
+    maxGrants: number;
+    grantedCount: number;
+    liveAt: number;
+  } | null>(null);
   const [loadingUsers, setLoadingUsers] = useState<boolean>(true);
   const [isRefreshingUsers, setIsRefreshingUsers] = useState<boolean>(false);
   const [usersError, setUsersError] = useState<string | null>(null);
@@ -162,6 +167,9 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
           setActiveSessionsCount(typeof data.activeSessionsCount === 'number' ? data.activeSessionsCount : 0);
           if (data.storageDiagnostic) {
             setStorageDiagnostic(data.storageDiagnostic);
+          }
+          if (data.launchOfferSummary) {
+            setLaunchOfferSummary(data.launchOfferSummary);
           }
           hasLoadedUsersOnceRef.current = true;
         } else {
@@ -931,9 +939,9 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                   </div>
                 </div>
                 <div className="p-3 rounded-2xl bg-purple-500/20 backdrop-blur-xs border border-purple-400/30">
-                  <span className="text-[11px] font-bold text-purple-200 uppercase block">Demo Excluded</span>
+                  <span className="text-[11px] font-bold text-purple-200 uppercase block">First-50 Grants</span>
                   <span className="text-2xl font-black text-purple-300 font-heading">
-                    {storageDiagnostic?.demoRecordsExcluded ?? 'Filtered'}
+                    {launchOfferSummary ? `${launchOfferSummary.grantedCount} / ${launchOfferSummary.maxGrants}` : '0 / 50'}
                   </span>
                 </div>
                 <div className="p-3 rounded-2xl bg-emerald-500/20 backdrop-blur-xs border border-emerald-400/30">
@@ -1345,6 +1353,20 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                           {user.isTester && (
                             <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-[#065F46] border border-emerald-300 text-[10px] font-bold">
                               Free Tester
+                            </span>
+                          )}
+                          {user.emailVerified ? (
+                            <span className="px-2 py-0.5 rounded-full bg-teal-50 text-[#0F766E] border border-teal-300 text-[10px] font-bold">
+                              Email Verified
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-50 text-[#92400E] border border-amber-300 text-[10px] font-bold">
+                              Email Unverified
+                            </span>
+                          )}
+                          {typeof user.launchOfferGrantNumber === 'number' && (
+                            <span className="px-2 py-0.5 rounded-full bg-pink-50 text-[#BE185D] border border-pink-300 text-[10px] font-bold">
+                              Launch Grant #{user.launchOfferGrantNumber}{user.launchOfferActive ? ' (Active)' : ' (Ended)'}
                             </span>
                           )}
                           {user.subscriptionStatus && user.subscriptionStatus !== 'none' && (

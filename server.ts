@@ -20,12 +20,13 @@ import {
 } from 'firebase/firestore';
 
 import Stripe from 'stripe';
+import nodemailer from 'nodemailer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = 3000;
+const port = Number(process.env.PORT) || 3000;
 
 const ANDROID_ASSET_LINKS = [
   {
@@ -442,7 +443,9 @@ export interface ServerSharedRound {
   earlyEndTimestamps?: Record<string, number>;
 }
 
-const DATA_DIR = path.resolve(__dirname, '.data');
+const DATA_DIR = process.env.DATA_DIR_OVERRIDE
+  ? path.resolve(process.env.DATA_DIR_OVERRIDE)
+  : path.resolve(__dirname, '.data');
 
 // Ensure runtime storage directory exists on server startup
 function ensureStorageDirectory() {
@@ -2109,6 +2112,17 @@ export interface ServerUserRecord {
   testerAccessGranted?: boolean;
   testerAccessGrantedAt?: number;
   testerAccessGrantedBy?: string;
+  emailVerified?: boolean;
+  emailVerifiedAt?: number;
+  emailVerificationTokenHash?: string;
+  emailVerificationCodeHash?: string;
+  emailVerificationSentAt?: number;
+  emailVerificationExpiresAt?: number;
+  emailVerificationAttempts?: number;
+  launchOfferGrantNumber?: number;
+  launchOfferGrantedAt?: number;
+  launchOfferExpiresAt?: number;
+  launchOfferCelebrationShownAt?: number;
   createdAt: number;
   lastSignIn?: number; // Unix epoch ms of last sign-in
   isBanned?: boolean;
@@ -2128,6 +2142,114 @@ export interface ServerUserRecord {
 
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const serverUsers = new Map<string, ServerUserRecord>();
+
+export const LAUNCH_OFFER_MAX_GRANTS = 50;
+export const LAUNCH_OFFER_DURATION_DAYS = 30;
+export const LAUNCH_OFFER_DURATION_MS = LAUNCH_OFFER_DURATION_DAYS * 24 * 60 * 60 * 1000;
+
+export interface LaunchOfferGrantRecord {
+  userId: string;
+  email: string;
+  grantNumber: number; // Permanent 1..50
+  grantedAt: number;
+  expiresAt: number;
+  source: 'existing_verified' | 'post_verification';
+  celebrationShownAt?: number | null;
+}
+
+export interface LaunchOfferConfigState {
+  liveAt: number;
+  maxGrants: number;
+  durationDays: number;
+  updatedAt: number;
+}
+
+const LAUNCH_OFFER_GRANTS_FILE = path.join(DATA_DIR, 'launch_offer_grants.json');
+const LAUNCH_OFFER_CONFIG_FILE = path.join(DATA_DIR, 'launch_offer_config.json');
+const serverLaunchOfferGrants = new Map<string, LaunchOfferGrantRecord>();
+let launchOfferConfig: LaunchOfferConfigState = {
+  liveAt: Date.now(),
+  maxGrants: LAUNCH_OFFER_MAX_GRANTS,
+  durationDays: LAUNCH_OFFER_DURATION_DAYS,
+  updatedAt: Date.now(),
+};
+let launchOfferLockTail: Promise<unknown> = Promise.resolve();
+
+function withLaunchOfferLock<T>(task: () => Promise<T>): Promise<T> {
+  const next = launchOfferLockTail.then(task, task);
+  launchOfferLockTail = next.catch(() => {});
+  return next;
+}
+
+function writeJsonAtomicSync(filePath: string, data: unknown) {
+  ensureStorageDirectory();
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, filePath);
+}
+
+function loadLaunchOfferStateFromDisk() {
+  try {
+    ensureStorageDirectory();
+    if (fs.existsSync(LAUNCH_OFFER_CONFIG_FILE)) {
+      const rawCfg = JSON.parse(fs.readFileSync(LAUNCH_OFFER_CONFIG_FILE, 'utf-8'));
+      if (rawCfg && typeof rawCfg.liveAt === 'number' && rawCfg.liveAt > 0) {
+        launchOfferConfig = {
+          liveAt: rawCfg.liveAt,
+          maxGrants: LAUNCH_OFFER_MAX_GRANTS,
+          durationDays: LAUNCH_OFFER_DURATION_DAYS,
+          updatedAt: typeof rawCfg.updatedAt === 'number' ? rawCfg.updatedAt : rawCfg.liveAt,
+        };
+      }
+    } else {
+      launchOfferConfig = {
+        liveAt: Date.now(),
+        maxGrants: LAUNCH_OFFER_MAX_GRANTS,
+        durationDays: LAUNCH_OFFER_DURATION_DAYS,
+        updatedAt: Date.now(),
+      };
+      writeJsonAtomicSync(LAUNCH_OFFER_CONFIG_FILE, launchOfferConfig);
+    }
+
+    if (fs.existsSync(LAUNCH_OFFER_GRANTS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(LAUNCH_OFFER_GRANTS_FILE, 'utf-8'));
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (
+            item &&
+            typeof item.userId === 'string' &&
+            typeof item.grantNumber === 'number' &&
+            item.grantNumber >= 1 &&
+            item.grantNumber <= LAUNCH_OFFER_MAX_GRANTS
+          ) {
+            serverLaunchOfferGrants.set(item.userId, item);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load launch offer state from disk:', err);
+  }
+}
+
+function saveLaunchOfferGrantsToDisk() {
+  try {
+    const array = Array.from(serverLaunchOfferGrants.values()).sort(
+      (a, b) => a.grantNumber - b.grantNumber
+    );
+    writeJsonAtomicSync(LAUNCH_OFFER_GRANTS_FILE, array);
+  } catch (err) {
+    console.warn('Failed to save launch offer grants to disk:', err);
+  }
+}
+
+function saveLaunchOfferConfigToDisk() {
+  try {
+    writeJsonAtomicSync(LAUNCH_OFFER_CONFIG_FILE, launchOfferConfig);
+  } catch (err) {
+    console.warn('Failed to save launch offer config to disk:', err);
+  }
+}
 
 export interface ServerReportRecord {
   id: string;
@@ -2357,10 +2479,57 @@ export function isTesterAccount(user: { userId: string; email?: string; isTester
   return false;
 }
 
+export function isLaunchOfferEligibleMember(user: ServerUserRecord): boolean {
+  if (!user || !user.userId || !user.email) return false;
+  if (isOwnerUser({ userId: user.userId, email: user.email })) return false;
+  if (isTesterAccount(user)) return false;
+  if (isDemoUserRecord(user)) return false;
+  const normEmail = user.email.toLowerCase().trim();
+  if (user.isBanned || bannedUsers.has(user.userId) || bannedUsers.has(normEmail)) return false;
+  return true;
+}
+
+export function getActiveLaunchOfferGrant(
+  user: ServerUserRecord
+): LaunchOfferGrantRecord | null {
+  const fromLedger = serverLaunchOfferGrants.get(user.userId);
+  if (fromLedger) return fromLedger;
+  if (
+    typeof user.launchOfferGrantNumber === 'number' &&
+    user.launchOfferGrantNumber >= 1 &&
+    user.launchOfferGrantNumber <= LAUNCH_OFFER_MAX_GRANTS &&
+    typeof user.launchOfferGrantedAt === 'number' &&
+    typeof user.launchOfferExpiresAt === 'number'
+  ) {
+    return {
+      userId: user.userId,
+      email: (user.email || '').toLowerCase().trim(),
+      grantNumber: user.launchOfferGrantNumber,
+      grantedAt: user.launchOfferGrantedAt,
+      expiresAt: user.launchOfferExpiresAt,
+      source: 'post_verification',
+      celebrationShownAt: user.launchOfferCelebrationShownAt || null,
+    };
+  }
+  return null;
+}
+
+export function hasActiveLaunchOfferPremium(
+  user: ServerUserRecord,
+  now = Date.now()
+): boolean {
+  if (user.emailVerified !== true) return false;
+  if (!isLaunchOfferEligibleMember(user)) return false;
+  const grant = getActiveLaunchOfferGrant(user);
+  if (!grant) return false;
+  if (grant.grantNumber < 1 || grant.grantNumber > LAUNCH_OFFER_MAX_GRANTS) return false;
+  return now < grant.expiresAt;
+}
+
 export function hasPaidOrTesterAccess(
   user: ServerUserRecord,
   requiredTier: 'Premium' | 'Premium Plus'
-): { allowed: boolean; reason?: string; isTesterOverride: boolean } {
+): { allowed: boolean; reason?: string; isTesterOverride: boolean; isLaunchOfferGrant?: boolean } {
   // Free tester access is kept strictly separate from paid subscription status
   if (isTesterAccount(user)) {
     return { allowed: true, isTesterOverride: true };
@@ -2378,6 +2547,11 @@ export function hasPaidOrTesterAccess(
 
   if (isTierEligible && isStatusActive) {
     return { allowed: true, isTesterOverride: false };
+  }
+
+  // First-50 Launch Offer awards 30 days of free Premium (never Premium Plus)
+  if (requiredTier === 'Premium' && hasActiveLaunchOfferPremium(user)) {
+    return { allowed: true, isTesterOverride: false, isLaunchOfferGrant: true };
   }
 
   if (requiredTier === 'Premium') {
@@ -2581,6 +2755,7 @@ loadBannedUsersFromDisk();
 loadGrantedTestersFromDisk();
 loadWaitlistFromDisk();
 loadLaunchEventsFromDisk();
+loadLaunchOfferStateFromDisk();
 seedDefaultUsersIfEmpty();
 
 // ============================================================================
@@ -2592,6 +2767,9 @@ let firestoreConfig: any = null;
 let isDurableDatabaseActive = false;
 
 function initDurableDatabase() {
+  if (process.env.DISABLE_FIRESTORE === 'true') {
+    return;
+  }
   try {
     const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
     if (fs.existsSync(configPath)) {
@@ -2714,12 +2892,54 @@ async function syncDurableDatabaseOnStartup() {
       }
     }
 
+    // 2e. Sync launch offer state & grants from durable storage
+    const launchCfgSnap = await firestoreGetDoc(firestoreDoc(firestoreDb, 'launch_offer_config', 'state')).catch(() => null);
+    if (launchCfgSnap && launchCfgSnap.exists()) {
+      const cfg = launchCfgSnap.data() as LaunchOfferConfigState;
+      if (cfg && typeof cfg.liveAt === 'number' && cfg.liveAt > 0) {
+        launchOfferConfig = {
+          liveAt: Math.min(launchOfferConfig.liveAt, cfg.liveAt),
+          maxGrants: LAUNCH_OFFER_MAX_GRANTS,
+          durationDays: LAUNCH_OFFER_DURATION_DAYS,
+          updatedAt: cfg.updatedAt || cfg.liveAt,
+        };
+      }
+    } else {
+      await firestoreSetDoc(firestoreDoc(firestoreDb, 'launch_offer_config', 'state'), cleanFirestoreObject(launchOfferConfig)).catch(() => null);
+    }
+
+    const launchGrantsCol = firestoreCollection(firestoreDb, 'launch_offer_grants');
+    const launchGrantsSnap = await firestoreGetDocs(launchGrantsCol).catch(() => null);
+    if (launchGrantsSnap && !launchGrantsSnap.empty) {
+      launchGrantsSnap.forEach(d => {
+        const item = d.data() as LaunchOfferGrantRecord;
+        if (item && item.userId && typeof item.grantNumber === 'number' && item.grantNumber >= 1 && item.grantNumber <= LAUNCH_OFFER_MAX_GRANTS) {
+          const existing = serverLaunchOfferGrants.get(item.userId);
+          if (!existing) {
+            serverLaunchOfferGrants.set(item.userId, item);
+          } else {
+            // Preserve earliest grant timestamps and non-null celebration acknowledgment
+            const mergedShownAt =
+              existing.celebrationShownAt && item.celebrationShownAt
+                ? Math.min(existing.celebrationShownAt, item.celebrationShownAt)
+                : existing.celebrationShownAt || item.celebrationShownAt || null;
+            serverLaunchOfferGrants.set(item.userId, {
+              ...existing,
+              celebrationShownAt: mergedShownAt,
+            });
+          }
+        }
+      });
+    }
+
     // 3. Keep local backup files in sync
     saveUsersToDisk();
     saveBannedUsersToDisk();
     saveGrantedTestersToDisk();
     saveWaitlistToDisk();
     saveLaunchEventsToDisk();
+    saveLaunchOfferConfigToDisk();
+    saveLaunchOfferGrantsToDisk();
 
     // Ensure all registered users matching granted testers have Premium Plus tester privileges
     for (const [email, record] of grantedTesterRecords.entries()) {
@@ -2739,6 +2959,9 @@ async function syncDurableDatabaseOnStartup() {
         }
       }
     }
+
+    // Reconcile & reserve first-50 launch offer spots for existing email-verified non-tester members
+    await reconcileLaunchOfferGrants();
 
     // 4. Update Kristy's verified account to the new uploaded founder portrait & repair non-founder accounts
     let repairedCount = 0;
@@ -2776,6 +2999,7 @@ async function syncDurableDatabaseOnStartup() {
     console.error('[DURABLE DB] Error during startup sync with Firestore:', err);
   }
 }
+reconcileLaunchOfferGrants().catch(err => console.warn('[LAUNCH OFFER] Initial reconcile error:', err));
 syncDurableDatabaseOnStartup().catch(err => console.warn('[DURABLE DB] Background sync error:', err));
 
 function cleanFirestoreObject(obj: any): any {
@@ -2791,10 +3015,54 @@ function cleanFirestoreObject(obj: any): any {
   return clean;
 }
 
+enum FirestoreOperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface ServerFirestoreErrorInfo {
+  error: string;
+  operationType: FirestoreOperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | null;
+    email: string | null;
+  };
+}
+
+function logFirestoreError(
+  err: unknown,
+  operationType: FirestoreOperationType,
+  path: string | null
+): ServerFirestoreErrorInfo {
+  const errInfo: ServerFirestoreErrorInfo = {
+    error: err instanceof Error ? err.message : String(err),
+    operationType,
+    path,
+    authInfo: {
+      userId: null,
+      email: null,
+    },
+  };
+  console.warn('[DURABLE DB] Firestore operation notice:', JSON.stringify(errInfo));
+  return errInfo;
+}
+
+function isFirestorePermissionError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  const code = (err as any)?.code;
+  return code === 'permission-denied' || /permission[_-]?denied|insufficient permissions/i.test(msg);
+}
+
 async function saveUserToDurableDatabase(user: ServerUserRecord): Promise<void> {
   serverUsers.set(user.userId, user);
   saveUsersToDisk();
   if (firestoreDb) {
+    const docPath = `users/${user.userId}`;
     try {
       const cleanRecord = cleanFirestoreObject(user);
       if (user.profilePhoto === undefined) {
@@ -2802,8 +3070,10 @@ async function saveUserToDurableDatabase(user: ServerUserRecord): Promise<void> 
       }
       await firestoreSetDoc(firestoreDoc(firestoreDb, 'users', user.userId), cleanRecord);
     } catch (err) {
-      console.error('[DURABLE DB] Error writing user to Firestore:', err);
-      throw new Error('Durable database write failed.');
+      logFirestoreError(err, FirestoreOperationType.WRITE, docPath);
+      if (!isFirestorePermissionError(err)) {
+        throw new Error('Durable database write failed.');
+      }
     }
   }
 }
@@ -2815,7 +3085,7 @@ async function deleteUserFromDurableDatabase(userId: string): Promise<void> {
     try {
       await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'users', userId));
     } catch (err) {
-      console.error('[DURABLE DB] Error deleting user from Firestore:', err);
+      logFirestoreError(err, FirestoreOperationType.DELETE, `users/${userId}`);
     }
   }
 }
@@ -2830,7 +3100,7 @@ async function banUserInDurableDatabase(identifier: string): Promise<void> {
         bannedAt: Date.now(),
       });
     } catch (err) {
-      console.warn('[DURABLE DB] Error saving ban to Firestore:', err);
+      logFirestoreError(err, FirestoreOperationType.WRITE, `banned_users/${identifier}`);
     }
   }
 }
@@ -2842,7 +3112,7 @@ async function unbanUserInDurableDatabase(identifier: string): Promise<void> {
     try {
       await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'banned_users', identifier));
     } catch (err) {
-      console.warn('[DURABLE DB] Error removing ban from Firestore:', err);
+      logFirestoreError(err, FirestoreOperationType.DELETE, `banned_users/${identifier}`);
     }
   }
 }
@@ -2851,11 +3121,14 @@ async function saveWaitlistEntryToDurableDatabase(entry: ServerWaitlistEntry): P
   serverWaitlist.set(entry.userId, entry);
   saveWaitlistToDisk();
   if (firestoreDb) {
+    const docPath = `event_waitlist/${entry.userId}`;
     try {
       await firestoreSetDoc(firestoreDoc(firestoreDb, 'event_waitlist', entry.userId), cleanFirestoreObject(entry));
     } catch (err) {
-      console.error('[DURABLE DB] Error saving waitlist entry to Firestore:', err);
-      throw new Error('Failed to save waiting list entry to durable database.');
+      logFirestoreError(err, FirestoreOperationType.WRITE, docPath);
+      if (!isFirestorePermissionError(err)) {
+        throw new Error('Failed to save waiting list entry to durable database.');
+      }
     }
   }
 }
@@ -2867,7 +3140,7 @@ async function deleteWaitlistEntryFromDurableDatabase(userId: string): Promise<v
     try {
       await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'event_waitlist', userId));
     } catch (err) {
-      console.warn('[DURABLE DB] Error deleting waitlist entry from Firestore:', err);
+      logFirestoreError(err, FirestoreOperationType.DELETE, `event_waitlist/${userId}`);
     }
   }
 }
@@ -2876,11 +3149,14 @@ async function saveLaunchEventToDurableDatabase(evt: ServerLaunchEventRecord): P
   serverLaunchEvents.set(evt.EventID, evt);
   saveLaunchEventsToDisk();
   if (firestoreDb) {
+    const docPath = `launch_events/${evt.EventID}`;
     try {
       await firestoreSetDoc(firestoreDoc(firestoreDb, 'launch_events', evt.EventID), cleanFirestoreObject(evt));
     } catch (err) {
-      console.error('[DURABLE DB] Error saving launch event to Firestore:', err);
-      throw new Error('Failed to save launch event to durable database.');
+      logFirestoreError(err, FirestoreOperationType.WRITE, docPath);
+      if (!isFirestorePermissionError(err)) {
+        throw new Error('Failed to save launch event to durable database.');
+      }
     }
   }
 }
@@ -2892,14 +3168,423 @@ async function deleteLaunchEventFromDurableDatabase(eventId: string): Promise<vo
     try {
       await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'launch_events', eventId));
     } catch (err) {
-      console.warn('[DURABLE DB] Error deleting launch event from Firestore:', err);
+      logFirestoreError(err, FirestoreOperationType.DELETE, `launch_events/${eventId}`);
     }
   }
 }
 
+async function saveLaunchOfferGrantToDurableDatabase(grant: LaunchOfferGrantRecord): Promise<void> {
+  serverLaunchOfferGrants.set(grant.userId, grant);
+  saveLaunchOfferGrantsToDisk();
+  if (firestoreDb) {
+    try {
+      await firestoreSetDoc(
+        firestoreDoc(firestoreDb, 'launch_offer_grants', grant.userId),
+        cleanFirestoreObject(grant)
+      );
+    } catch (err) {
+      logFirestoreError(err, FirestoreOperationType.WRITE, `launch_offer_grants/${grant.userId}`);
+    }
+  }
+}
+
+function getUsedLaunchOfferNumbers(): Set<number> {
+  const used = new Set<number>();
+  for (const grant of serverLaunchOfferGrants.values()) {
+    if (typeof grant.grantNumber === 'number' && grant.grantNumber >= 1 && grant.grantNumber <= LAUNCH_OFFER_MAX_GRANTS) {
+      used.add(grant.grantNumber);
+    }
+  }
+  return used;
+}
+
+function allocateNextSpotNumber(used: Set<number>): number | null {
+  if (serverLaunchOfferGrants.size >= LAUNCH_OFFER_MAX_GRANTS || used.size >= LAUNCH_OFFER_MAX_GRANTS) {
+    return null;
+  }
+  for (let n = 1; n <= LAUNCH_OFFER_MAX_GRANTS; n++) {
+    if (!used.has(n)) return n;
+  }
+  return null;
+}
+
+export async function reconcileLaunchOfferGrants(): Promise<void> {
+  await withLaunchOfferLock(async () => {
+    // 1. Hydrate ledger from any user records that already possess durable grant metadata
+    let ledgerChanged = false;
+    for (const u of serverUsers.values()) {
+      if (
+        typeof u.launchOfferGrantNumber === 'number' &&
+        u.launchOfferGrantNumber >= 1 &&
+        u.launchOfferGrantNumber <= LAUNCH_OFFER_MAX_GRANTS &&
+        typeof u.launchOfferGrantedAt === 'number' &&
+        typeof u.launchOfferExpiresAt === 'number'
+      ) {
+        const existing = serverLaunchOfferGrants.get(u.userId);
+        if (!existing) {
+          const used = getUsedLaunchOfferNumbers();
+          if (!used.has(u.launchOfferGrantNumber) && serverLaunchOfferGrants.size < LAUNCH_OFFER_MAX_GRANTS) {
+            serverLaunchOfferGrants.set(u.userId, {
+              userId: u.userId,
+              email: (u.email || '').toLowerCase().trim(),
+              grantNumber: u.launchOfferGrantNumber,
+              grantedAt: u.launchOfferGrantedAt,
+              expiresAt: u.launchOfferExpiresAt,
+              source: 'existing_verified',
+              celebrationShownAt: u.launchOfferCelebrationShownAt || null,
+            });
+            ledgerChanged = true;
+          }
+        } else {
+          // Ensure user record keeps ledger values without resetting expiration
+          let userChanged = false;
+          if (u.launchOfferGrantNumber !== existing.grantNumber) {
+            u.launchOfferGrantNumber = existing.grantNumber;
+            userChanged = true;
+          }
+          if (u.launchOfferGrantedAt !== existing.grantedAt) {
+            u.launchOfferGrantedAt = existing.grantedAt;
+            userChanged = true;
+          }
+          if (u.launchOfferExpiresAt !== existing.expiresAt) {
+            u.launchOfferExpiresAt = existing.expiresAt;
+            userChanged = true;
+          }
+          if (existing.celebrationShownAt && !u.launchOfferCelebrationShownAt) {
+            u.launchOfferCelebrationShownAt = existing.celebrationShownAt;
+            userChanged = true;
+          } else if (u.launchOfferCelebrationShownAt && !existing.celebrationShownAt) {
+            existing.celebrationShownAt = u.launchOfferCelebrationShownAt;
+            ledgerChanged = true;
+          }
+          if (userChanged) {
+            await saveUserToDurableDatabase(u);
+          }
+        }
+      }
+    }
+
+    // Also sync grants present in ledger onto serverUsers records
+    for (const grant of serverLaunchOfferGrants.values()) {
+      const u = serverUsers.get(grant.userId);
+      if (u && u.launchOfferGrantNumber !== grant.grantNumber) {
+        u.launchOfferGrantNumber = grant.grantNumber;
+        u.launchOfferGrantedAt = grant.grantedAt;
+        u.launchOfferExpiresAt = grant.expiresAt;
+        if (grant.celebrationShownAt) {
+          u.launchOfferCelebrationShownAt = grant.celebrationShownAt;
+        }
+        await saveUserToDurableDatabase(u);
+      }
+    }
+
+    // 2. Reserve spots in signup order (createdAt ascending) for existing email-verified eligible non-tester members
+    const existingVerifiedEligible = Array.from(serverUsers.values())
+      .filter(
+        u =>
+          u.emailVerified === true &&
+          isLaunchOfferEligibleMember(u) &&
+          !serverLaunchOfferGrants.has(u.userId) &&
+          typeof u.launchOfferGrantNumber !== 'number'
+      )
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0) || a.userId.localeCompare(b.userId));
+
+    const used = getUsedLaunchOfferNumbers();
+    const goLiveStart = launchOfferConfig.liveAt || Date.now();
+
+    for (const member of existingVerifiedEligible) {
+      const spotNum = allocateNextSpotNumber(used);
+      if (spotNum === null) break;
+      used.add(spotNum);
+
+      const grantRecord: LaunchOfferGrantRecord = {
+        userId: member.userId,
+        email: (member.email || '').toLowerCase().trim(),
+        grantNumber: spotNum,
+        grantedAt: goLiveStart,
+        expiresAt: goLiveStart + LAUNCH_OFFER_DURATION_MS,
+        source: 'existing_verified',
+        celebrationShownAt: member.launchOfferCelebrationShownAt || null,
+      };
+      serverLaunchOfferGrants.set(member.userId, grantRecord);
+      member.launchOfferGrantNumber = grantRecord.grantNumber;
+      member.launchOfferGrantedAt = grantRecord.grantedAt;
+      member.launchOfferExpiresAt = grantRecord.expiresAt;
+      await saveLaunchOfferGrantToDurableDatabase(grantRecord);
+      await saveUserToDurableDatabase(member);
+      ledgerChanged = true;
+      console.log(`[LAUNCH OFFER] Reserved existing verified spot #${spotNum}/50 for ${member.userId}`);
+    }
+
+    if (ledgerChanged) {
+      saveLaunchOfferGrantsToDisk();
+      saveUsersToDisk();
+    }
+  });
+}
+
+export async function tryAwardLaunchOfferSpot(
+  userId: string,
+  source: 'existing_verified' | 'post_verification' = 'post_verification'
+): Promise<LaunchOfferGrantRecord | null> {
+  return withLaunchOfferLock(async () => {
+    const user = serverUsers.get(userId);
+    if (!user) return null;
+    if (user.emailVerified !== true) return null;
+    if (!isLaunchOfferEligibleMember(user)) return null;
+
+    const existing = serverLaunchOfferGrants.get(userId);
+    if (existing) return existing;
+
+    if (
+      typeof user.launchOfferGrantNumber === 'number' &&
+      user.launchOfferGrantNumber >= 1 &&
+      user.launchOfferGrantNumber <= LAUNCH_OFFER_MAX_GRANTS &&
+      typeof user.launchOfferGrantedAt === 'number' &&
+      typeof user.launchOfferExpiresAt === 'number'
+    ) {
+      const restored: LaunchOfferGrantRecord = {
+        userId: user.userId,
+        email: (user.email || '').toLowerCase().trim(),
+        grantNumber: user.launchOfferGrantNumber,
+        grantedAt: user.launchOfferGrantedAt,
+        expiresAt: user.launchOfferExpiresAt,
+        source,
+        celebrationShownAt: user.launchOfferCelebrationShownAt || null,
+      };
+      serverLaunchOfferGrants.set(userId, restored);
+      saveLaunchOfferGrantsToDisk();
+      return restored;
+    }
+
+    const used = getUsedLaunchOfferNumbers();
+    const spotNumber = allocateNextSpotNumber(used);
+    if (spotNumber === null) {
+      return null;
+    }
+
+    const now = Date.now();
+    const grantRecord: LaunchOfferGrantRecord = {
+      userId: user.userId,
+      email: (user.email || '').toLowerCase().trim(),
+      grantNumber: spotNumber,
+      grantedAt: now,
+      expiresAt: now + LAUNCH_OFFER_DURATION_MS,
+      source,
+      celebrationShownAt: null,
+    };
+
+    // Reserve synchronously in memory before awaiting any IO
+    used.add(spotNumber);
+    serverLaunchOfferGrants.set(user.userId, grantRecord);
+    user.launchOfferGrantNumber = grantRecord.grantNumber;
+    user.launchOfferGrantedAt = grantRecord.grantedAt;
+    user.launchOfferExpiresAt = grantRecord.expiresAt;
+
+    await saveLaunchOfferGrantToDurableDatabase(grantRecord);
+    await saveUserToDurableDatabase(user);
+    console.log(`[LAUNCH OFFER] Awarded spot #${spotNumber}/50 to verified member ${user.userId}`);
+    return grantRecord;
+  });
+}
+
+function sha256Hex(value: string): string {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function escapeEmailHtml(input: string): string {
+  return String(input || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function hasConfiguredOutboundEmailProvider(): boolean {
+  return Boolean(
+    (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim()) ||
+    (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY.trim()) ||
+    (process.env.SMTP_HOST && process.env.SMTP_HOST.trim())
+  );
+}
+
+function resolveVerificationBaseUrl(reqOrigin?: string): string {
+  if (reqOrigin) {
+    try {
+      const parsed = new URL(reqOrigin);
+      const host = parsed.hostname.toLowerCase();
+      const isAllowedOrigin =
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === 'speedmeetlove.com' ||
+        host === 'www.speedmeetlove.com' ||
+        host.endsWith('.run.app');
+      if (isAllowedOrigin && (parsed.protocol === 'https:' || parsed.protocol === 'http:')) {
+        return parsed.origin.replace(/\/$/, '');
+      }
+    } catch {
+      // Fall back to canonical domain
+    }
+  }
+  return (process.env.APP_URL || APP_URL).replace(/\/$/, '');
+}
+
+async function dispatchVerificationEmail(
+  email: string,
+  firstName: string,
+  verifyUrl: string,
+  code: string
+): Promise<{ sent: boolean; provider: 'resend' | 'sendgrid' | 'smtp' | 'none' }> {
+  const fromAddress = (process.env.EMAIL_FROM || 'Speed Meet Love <noreply@speedmeetlove.com>').trim();
+  const subject = 'Verify your email for Speed Meet Love';
+  const safeFirstName = escapeEmailHtml(firstName || 'Member');
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; color: #111827;">
+      <h2 style="color: #be185d;">Welcome to Speed Meet Love, ${safeFirstName}!</h2>
+      <p>Please verify your email address to activate full member verification and discover if you’ve claimed one of our first 50 eligible spots for one month of free Premium.</p>
+      <p style="margin: 24px 0;">
+        <a href="${verifyUrl}" style="background: #dc2626; color: #ffffff; padding: 12px 22px; border-radius: 9999px; text-decoration: none; font-weight: bold;">Verify Email Address</a>
+      </p>
+      <p>Or enter this 6-digit verification code in the app: <strong style="font-size: 18px; letter-spacing: 3px;">${code}</strong></p>
+      <p style="font-size: 12px; color: #6b7280;">This link and code expire in 24 hours.</p>
+    </div>
+  `;
+  const text = [
+    `Welcome to Speed Meet Love, ${firstName || 'Member'}!`,
+    '',
+    'Verify your email address by clicking this link:',
+    verifyUrl,
+    '',
+    `Or enter this 6-digit verification code in the app: ${code}`,
+    '',
+    'This link and code expire in 24 hours.',
+  ].join('\n');
+
+  const resendKey = process.env.RESEND_API_KEY?.trim();
+  if (resendKey) {
+    try {
+      const resp = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          to: [email],
+          subject,
+          text,
+          html,
+        }),
+      });
+      if (resp.ok) {
+        return { sent: true, provider: 'resend' };
+      }
+      console.warn('[EMAIL] Resend dispatch failed:', resp.status);
+    } catch (err) {
+      console.warn('[EMAIL] Resend error:', err);
+    }
+  }
+
+  const sendgridKey = process.env.SENDGRID_API_KEY?.trim();
+  if (sendgridKey) {
+    try {
+      const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${sendgridKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email }] }],
+          from: { email: fromAddress.includes('<') ? fromAddress.split('<')[1].replace('>', '').trim() : fromAddress },
+          subject,
+          content: [
+            { type: 'text/plain', value: text },
+            { type: 'text/html', value: html },
+          ],
+        }),
+      });
+      if (resp.ok) {
+        return { sent: true, provider: 'sendgrid' };
+      }
+      console.warn('[EMAIL] SendGrid dispatch failed:', resp.status);
+    } catch (err) {
+      console.warn('[EMAIL] SendGrid error:', err);
+    }
+  }
+
+  const smtpHost = process.env.SMTP_HOST?.trim();
+  if (smtpHost) {
+    try {
+      const smtpPort = Number(process.env.SMTP_PORT || 587);
+      const smtpSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465;
+      const smtpUser = process.env.SMTP_USER?.trim();
+      const smtpPass = process.env.SMTP_PASS?.trim();
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure,
+        ...(smtpUser && smtpPass ? { auth: { user: smtpUser, pass: smtpPass } } : {}),
+        ...(process.env.SMTP_IGNORE_TLS === 'true' ? { ignoreTLS: true } : {}),
+      });
+      await transporter.sendMail({
+        from: fromAddress,
+        to: email,
+        subject,
+        text,
+        html,
+      });
+      return { sent: true, provider: 'smtp' };
+    } catch (err) {
+      console.warn('[EMAIL] SMTP dispatch failed:', err);
+    }
+  }
+
+  return { sent: false, provider: 'none' };
+}
+
+async function issueEmailVerificationForUser(
+  user: ServerUserRecord,
+  reqOrigin?: string
+): Promise<{
+  provider: 'resend' | 'sendgrid' | 'smtp' | 'none';
+  emailSent: boolean;
+}> {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const code = String(crypto.randomInt(100000, 999999));
+  const now = Date.now();
+
+  user.emailVerificationTokenHash = sha256Hex(rawToken);
+  user.emailVerificationCodeHash = sha256Hex(code);
+  user.emailVerificationSentAt = now;
+  user.emailVerificationExpiresAt = now + 24 * 60 * 60 * 1000;
+  user.emailVerificationAttempts = 0;
+  await saveUserToDurableDatabase(user);
+
+  const baseUrl = resolveVerificationBaseUrl(reqOrigin);
+  const verifyUrl = `${baseUrl}/verify-email?token=${rawToken}`;
+  const delivery = await dispatchVerificationEmail(user.email, user.firstName, verifyUrl, code);
+
+  return {
+    provider: delivery.provider,
+    emailSent: delivery.sent,
+  };
+}
+
 
 function sanitizeUser(u: ServerUserRecord) {
-  const { passwordHash: _, passwordSalt: __, ...safe } = u;
+  const {
+    passwordHash: _,
+    passwordSalt: __,
+    emailVerificationTokenHash: _vt,
+    emailVerificationCodeHash: _vc,
+    emailVerificationAttempts: _va,
+    emailVerificationSentAt: _vs,
+    emailVerificationExpiresAt: _ve,
+    ...safe
+  } = u;
   const normEmail = (u.email || '').toLowerCase().trim();
   const isGrantedTester = grantedTesterRecords.has(normEmail) || u.testerAccessGranted === true;
   const isTester = Boolean(u.isTester || isTesterAccount(u) || isGrantedTester);
@@ -2914,8 +3599,22 @@ function sanitizeUser(u: ServerUserRecord) {
     ? u.interests
     : ['Speed Dating', 'Coffee', 'Travel'];
 
-  // Effective tier: granted testers always receive Premium Plus privileges
-  const effectiveTier = isGrantedTester ? 'Premium Plus' : (u.subscriptionTier || 'Free');
+  const isEmailVerified = Boolean(u.emailVerified);
+  const now = Date.now();
+  const grant = isEmailVerified && isLaunchOfferEligibleMember(u) ? getActiveLaunchOfferGrant(u) : null;
+  const launchOfferGranted = Boolean(isEmailVerified && grant);
+  const launchOfferActive = Boolean(launchOfferGranted && grant && now < grant.expiresAt);
+  const launchOfferExpired = Boolean(launchOfferGranted && grant && now >= grant.expiresAt);
+  const launchOfferCelebrationShownAt = launchOfferGranted
+    ? (grant?.celebrationShownAt || u.launchOfferCelebrationShownAt || null)
+    : null;
+  const launchOfferCelebrationPending = Boolean(launchOfferActive && !launchOfferCelebrationShownAt);
+
+  // Effective tier: granted testers receive Premium Plus; verified first-50 launch offer recipients receive 30 days of Premium
+  let effectiveTier = isGrantedTester ? 'Premium Plus' : (u.subscriptionTier || 'Free');
+  if (launchOfferActive && effectiveTier === 'Free') {
+    effectiveTier = 'Premium';
+  }
   const effectiveStatus = isGrantedTester
     ? (u.subscriptionStatus === 'canceled' ? 'active' : (u.subscriptionStatus || 'active'))
     : (u.subscriptionStatus || 'none');
@@ -2958,8 +3657,29 @@ function sanitizeUser(u: ServerUserRecord) {
     testerAccessGranted: isGrantedTester,
     testerAccessGrantedAt: u.testerAccessGrantedAt || (isGrantedTester ? grantedTesterRecords.get(normEmail)?.grantedAt : null) || null,
     testerAccessGrantedBy: u.testerAccessGrantedBy || (isGrantedTester ? grantedTesterRecords.get(normEmail)?.grantedBy : null) || null,
-    hasActiveSubscription: effectiveStatus === 'active' || effectiveStatus === 'trialing',
+    hasActiveSubscription: effectiveStatus === 'active' || effectiveStatus === 'trialing' || launchOfferActive,
     subscriptionCurrentPeriodEnd: u.subscriptionCurrentPeriodEnd || null,
+    emailVerified: isEmailVerified,
+    EmailVerified: isEmailVerified,
+    emailVerifiedAt: isEmailVerified ? (u.emailVerifiedAt || null) : null,
+    EmailVerifiedAt: isEmailVerified ? (u.emailVerifiedAt || null) : null,
+    // Strictly omit grant details until verified so unverified callers cannot discover spot status
+    launchOfferGranted,
+    LaunchOfferGranted: launchOfferGranted,
+    launchOfferGrantNumber: launchOfferGranted && grant ? grant.grantNumber : null,
+    LaunchOfferGrantNumber: launchOfferGranted && grant ? grant.grantNumber : null,
+    launchOfferGrantedAt: launchOfferGranted && grant ? grant.grantedAt : null,
+    LaunchOfferGrantedAt: launchOfferGranted && grant ? grant.grantedAt : null,
+    launchOfferExpiresAt: launchOfferGranted && grant ? grant.expiresAt : null,
+    LaunchOfferExpiresAt: launchOfferGranted && grant ? grant.expiresAt : null,
+    launchOfferActive,
+    LaunchOfferActive: launchOfferActive,
+    launchOfferExpired,
+    LaunchOfferExpired: launchOfferExpired,
+    launchOfferCelebrationPending,
+    LaunchOfferCelebrationPending: launchOfferCelebrationPending,
+    launchOfferCelebrationShownAt,
+    LaunchOfferCelebrationShownAt: launchOfferCelebrationShownAt,
     Interests: interests,
     interests: interests,
     IcebreakerAnswer: u.icebreakerAnswer || undefined,
@@ -3130,9 +3850,11 @@ app.post('/api/auth/signup', async (req, res) => {
     testerAccessGrantedBy: grantedTesterRecords.has(normalizedEmail) ? (grantedTesterRecords.get(normalizedEmail)?.grantedBy || 'owner') : undefined,
     createdAt: Date.now(),
     lastSignIn: Date.now(),
+    emailVerified: false,
   };
 
   await saveUserToDurableDatabase(newUser);
+  const verification = await issueEmailVerificationForUser(newUser, req.get('origin'));
 
   // 7. Issue server-side session token
   const session = createServerAuthSession(userId, normalizedEmail);
@@ -3141,7 +3863,245 @@ app.post('/api/auth/signup', async (req, res) => {
     success: true,
     token: session.token,
     user: sanitizeUser(newUser),
-    message: 'Account created successfully! Welcome to Speed Meet Love.',
+    verificationDelivery: {
+      provider: verification.provider,
+      emailSent: verification.emailSent,
+    },
+    message: verification.emailSent
+      ? 'Account created! Please check your email for your verification link or 6-digit code.'
+      : 'Account created! Please verify your email address once outbound email delivery is available.',
+  });
+});
+
+// Helper: Timing-safe SHA-256 hex digest comparison
+function timingSafeEqualHex(a?: string, b?: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+// API: Verify Email Address (Required before a new/unverified member can qualify for First-50 Launch Offer)
+app.post('/api/auth/verify-email', async (req, res) => {
+  const { token, code, email } = req.body || {};
+  const authUser = verifyAuthenticatedUser(req);
+
+  const rawToken = typeof token === 'string' ? token.trim() : '';
+  const rawCode = typeof code === 'string' ? code.trim() : '';
+
+  if (!rawToken && !rawCode) {
+    return res.status(400).json({
+      success: false,
+      code: 'VERIFICATION_CREDENTIAL_REQUIRED',
+      error: 'A verification link token or 6-digit verification code is required.',
+    });
+  }
+
+  let targetUser: ServerUserRecord | null = null;
+  const now = Date.now();
+
+  if (rawToken) {
+    const hashedToken = sha256Hex(rawToken);
+    for (const u of serverUsers.values()) {
+      if (u.emailVerificationTokenHash && timingSafeEqualHex(u.emailVerificationTokenHash, hashedToken)) {
+        targetUser = u;
+        break;
+      }
+    }
+    if (!targetUser) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_VERIFICATION_TOKEN',
+        error: 'Verification link is invalid or has already been used.',
+      });
+    }
+  } else {
+    if (authUser) {
+      targetUser = serverUsers.get(authUser.userId) || null;
+    } else if (typeof email === 'string' && email.trim()) {
+      const normEmail = email.trim().toLowerCase();
+      for (const u of serverUsers.values()) {
+        if ((u.email || '').toLowerCase().trim() === normEmail) {
+          targetUser = u;
+          break;
+        }
+      }
+    }
+
+    if (!targetUser) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_VERIFICATION_CODE',
+        error: 'Invalid or expired verification code.',
+      });
+    }
+
+    if (targetUser.emailVerified === true) {
+      await tryAwardLaunchOfferSpot(targetUser.userId, 'post_verification');
+      return res.json({
+        success: true,
+        verified: true,
+        alreadyVerified: true,
+        ...(authUser && authUser.userId === targetUser.userId ? { user: sanitizeUser(targetUser) } : {}),
+        message: 'Your email address is already verified.',
+      });
+    }
+
+    if (typeof targetUser.emailVerificationAttempts === 'number' && targetUser.emailVerificationAttempts >= 5) {
+      return res.status(429).json({
+        success: false,
+        code: 'TOO_MANY_ATTEMPTS',
+        error: 'Too many failed verification attempts. Please request a new verification code.',
+      });
+    }
+
+    if (!targetUser.emailVerificationExpiresAt || now > targetUser.emailVerificationExpiresAt) {
+      return res.status(400).json({
+        success: false,
+        code: 'VERIFICATION_EXPIRED',
+        error: 'Your verification code has expired. Please request a new one.',
+      });
+    }
+
+    const hashedCode = sha256Hex(rawCode);
+    if (!targetUser.emailVerificationCodeHash || !timingSafeEqualHex(targetUser.emailVerificationCodeHash, hashedCode)) {
+      targetUser.emailVerificationAttempts = (targetUser.emailVerificationAttempts || 0) + 1;
+      await saveUserToDurableDatabase(targetUser);
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_VERIFICATION_CODE',
+        error: 'Incorrect 6-digit verification code. Please check and try again.',
+      });
+    }
+  }
+
+  if (targetUser.isBanned || bannedUsers.has(targetUser.userId) || bannedUsers.has((targetUser.email || '').toLowerCase())) {
+    return res.status(403).json({
+      success: false,
+      code: 'ACCOUNT_BANNED',
+      error: 'This account is suspended.',
+    });
+  }
+
+  if (targetUser.emailVerificationExpiresAt && now > targetUser.emailVerificationExpiresAt && targetUser.emailVerified !== true) {
+    return res.status(400).json({
+      success: false,
+      code: 'VERIFICATION_EXPIRED',
+      error: 'This verification link has expired. Please request a new verification email.',
+    });
+  }
+
+  if (targetUser.emailVerified !== true) {
+    targetUser.emailVerified = true;
+    targetUser.emailVerifiedAt = now;
+    targetUser.emailVerificationTokenHash = undefined;
+    targetUser.emailVerificationCodeHash = undefined;
+    targetUser.emailVerificationExpiresAt = undefined;
+    targetUser.emailVerificationAttempts = 0;
+    await saveUserToDurableDatabase(targetUser);
+  }
+
+  // Atomically award next available launch offer spot (1-50) strictly after email verification
+  await tryAwardLaunchOfferSpot(targetUser.userId, 'post_verification');
+  const refreshed = serverUsers.get(targetUser.userId) || targetUser;
+
+  return res.json({
+    success: true,
+    verified: true,
+    ...(authUser && authUser.userId === refreshed.userId ? { user: sanitizeUser(refreshed) } : {}),
+    message: authUser && authUser.userId === refreshed.userId
+      ? 'Email verified successfully!'
+      : 'Email verified successfully! Please sign in to continue.',
+  });
+});
+
+// API: Resend Email Verification Challenge
+app.post('/api/auth/resend-verification', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  const { email } = req.body || {};
+
+  let targetUser: ServerUserRecord | null = null;
+  if (authUser) {
+    targetUser = serverUsers.get(authUser.userId) || null;
+  } else if (typeof email === 'string' && email.trim()) {
+    const normEmail = email.trim().toLowerCase();
+    for (const u of serverUsers.values()) {
+      if ((u.email || '').toLowerCase().trim() === normEmail) {
+        targetUser = u;
+        break;
+      }
+    }
+  }
+
+  if (!targetUser) {
+    return res.json({
+      success: true,
+      message: 'If an unverified account exists for this email, a fresh verification email has been sent.',
+    });
+  }
+
+  if (targetUser.emailVerified === true) {
+    return res.json({
+      success: true,
+      alreadyVerified: true,
+      user: authUser && authUser.userId === targetUser.userId ? sanitizeUser(targetUser) : undefined,
+      message: 'Your email address is already verified.',
+    });
+  }
+
+  const verification = await issueEmailVerificationForUser(targetUser, req.get('origin'));
+  if (!verification.emailSent) {
+    return res.status(503).json({
+      success: false,
+      code: 'EMAIL_DELIVERY_UNAVAILABLE',
+      error: 'Unable to send verification email right now because outbound email delivery is unavailable.',
+    });
+  }
+
+  return res.json({
+    success: true,
+    verificationDelivery: {
+      provider: verification.provider,
+      emailSent: true,
+    },
+    message: 'A new verification email has been sent. Please check your inbox and spam folder.',
+  });
+});
+
+// API: Acknowledge First-50 Launch Offer Celebration Modal (persists so it shows on first authenticated visit only)
+app.post('/api/account/launch-offer/celebrated', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, code: 'UNAUTHORIZED', error: 'Authentication required.' });
+  }
+
+  const updatedUser = await withLaunchOfferLock(async () => {
+    const user = serverUsers.get(authUser.userId);
+    if (!user) return null;
+
+    const grant = serverLaunchOfferGrants.get(user.userId);
+    const shownAt = grant?.celebrationShownAt || user.launchOfferCelebrationShownAt || Date.now();
+
+    if (grant && !grant.celebrationShownAt) {
+      grant.celebrationShownAt = shownAt;
+      await saveLaunchOfferGrantToDurableDatabase(grant);
+    }
+    if (!user.launchOfferCelebrationShownAt) {
+      user.launchOfferCelebrationShownAt = shownAt;
+      await saveUserToDurableDatabase(user);
+    }
+    return user;
+  });
+
+  if (!updatedUser) {
+    return res.status(404).json({ success: false, error: 'User account not found.' });
+  }
+
+  return res.json({
+    success: true,
+    user: sanitizeUser(updatedUser),
   });
 });
 
@@ -3331,8 +4291,67 @@ app.get('/api/auth/me', (req, res) => {
   });
 });
 
-// API: Update Authenticated User's Profile
-// Enforces server-side authentication and saves directly to Cloud Firestore & memory
+// API: Update Authenticated User's Own Profile Only
+// Enforces server-side authentication & strict self-ownership (never allows editing another user's profile)
+const PRIVILEGED_PROFILE_KEYS = [
+  'isOwner',
+  'IsOwner',
+  'isTester',
+  'IsTester',
+  'testerAccessGranted',
+  'testerAccessGrantedAt',
+  'testerAccessGrantedBy',
+  'subscriptionTier',
+  'SubscriptionTier',
+  'subscriptionStatus',
+  'SubscriptionStatus',
+  'isBanned',
+  'stripeCustomerId',
+  'StripeCustomerId',
+  'stripeCustomerIdLive',
+  'stripeCustomerIdTest',
+  'stripeSubscriptionId',
+  'StripeSubscriptionId',
+  'passwordHash',
+  'passwordSalt',
+  'emailVerified',
+  'EmailVerified',
+  'emailVerifiedAt',
+  'EmailVerifiedAt',
+  'emailVerificationTokenHash',
+  'emailVerificationCodeHash',
+  'emailVerificationSentAt',
+  'emailVerificationExpiresAt',
+  'emailVerificationAttempts',
+  'launchOfferGranted',
+  'LaunchOfferGranted',
+  'launchOfferGrantNumber',
+  'LaunchOfferGrantNumber',
+  'launchOfferGrantedAt',
+  'LaunchOfferGrantedAt',
+  'launchOfferExpiresAt',
+  'LaunchOfferExpiresAt',
+  'launchOfferCelebrationShownAt',
+  'LaunchOfferCelebrationShownAt',
+];
+
+function extractRequestedTargetUserId(req: express.Request): string | null {
+  const candidates = [
+    req.params?.userId,
+    req.body?.targetUserId,
+    req.body?.userId,
+    req.body?.UserID,
+    req.query?.userId,
+    req.query?.targetUserId,
+  ];
+  for (const val of candidates) {
+    if (typeof val === 'string' && val.trim()) {
+      return val.trim();
+    }
+  }
+  return null;
+}
+
 const handleProfileUpdate = async (req: express.Request, res: express.Response) => {
   const authUser = verifyAuthenticatedUser(req);
   if (!authUser) {
@@ -3341,6 +4360,29 @@ const handleProfileUpdate = async (req: express.Request, res: express.Response) 
       code: 'UNAUTHORIZED',
       error: 'Authentication required. Please sign in to update your profile.',
     });
+  }
+
+  // Strict ownership check: reject any attempt to update another member's profile
+  const requestedTargetId = extractRequestedTargetUserId(req);
+  if (requestedTargetId && requestedTargetId !== authUser.userId) {
+    return res.status(403).json({
+      success: false,
+      code: 'FORBIDDEN',
+      error: 'Forbidden: You can only edit your own profile.',
+    });
+  }
+
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+
+  // Reject direct privilege / role tampering
+  for (const privKey of PRIVILEGED_PROFILE_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(body, privKey)) {
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        error: 'Forbidden: Account role, ban status, and subscription privileges cannot be modified directly.',
+      });
+    }
   }
 
   const user = serverUsers.get(authUser.userId);
@@ -3370,15 +4412,15 @@ const handleProfileUpdate = async (req: express.Request, res: express.Response) 
     privacySettings,
     preferences,
     profilePhoto,
-  } = req.body;
+  } = body;
 
   if (typeof firstName === 'string' && firstName.trim()) {
-    user.firstName = firstName.trim();
+    user.firstName = firstName.trim().slice(0, 80);
   }
   if (typeof lastName === 'string') {
-    user.lastName = lastName.trim();
+    user.lastName = lastName.trim().slice(0, 80);
   }
-  if (typeof age === 'number' && age >= 18) {
+  if (typeof age === 'number' && age >= 18 && age <= 120) {
     user.age = Math.floor(age);
   }
   if (gender === 'Man' || gender === 'Woman' || gender === 'Non-Binary') {
@@ -3388,30 +4430,30 @@ const handleProfileUpdate = async (req: express.Request, res: express.Response) 
     user.interestedIn = interestedIn;
   }
   if (typeof location === 'string') {
-    user.location = location.trim();
+    user.location = location.trim().slice(0, 120);
   }
   if (typeof occupation === 'string') {
-    user.occupation = occupation.trim();
+    user.occupation = occupation.trim().slice(0, 120);
   }
   if (typeof bio === 'string') {
-    user.bio = bio.trim();
+    user.bio = bio.trim().slice(0, 1000);
   }
   if (Array.isArray(interests)) {
-    user.interests = interests.map((s: any) => String(s).trim()).filter(Boolean);
+    user.interests = interests.map((s: any) => String(s).trim().slice(0, 64)).filter(Boolean).slice(0, 30);
   }
   if (typeof icebreakerAnswer === 'string') {
-    user.icebreakerAnswer = icebreakerAnswer.trim();
+    user.icebreakerAnswer = icebreakerAnswer.trim().slice(0, 400);
   }
   if (typeof avatarColor === 'string' && avatarColor.trim()) {
-    user.avatarColor = avatarColor.trim();
+    user.avatarColor = avatarColor.trim().slice(0, 32);
   }
-  if (typeof hairColor === 'string') user.hairColor = hairColor;
-  if (typeof heightInches === 'number') user.heightInches = heightInches;
-  if (typeof eyeColor === 'string') user.eyeColor = eyeColor;
-  if (typeof relationshipIntent === 'string') user.relationshipIntent = relationshipIntent;
-  if (typeof smoking === 'string') user.smoking = smoking;
-  if (typeof drinking === 'string') user.drinking = drinking;
-  if (typeof children === 'string') user.children = children;
+  if (typeof hairColor === 'string') user.hairColor = hairColor.slice(0, 32);
+  if (typeof heightInches === 'number' && heightInches >= 0 && heightInches <= 120) user.heightInches = heightInches;
+  if (typeof eyeColor === 'string') user.eyeColor = eyeColor.slice(0, 32);
+  if (typeof relationshipIntent === 'string') user.relationshipIntent = relationshipIntent.slice(0, 64);
+  if (typeof smoking === 'string') user.smoking = smoking.slice(0, 32);
+  if (typeof drinking === 'string') user.drinking = drinking.slice(0, 32);
+  if (typeof children === 'string') user.children = children.slice(0, 48);
   if (privacySettings && typeof privacySettings === 'object') {
     user.privacySettings = { ...(user.privacySettings || {}), ...privacySettings };
   }
@@ -3439,19 +4481,36 @@ const handleProfileUpdate = async (req: express.Request, res: express.Response) 
 
 app.post('/api/account/profile', handleProfileUpdate);
 app.put('/api/account/profile', handleProfileUpdate);
+app.patch('/api/account/profile', handleProfileUpdate);
+app.post('/api/account/profile/:userId', handleProfileUpdate);
+app.put('/api/account/profile/:userId', handleProfileUpdate);
+app.patch('/api/account/profile/:userId', handleProfileUpdate);
+app.post('/api/users/:userId', handleProfileUpdate);
+app.put('/api/users/:userId', handleProfileUpdate);
+app.patch('/api/users/:userId', handleProfileUpdate);
 
-// API: Upload or remove custom profile photo
-app.post('/api/account/photo', async (req, res) => {
+// API: Upload or remove custom profile photo (strictly own account only)
+const handlePhotoUpdate = async (req: express.Request, res: express.Response) => {
   const authUser = verifyAuthenticatedUser(req);
   if (!authUser) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
+    return res.status(401).json({ success: false, code: 'UNAUTHORIZED', error: 'Authentication required' });
   }
+
+  const requestedTargetId = extractRequestedTargetUserId(req);
+  if (requestedTargetId && requestedTargetId !== authUser.userId) {
+    return res.status(403).json({
+      success: false,
+      code: 'FORBIDDEN',
+      error: 'Forbidden: You can only update your own profile photo.',
+    });
+  }
+
   const user = serverUsers.get(authUser.userId);
   if (!user) {
     return res.status(404).json({ success: false, error: 'User account not found' });
   }
 
-  const { photo } = req.body;
+  const { photo } = req.body || {};
   if (photo === null || photo === '') {
     user.profilePhoto = undefined;
   } else if (typeof photo === 'string' && photo.trim()) {
@@ -3464,16 +4523,55 @@ app.post('/api/account/photo', async (req, res) => {
     user: sanitizeUser(user),
     message: user.profilePhoto ? 'Photo updated successfully' : 'Photo removed successfully',
   });
-});
+};
 
-// Backward-compatible API: Issue session token for known accounts (development/regression tests)
+app.post('/api/account/photo', handlePhotoUpdate);
+app.put('/api/account/photo', handlePhotoUpdate);
+app.post('/api/account/photo/:userId', handlePhotoUpdate);
+
+// Authenticated Session Refresh / Founder-Only Sandbox Persona Switch
+// Rejects unauthenticated session minting and cross-user impersonation.
 app.post('/api/auth/session', (req, res) => {
-  const { userId, email } = req.body;
+  const caller = verifyAuthenticatedUser(req);
+  if (!caller) {
+    return res.status(401).json({
+      success: false,
+      code: 'UNAUTHORIZED',
+      error: 'Authentication required. Please sign in with your credentials.',
+    });
+  }
+
+  const { userId, email } = req.body || {};
   if (!userId || typeof userId !== 'string') {
     return res.status(400).json({ success: false, error: 'userId is required' });
   }
-  const userEmail = (typeof email === 'string' && email.trim()) ? email.trim() : `${userId}@speedmeetlove.app`;
-  const session = createServerAuthSession(userId, userEmail);
+
+  const requestedUserId = userId.trim();
+  const requestedEmail = typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : '';
+
+  const isSelfRefresh =
+    requestedUserId === caller.userId &&
+    (!requestedEmail || requestedEmail === caller.email.toLowerCase());
+
+  const isFounderDemoPersonaSwitch =
+    isOwnerUser(caller) &&
+    isDemoUserRecord({ userId: requestedUserId, email: requestedEmail }) &&
+    !OWNER_USER_IDS.has(requestedUserId) &&
+    (!requestedEmail || !OWNER_EMAILS.has(requestedEmail));
+
+  if (!isSelfRefresh && !isFounderDemoPersonaSwitch) {
+    return res.status(403).json({
+      success: false,
+      code: 'FORBIDDEN',
+      error: 'Forbidden: Cannot issue a session token for another member account.',
+    });
+  }
+
+  const targetEmail = isSelfRefresh
+    ? caller.email
+    : requestedEmail || `${requestedUserId}@speedmeetlove.internal`;
+
+  const session = createServerAuthSession(requestedUserId, targetEmail);
   return res.json({
     success: true,
     token: session.token,
@@ -3545,6 +4643,14 @@ app.post('/api/account/delete', async (req, res) => {
   }
 
   // Step 4b: Delete from server user accounts, waitlist, and durable database
+  // Scrub email PII from any retired launch-offer grant while keeping spot number permanently consumed so cap never exceeds 50
+  await withLaunchOfferLock(async () => {
+    const grant = serverLaunchOfferGrants.get(userId);
+    if (grant) {
+      grant.email = '';
+      await saveLaunchOfferGrantToDurableDatabase(grant);
+    }
+  });
   await deleteWaitlistEntryFromDurableDatabase(userId);
   await deleteUserFromDurableDatabase(userId);
 
@@ -3912,6 +5018,16 @@ app.get('/api/owner/registered-users', async (req, res) => {
       ? u.lastSignIn
       : (activeSessionCreatedAt || null);
 
+    const isTester = Boolean(u.isTester || isTesterAccount(u) || grantedTesterRecords.has((u.email || '').toLowerCase().trim()));
+    const isGrantedTester = grantedTesterRecords.has((u.email || '').toLowerCase().trim()) || u.testerAccessGranted === true;
+    const isVerified = Boolean(u.emailVerified);
+    const grant = isVerified && isLaunchOfferEligibleMember(u) ? getActiveLaunchOfferGrant(u) : null;
+    const launchOfferActive = Boolean(grant && Date.now() < grant.expiresAt);
+    let effectiveTier: string = isGrantedTester ? 'Premium Plus' : (u.subscriptionTier || 'Free');
+    if (launchOfferActive && effectiveTier === 'Free') {
+      effectiveTier = 'Premium';
+    }
+
     return {
       userId: u.userId,
       email: u.email,
@@ -3922,10 +5038,8 @@ app.get('/api/owner/registered-users', async (req, res) => {
       gender: u.gender,
       location: u.location || 'New York, NY',
       occupation: u.occupation || '',
-      subscriptionTier: (grantedTesterRecords.has((u.email || '').toLowerCase().trim()) || u.testerAccessGranted === true)
-        ? 'Premium Plus'
-        : (u.subscriptionTier || 'Free'),
-      subscriptionStatus: (grantedTesterRecords.has((u.email || '').toLowerCase().trim()) || u.testerAccessGranted === true)
+      subscriptionTier: effectiveTier,
+      subscriptionStatus: isGrantedTester
         ? (u.subscriptionStatus === 'canceled' ? 'active' : (u.subscriptionStatus || 'active'))
         : (u.subscriptionStatus || 'none'),
       stripeCustomerId: (STRIPE_IS_LIVE_KEY
@@ -3935,10 +5049,16 @@ app.get('/api/owner/registered-users', async (req, res) => {
         : (u.stripeCustomerId || null)),
       stripeCustomerIdLive: u.stripeCustomerIdLive || null,
       stripeCustomerIdTest: u.stripeCustomerIdTest || null,
-      isTester: Boolean(u.isTester || isTesterAccount(u) || grantedTesterRecords.has((u.email || '').toLowerCase().trim())),
+      isTester,
       testerAccessGranted: Boolean(u.testerAccessGranted || grantedTesterRecords.has((u.email || '').toLowerCase().trim())),
       testerAccessGrantedAt: u.testerAccessGrantedAt || grantedTesterRecords.get((u.email || '').toLowerCase().trim())?.grantedAt || null,
       testerAccessGrantedBy: u.testerAccessGrantedBy || grantedTesterRecords.get((u.email || '').toLowerCase().trim())?.grantedBy || null,
+      emailVerified: isVerified,
+      emailVerifiedAt: isVerified ? (u.emailVerifiedAt || null) : null,
+      launchOfferGrantNumber: grant ? grant.grantNumber : null,
+      launchOfferGrantedAt: grant ? grant.grantedAt : null,
+      launchOfferExpiresAt: grant ? grant.expiresAt : null,
+      launchOfferActive,
       createdAt: u.createdAt, // epoch ms
       lastSignIn, // epoch ms or null if unavailable
       hasActiveSession,
@@ -3953,6 +5073,11 @@ app.get('/api/owner/registered-users', async (req, res) => {
     totalRegistrations: sanitizedUsers.length,
     users: sanitizedUsers,
     activeSessionsCount: sanitizedUsers.filter(u => u.hasActiveSession).length,
+    launchOfferSummary: {
+      maxGrants: LAUNCH_OFFER_MAX_GRANTS,
+      grantedCount: serverLaunchOfferGrants.size,
+      liveAt: launchOfferConfig.liveAt,
+    },
     storageDiagnostic: {
       storageType: 'durable-cloud-firestore',
       provider: 'Google Cloud Firestore',

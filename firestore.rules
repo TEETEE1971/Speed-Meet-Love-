@@ -1,28 +1,322 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Speed Meet Love Durable Collections
-    // Server-authoritative backend interacts with Firestore for persistent member storage
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isFounderAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'kristylten@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidDocKey(id) {
+      return id is string && id.size() >= 1 && id.size() <= 160 && id.matches('^[a-zA-Z0-9_.\\-@]+$');
+    }
+
+    function isOptionalString(data, key, maxLen) {
+      return !(key in data) || data[key] == null || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isOptionalNumber(data, key, minVal, maxVal) {
+      return !(key in data) || data[key] == null || (data[key] is number && data[key] >= minVal && data[key] <= maxVal);
+    }
+
+    function isOptionalBool(data, key) {
+      return !(key in data) || data[key] == null || data[key] is bool;
+    }
+
+    function isValidUserPayload(data) {
+      return data.keys().hasAll(['userId', 'email', 'firstName', 'age', 'gender', 'createdAt']) &&
+        data.keys().hasOnly([
+          'userId', 'email', 'passwordHash', 'passwordSalt', 'firstName', 'lastName',
+          'age', 'gender', 'interestedIn', 'location', 'occupation', 'bio', 'profilePhoto',
+          'interests', 'icebreakerAnswer', 'avatarColor', 'hairColor', 'heightInches',
+          'eyeColor', 'relationshipIntent', 'smoking', 'drinking', 'children',
+          'privacySettings', 'preferences', 'subscriptionTier', 'subscriptionStatus',
+          'stripeCustomerId', 'stripeCustomerIdLive', 'stripeCustomerIdTest',
+          'stripeSubscriptionId', 'stripePriceId', 'subscriptionCurrentPeriodEnd',
+          'subscriptionCancelAtPeriodEnd', 'isTester', 'testerAccessGranted',
+          'testerAccessGrantedAt', 'testerAccessGrantedBy', 'createdAt', 'lastSignIn', 'isBanned',
+          'emailVerified', 'emailVerifiedAt', 'emailVerificationTokenHash',
+          'emailVerificationCodeHash', 'emailVerificationSentAt', 'emailVerificationExpiresAt',
+          'emailVerificationAttempts', 'launchOfferGrantNumber', 'launchOfferGrantedAt',
+          'launchOfferExpiresAt', 'launchOfferCelebrationShownAt'
+        ]) &&
+        isValidId(data.userId) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.firstName is string && data.firstName.size() >= 1 && data.firstName.size() <= 80 &&
+        data.age is number && data.age >= 18 && data.age <= 120 &&
+        data.gender in ['Woman', 'Man', 'Non-Binary'] &&
+        data.createdAt is number && data.createdAt > 0 &&
+        isOptionalString(data, 'lastName', 80) &&
+        (!('interestedIn' in data) || data.interestedIn in ['Men', 'Women', 'Everyone']) &&
+        isOptionalString(data, 'location', 120) &&
+        isOptionalString(data, 'occupation', 120) &&
+        isOptionalString(data, 'bio', 1000) &&
+        isOptionalString(data, 'profilePhoto', 800000) &&
+        isOptionalString(data, 'icebreakerAnswer', 400) &&
+        isOptionalString(data, 'avatarColor', 32) &&
+        isOptionalString(data, 'hairColor', 32) &&
+        isOptionalNumber(data, 'heightInches', 0, 120) &&
+        isOptionalString(data, 'eyeColor', 32) &&
+        isOptionalString(data, 'relationshipIntent', 64) &&
+        isOptionalString(data, 'smoking', 32) &&
+        isOptionalString(data, 'drinking', 32) &&
+        isOptionalString(data, 'children', 48) &&
+        isOptionalString(data, 'passwordHash', 256) &&
+        isOptionalString(data, 'passwordSalt', 128) &&
+        isOptionalString(data, 'stripeCustomerId', 128) &&
+        isOptionalString(data, 'stripeCustomerIdLive', 128) &&
+        isOptionalString(data, 'stripeCustomerIdTest', 128) &&
+        isOptionalString(data, 'stripeSubscriptionId', 128) &&
+        isOptionalString(data, 'stripePriceId', 128) &&
+        isOptionalString(data, 'testerAccessGrantedBy', 254) &&
+        isOptionalNumber(data, 'subscriptionCurrentPeriodEnd', 0, 9999999999999) &&
+        isOptionalNumber(data, 'testerAccessGrantedAt', 0, 9999999999999) &&
+        isOptionalNumber(data, 'lastSignIn', 0, 9999999999999) &&
+        isOptionalBool(data, 'subscriptionCancelAtPeriodEnd') &&
+        isOptionalBool(data, 'isTester') &&
+        isOptionalBool(data, 'testerAccessGranted') &&
+        isOptionalBool(data, 'isBanned') &&
+        isOptionalBool(data, 'emailVerified') &&
+        isOptionalNumber(data, 'emailVerifiedAt', 0, 9999999999999) &&
+        isOptionalString(data, 'emailVerificationTokenHash', 128) &&
+        isOptionalString(data, 'emailVerificationCodeHash', 128) &&
+        isOptionalNumber(data, 'emailVerificationSentAt', 0, 9999999999999) &&
+        isOptionalNumber(data, 'emailVerificationExpiresAt', 0, 9999999999999) &&
+        isOptionalNumber(data, 'emailVerificationAttempts', 0, 100) &&
+        isOptionalNumber(data, 'launchOfferGrantNumber', 1, 50) &&
+        isOptionalNumber(data, 'launchOfferGrantedAt', 0, 9999999999999) &&
+        isOptionalNumber(data, 'launchOfferExpiresAt', 0, 9999999999999) &&
+        isOptionalNumber(data, 'launchOfferCelebrationShownAt', 0, 9999999999999) &&
+        (!('interests' in data) || (data.interests is list && data.interests.size() <= 30 && (data.interests.size() == 0 || (data.interests[0] is string && data.interests[0].size() <= 64)))) &&
+        (!('privacySettings' in data) || data.privacySettings == null || data.privacySettings is map) &&
+        (!('preferences' in data) || data.preferences == null || data.preferences is map) &&
+        (!('subscriptionTier' in data) || data.subscriptionTier in ['Free', 'Premium', 'Premium Plus']) &&
+        (!('subscriptionStatus' in data) || data.subscriptionStatus in ['none', 'active', 'trialing', 'past_due', 'canceled', 'incomplete', 'unpaid']);
+    }
+
+    function isValidUserCreate(data) {
+      return isValidUserPayload(data) &&
+        (!('subscriptionTier' in data) || data.subscriptionTier == 'Free') &&
+        (!('subscriptionStatus' in data) || data.subscriptionStatus == 'none') &&
+        (!('isTester' in data) || data.isTester == false) &&
+        (!('testerAccessGranted' in data) || data.testerAccessGranted == false) &&
+        (!('isBanned' in data) || data.isBanned == false) &&
+        (!('emailVerified' in data) || data.emailVerified == false) &&
+        !('launchOfferGrantNumber' in data) &&
+        !('launchOfferGrantedAt' in data) &&
+        !('launchOfferExpiresAt' in data) &&
+        !('launchOfferCelebrationShownAt' in data);
+    }
+
+    function isValidBannedUser(data) {
+      return data.keys().hasAll(['identifier', 'bannedAt']) &&
+        data.keys().hasOnly(['identifier', 'bannedAt']) &&
+        data.identifier is string && data.identifier.size() >= 1 && data.identifier.size() <= 254 &&
+        data.bannedAt is number && data.bannedAt > 0;
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasAll(['id', 'reporterId', 'reportedUserId', 'reason', 'createdAt', 'status']) &&
+        data.keys().hasOnly([
+          'id', 'reporterId', 'reporterEmail', 'reporterName', 'reportedUserId',
+          'reportedUserName', 'reportedUserEmail', 'reason', 'notes', 'timestamp',
+          'createdAt', 'status', 'actionTaken', 'actionAt', 'actionBy'
+        ]) &&
+        isValidId(data.id) &&
+        data.reporterId is string && data.reporterId.size() >= 1 && data.reporterId.size() <= 128 &&
+        data.reportedUserId is string && data.reportedUserId.size() >= 1 && data.reportedUserId.size() <= 128 &&
+        data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 120 &&
+        isOptionalString(data, 'notes', 2000) &&
+        isOptionalString(data, 'timestamp', 64) &&
+        data.createdAt is number && data.createdAt > 0 &&
+        data.status in ['pending', 'banned', 'dismissed', 'reviewed'];
+    }
+
+    function isValidGrantedTester(data) {
+      return data.keys().hasAll(['email', 'grantedAt', 'grantedBy']) &&
+        data.keys().hasOnly(['email', 'grantedAt', 'grantedBy', 'notes']) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.grantedAt is number && data.grantedAt > 0 &&
+        data.grantedBy is string && data.grantedBy.size() >= 3 && data.grantedBy.size() <= 254 &&
+        isOptionalString(data, 'notes', 500);
+    }
+
+    function isValidWaitlistEntry(data) {
+      return data.keys().hasAll(['userId', 'email', 'joinedAt']) &&
+        data.keys().hasOnly([
+          'userId', 'email', 'firstName', 'lastName', 'gender', 'interestedIn',
+          'age', 'location', 'relationshipIntent', 'subscriptionTier', 'joinedAt', 'updatedAt'
+        ]) &&
+        isValidId(data.userId) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.joinedAt is number && data.joinedAt > 0 &&
+        isOptionalString(data, 'firstName', 80) &&
+        isOptionalString(data, 'lastName', 80) &&
+        isOptionalString(data, 'gender', 32) &&
+        isOptionalString(data, 'interestedIn', 32) &&
+        isOptionalNumber(data, 'age', 18, 120) &&
+        isOptionalString(data, 'location', 120) &&
+        isOptionalString(data, 'relationshipIntent', 64) &&
+        isOptionalString(data, 'subscriptionTier', 32) &&
+        isOptionalNumber(data, 'updatedAt', 0, 9999999999999);
+    }
+
+    function isValidLaunchEvent(data) {
+      return data.keys().hasAll(['EventID', 'EventName', 'EventDate', 'Confirmed', 'CreatedAt']) &&
+        data.keys().hasOnly([
+          'EventID', 'EventName', 'DayOfWeek', 'EventDate', 'EventStartTime', 'EventEndTime',
+          'TimeZone', 'MaxParticipants', 'ParticipantsList', 'EventStatus', 'RoundsGenerated',
+          'HostID', 'EventType', 'Description', 'TotalRounds', 'RoundDurationSeconds',
+          'BreakDurationSeconds', 'MinAge', 'MaxAge', 'LocationName', 'Confirmed',
+          'ConfirmedAt', 'IsManualLaunch', 'CreatedAt', 'CreatedBy'
+        ]) &&
+        isValidId(data.EventID) &&
+        data.EventName is string && data.EventName.size() >= 1 && data.EventName.size() <= 160 &&
+        data.EventDate is string && data.EventDate.size() >= 8 && data.EventDate.size() <= 20 &&
+        data.Confirmed is bool &&
+        data.CreatedAt is number && data.CreatedAt > 0 &&
+        (!('ParticipantsList' in data) || (data.ParticipantsList is list && data.ParticipantsList.size() <= 200));
+    }
+
     match /users/{userId} {
-      allow read, write: if true;
+      allow get: if isValidId(userId) && (isOwner(userId) || isFounderAdmin());
+      allow list: if isFounderAdmin();
+      allow create: if isValidId(userId) && isVerifiedUser() && isOwner(userId) &&
+        isValidUserCreate(incoming()) &&
+        incoming().userId == request.auth.uid &&
+        incoming().email == request.auth.token.email;
+      allow update: if isValidId(userId) && isVerifiedUser() && isValidUserPayload(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().email == existing().email &&
+        incoming().createdAt == existing().createdAt && (
+          (isFounderAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
+            'isBanned', 'isTester', 'testerAccessGranted', 'testerAccessGrantedAt',
+            'testerAccessGrantedBy', 'subscriptionTier', 'subscriptionStatus'
+          ])) ||
+          (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly([
+            'firstName', 'lastName', 'age', 'gender', 'interestedIn', 'location',
+            'occupation', 'bio', 'interests', 'icebreakerAnswer', 'avatarColor',
+            'hairColor', 'heightInches', 'eyeColor', 'relationshipIntent',
+            'smoking', 'drinking', 'children', 'privacySettings', 'preferences',
+            'profilePhoto', 'lastSignIn'
+          ]))
+        );
+      allow delete: if isValidId(userId) && isVerifiedUser() && (isOwner(userId) || isFounderAdmin());
     }
-    match /banned_users/{userId} {
-      allow read, write: if true;
+
+    match /banned_users/{identifier} {
+      allow get: if isValidDocKey(identifier) && isFounderAdmin();
+      allow list: if isFounderAdmin();
+      allow create, update: if isValidDocKey(identifier) && isFounderAdmin() && isValidBannedUser(incoming());
+      allow delete: if isValidDocKey(identifier) && isFounderAdmin();
     }
+
     match /reports/{reportId} {
-      allow read, write: if true;
+      allow get: if isValidId(reportId) && isFounderAdmin();
+      allow list: if isFounderAdmin();
+      allow create: if isValidId(reportId) && isVerifiedUser() &&
+        isValidReport(incoming()) &&
+        incoming().reporterId == request.auth.uid &&
+        incoming().status == 'pending';
+      allow update: if isValidId(reportId) && isFounderAdmin() && isValidReport(incoming()) &&
+        incoming().reporterId == existing().reporterId &&
+        incoming().reportedUserId == existing().reportedUserId &&
+        incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(reportId) && isFounderAdmin();
     }
+
     match /granted_testers/{emailDocId} {
-      allow read, write: if true;
+      allow get: if isValidDocKey(emailDocId) && isFounderAdmin();
+      allow list: if isFounderAdmin();
+      allow create, update: if isValidDocKey(emailDocId) && isFounderAdmin() && isValidGrantedTester(incoming());
+      allow delete: if isValidDocKey(emailDocId) && isFounderAdmin();
     }
+
     match /event_waitlist/{userId} {
-      allow read, write: if true;
+      allow get: if isValidId(userId) && (isOwner(userId) || isFounderAdmin());
+      allow list: if isFounderAdmin();
+      allow create: if isValidId(userId) && isVerifiedUser() && isOwner(userId) &&
+        isValidWaitlistEntry(incoming()) &&
+        incoming().userId == request.auth.uid;
+      allow update: if isValidId(userId) && isVerifiedUser() && isOwner(userId) &&
+        isValidWaitlistEntry(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().joinedAt == existing().joinedAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'firstName', 'lastName', 'gender', 'interestedIn', 'age',
+          'location', 'relationshipIntent', 'subscriptionTier', 'updatedAt'
+        ]);
+      allow delete: if isValidId(userId) && isVerifiedUser() && (isOwner(userId) || isFounderAdmin());
     }
+
     match /launch_events/{eventId} {
-      allow read, write: if true;
+      allow get: if isValidId(eventId) && (existing().Confirmed == true || isFounderAdmin());
+      allow list: if existing().Confirmed == true || isFounderAdmin();
+      allow create, update: if isValidId(eventId) && isFounderAdmin() && isValidLaunchEvent(incoming());
+      allow delete: if isValidId(eventId) && isFounderAdmin();
     }
+
+    function isValidLaunchOfferGrant(data) {
+      return data.keys().hasAll(['userId', 'grantNumber', 'grantedAt', 'expiresAt', 'source']) &&
+        data.keys().hasOnly([
+          'userId', 'email', 'grantNumber', 'grantedAt', 'expiresAt', 'source', 'celebrationShownAt'
+        ]) &&
+        isValidId(data.userId) &&
+        isOptionalString(data, 'email', 254) &&
+        data.grantNumber is number && data.grantNumber >= 1 && data.grantNumber <= 50 &&
+        data.grantedAt is number && data.grantedAt > 0 &&
+        data.expiresAt is number && data.expiresAt > data.grantedAt &&
+        data.source in ['existing_verified', 'post_verification'] &&
+        isOptionalNumber(data, 'celebrationShownAt', 0, 9999999999999);
+    }
+
+    match /launch_offer_grants/{userId} {
+      allow get: if isValidId(userId) && ((isVerifiedUser() && isOwner(userId)) || isFounderAdmin());
+      allow list: if isFounderAdmin();
+      allow create: if isValidId(userId) && isFounderAdmin() && isValidLaunchOfferGrant(incoming());
+      allow update: if isValidId(userId) && isFounderAdmin() && isValidLaunchOfferGrant(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().grantNumber == existing().grantNumber &&
+        incoming().grantedAt == existing().grantedAt &&
+        incoming().expiresAt == existing().expiresAt;
+      allow delete: if false;
+    }
+
+    match /launch_offer_config/{configId} {
+      allow get, list: if isFounderAdmin();
+      allow create, update, delete: if isFounderAdmin();
+    }
+
     match /system_test/{testId} {
-      allow read, write: if true;
+      allow get: if isValidId(testId) && isSignedIn();
+      allow list, write: if false;
     }
   }
 }

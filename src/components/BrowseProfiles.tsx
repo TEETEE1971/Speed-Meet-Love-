@@ -41,7 +41,7 @@ export const BrowseProfiles: React.FC = () => {
     passProfile,
     blockUser,
     setReportModalTarget,
-    updateAnyUser,
+    updateUserProfile,
     updateUserPreferences,
     showNotification,
     setCurrentView,
@@ -234,7 +234,15 @@ export const BrowseProfiles: React.FC = () => {
     updateUserPreferences(currentUser.UserID, updated);
   };
 
+  const canEditProfile = (user: User | null | undefined): boolean =>
+    Boolean(currentUser && user && user.UserID === currentUser.UserID);
+
   const openEditModal = (user: User) => {
+    if (!canEditProfile(user)) {
+      setEditingTargetUser(null);
+      showNotification('Permission denied: You can only edit your own profile.', 'info');
+      return;
+    }
     setEditingTargetUser(user);
     setEditForm({
       Age: user.Age && user.Age > 0 ? String(user.Age) : '',
@@ -248,14 +256,18 @@ export const BrowseProfiles: React.FC = () => {
 
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTargetUser) return;
+    if (!editingTargetUser || !canEditProfile(editingTargetUser)) {
+      setEditingTargetUser(null);
+      showNotification('Permission denied: You can only edit your own profile.', 'info');
+      return;
+    }
 
     const parsedAge = editForm.Age.trim() ? Number(editForm.Age) : 0;
     const interestsList = editForm.Interests.split(',')
       .map(s => s.trim())
       .filter(Boolean);
 
-    updateAnyUser(editingTargetUser.UserID, {
+    updateUserProfile({
       Age: parsedAge,
       Location: editForm.Location.trim(),
       Occupation: editForm.Occupation.trim(),
@@ -267,7 +279,6 @@ export const BrowseProfiles: React.FC = () => {
       },
     });
 
-    showNotification(`${editingTargetUser.FirstName}'s profile updated successfully!`, 'success');
     setEditingTargetUser(null);
   };
 
@@ -597,13 +608,15 @@ export const BrowseProfiles: React.FC = () => {
                   )}
                 </div>
 
-                <button
-                  onClick={() => openEditModal(activeProfile)}
-                  className="mt-2 text-[11px] font-bold text-[#B91C1C] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer"
-                >
-                  <Edit3 className="w-3 h-3" />
-                  <span>Edit Profile Information</span>
-                </button>
+                {canEditProfile(activeProfile) && (
+                  <button
+                    onClick={() => openEditModal(activeProfile)}
+                    className="mt-2 text-[11px] font-bold text-[#B91C1C] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>Edit Profile Information</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -615,17 +628,21 @@ export const BrowseProfiles: React.FC = () => {
                     <span className="text-[11px] font-bold uppercase tracking-wider text-[#B91C1C]">
                       About Me
                     </span>
-                    <button
-                      onClick={() => openEditModal(activeProfile)}
-                      className="text-[11px] font-bold text-[#111827] hover:text-[#B91C1C] flex items-center gap-1 cursor-pointer"
-                    >
-                      <Edit3 className="w-3 h-3" /> Edit
-                    </button>
+                    {canEditProfile(activeProfile) && (
+                      <button
+                        onClick={() => openEditModal(activeProfile)}
+                        className="text-[11px] font-bold text-[#111827] hover:text-[#B91C1C] flex items-center gap-1 cursor-pointer"
+                      >
+                        <Edit3 className="w-3 h-3" /> Edit
+                      </button>
+                    )}
                   </div>
                   <p className="text-sm text-[#111827] leading-relaxed mt-1 font-medium">
                     {activeProfile.Bio || (
                       <span className="text-[#111827] font-medium italic">
-                        Biography not provided yet. Tap "Edit Profile Information" to add details.
+                        {canEditProfile(activeProfile)
+                          ? 'Biography not provided yet. Tap "Edit Profile Information" to add details.'
+                          : 'Biography not provided yet.'}
                       </span>
                     )}
                   </p>
@@ -694,7 +711,7 @@ export const BrowseProfiles: React.FC = () => {
                     <span className="text-[11px] font-bold uppercase tracking-wider text-[#111827]">
                       Interests & Passions
                     </span>
-                    {activeProfile.Interests.length === 0 && (
+                    {canEditProfile(activeProfile) && activeProfile.Interests.length === 0 && (
                       <button
                         onClick={() => openEditModal(activeProfile)}
                         className="text-[11px] text-[#B91C1C] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
@@ -715,7 +732,7 @@ export const BrowseProfiles: React.FC = () => {
                       ))
                     ) : (
                       <span className="text-xs text-[#111827] font-medium italic">
-                        No interests added yet. (Editable)
+                        No interests added yet.
                       </span>
                     )}
                   </div>
@@ -777,13 +794,15 @@ export const BrowseProfiles: React.FC = () => {
                   )}
 
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => openEditModal(candidate)}
-                      className="p-1.5 rounded-lg text-[#111827] hover:text-[#B91C1C] hover:bg-pink-50 transition-colors cursor-pointer"
-                      title="Edit Profile Info"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
+                    {canEditProfile(candidate) && (
+                      <button
+                        onClick={() => openEditModal(candidate)}
+                        className="p-1.5 rounded-lg text-[#111827] hover:text-[#B91C1C] hover:bg-pink-50 transition-colors cursor-pointer"
+                        title="Edit Profile Info"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleBlock(candidate)}
                       className="p-1.5 rounded-lg text-[#111827] hover:text-[#BE123C] hover:bg-rose-50 transition-colors cursor-pointer"
@@ -841,7 +860,7 @@ export const BrowseProfiles: React.FC = () => {
                   <p className="text-xs text-[#111827] line-clamp-2 mt-2 leading-relaxed font-medium">
                     {candidate.Bio || (
                       <span className="text-[#111827] font-medium italic">
-                        Bio not set yet. Tap edit to provide.
+                        Bio not set yet.
                       </span>
                     )}
                   </p>
@@ -886,8 +905,8 @@ export const BrowseProfiles: React.FC = () => {
         </div>
       )}
 
-      {/* QUICK EDIT PROFILE MODAL */}
-      {editingTargetUser && (
+      {/* QUICK EDIT PROFILE MODAL (Strictly restricted to own profile) */}
+      {editingTargetUser && canEditProfile(editingTargetUser) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="w-full max-w-lg rounded-3xl bg-white border border-rose-100 shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-rose-50 pb-3">

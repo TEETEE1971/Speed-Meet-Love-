@@ -55,6 +55,7 @@ export const ProfileSetup: React.FC = () => {
     deleteAccount,
     isOwner,
     appMode,
+    setIsEmailVerificationModalOpen,
   } = useApp();
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -257,11 +258,29 @@ export const ProfileSetup: React.FC = () => {
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-[#111827] border border-slate-300 font-bold">
                 Sample Demo Profile
               </span>
+            ) : currentUser.EmailVerified ? (
+              <>
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-50 text-[#065F46] border border-emerald-200 font-bold flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-[#047857]" />
+                  Email Verified
+                </span>
+                {currentUser.LaunchOfferGranted && currentUser.LaunchOfferGrantNumber && (
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-teal-50 text-[#0F766E] border border-teal-200 font-bold flex items-center gap-1">
+                    <Heart className="w-3 h-3 text-[#BE185D] fill-[#BE185D]" />
+                    Launch Member #{currentUser.LaunchOfferGrantNumber}
+                    {currentUser.LaunchOfferExpired ? ' (Offer Ended)' : ''}
+                  </span>
+                )}
+              </>
             ) : (
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-50 text-[#065F46] border border-emerald-200 font-bold flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-[#047857]" />
-                Verified Member Account
-              </span>
+              <button
+                type="button"
+                onClick={() => setIsEmailVerificationModalOpen(true)}
+                className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-50 hover:bg-amber-100 text-[#92400E] border border-amber-300 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <AlertTriangle className="w-3 h-3 text-[#B45309]" />
+                Email Unverified · Verify Now
+              </button>
             )}
           </div>
           <p className="text-xs text-[#111827] font-medium">

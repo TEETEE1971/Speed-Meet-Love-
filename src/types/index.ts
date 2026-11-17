@@ -162,6 +162,16 @@ export interface User {
   testerAccessGranted?: boolean;
   testerAccessGrantedAt?: number;
   testerAccessGrantedBy?: string;
+  EmailVerified?: boolean;
+  EmailVerifiedAt?: number | null;
+  LaunchOfferGranted?: boolean;
+  LaunchOfferGrantNumber?: number | null;
+  LaunchOfferGrantedAt?: number | null;
+  LaunchOfferExpiresAt?: number | null;
+  LaunchOfferActive?: boolean;
+  LaunchOfferExpired?: boolean;
+  LaunchOfferCelebrationPending?: boolean;
+  LaunchOfferCelebrationShownAt?: number | null;
 }
 
 export interface SpeedEvent {
@@ -288,6 +298,12 @@ export interface RegisteredUserSummary {
   testerAccessGranted?: boolean;
   testerAccessGrantedAt?: number | null;
   testerAccessGrantedBy?: string | null;
+  emailVerified?: boolean;
+  emailVerifiedAt?: number | null;
+  launchOfferGrantNumber?: number | null;
+  launchOfferGrantedAt?: number | null;
+  launchOfferExpiresAt?: number | null;
+  launchOfferActive?: boolean;
 }
 
 export interface TesterGrantRecord {

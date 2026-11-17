@@ -545,6 +545,13 @@ export const AuthModal: React.FC = () => {
                 </div>
               </div>
 
+              <div className="p-3 rounded-xl bg-gradient-to-r from-pink-50 via-rose-50 to-teal-50 border border-pink-200 text-xs text-[#111827] font-semibold flex items-start gap-2 leading-relaxed">
+                <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D] shrink-0 mt-0.5" />
+                <span>
+                  Our first 50 eligible members receive one month of Premium FREE! Sign up and verify your email to discover if you’ve claimed a spot.
+                </span>
+              </div>
+
               <div className="p-2.5 rounded-xl bg-pink-50/70 border border-pink-200 text-[11px] text-pink-950 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-pink-600 shrink-0" />
                 <span>Speed Meet Love strictly requires all participants to be verified adults aged 18 and older.</span>

@@ -5,41 +5,67 @@
       "description": "Server-authoritative user account record with PBKDF2 password authentication and profile data",
       "type": "object",
       "properties": {
-        "userId": { "type": "string", "description": "Unique user account ID (e.g. usr_...)" },
-        "email": { "type": "string", "format": "email", "description": "Normalized lowercase email address" },
-        "passwordHash": { "type": "string", "description": "PBKDF2-SHA512 password hash with 100,000 iterations" },
-        "passwordSalt": { "type": "string", "description": "Cryptographic random salt" },
-        "firstName": { "type": "string", "description": "First name of member" },
-        "lastName": { "type": "string", "description": "Last name of member" },
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique user account ID (e.g. usr_...)" },
+        "email": { "type": "string", "format": "email", "maxLength": 254, "description": "Normalized lowercase email address" },
+        "passwordHash": { "type": "string", "maxLength": 256, "description": "PBKDF2-SHA512 password hash with 100,000 iterations" },
+        "passwordSalt": { "type": "string", "maxLength": 128, "description": "Cryptographic random salt" },
+        "firstName": { "type": "string", "minLength": 1, "maxLength": 80, "description": "First name of member" },
+        "lastName": { "type": "string", "maxLength": 80, "description": "Last name of member" },
         "age": { "type": "number", "description": "Age of member (enforced 18+)" },
-        "gender": { "type": "string", "description": "Gender identity ('Woman' | 'Man' | 'Non-Binary')" },
-        "interestedIn": { "type": "string", "description": "Dating preference ('Men' | 'Women' | 'Everyone')" },
-        "location": { "type": "string", "description": "City and state of member" },
-        "occupation": { "type": "string", "description": "Occupation or profession" },
-        "bio": { "type": "string", "description": "Short bio or self-introduction" },
-        "profilePhoto": { "type": "string", "description": "Profile photo URL" },
+        "gender": { "type": "string", "enum": ["Woman", "Man", "Non-Binary"], "description": "Gender identity" },
+        "interestedIn": { "type": "string", "enum": ["Men", "Women", "Everyone"], "description": "Dating preference" },
+        "location": { "type": "string", "maxLength": 120, "description": "City and state of member" },
+        "occupation": { "type": "string", "maxLength": 120, "description": "Occupation or profession" },
+        "bio": { "type": "string", "maxLength": 1000, "description": "Short bio or self-introduction" },
+        "profilePhoto": { "type": "string", "maxLength": 800000, "description": "Profile photo URL or null" },
+        "interests": { "type": "array", "description": "List of member interests (bounded)" },
+        "icebreakerAnswer": { "type": "string", "maxLength": 400, "description": "Signature icebreaker prompt answer" },
+        "avatarColor": { "type": "string", "maxLength": 32, "description": "Hex color for initial avatar" },
+        "hairColor": { "type": "string", "maxLength": 32, "description": "Hair color trait" },
+        "heightInches": { "type": "number", "description": "Height in total inches" },
+        "eyeColor": { "type": "string", "maxLength": 32, "description": "Eye color trait" },
+        "relationshipIntent": { "type": "string", "maxLength": 64, "description": "Relationship goal" },
+        "smoking": { "type": "string", "maxLength": 32, "description": "Smoking habit" },
+        "drinking": { "type": "string", "maxLength": 32, "description": "Drinking habit" },
+        "children": { "type": "string", "maxLength": 48, "description": "Family / children preference" },
+        "privacySettings": { "type": "object", "description": "Visibility toggles for profile traits" },
+        "preferences": { "type": "object", "description": "Search filter preferences" },
         "subscriptionTier": { "type": "string", "enum": ["Free", "Premium", "Premium Plus"], "description": "Subscription tier" },
         "subscriptionStatus": { "type": "string", "enum": ["none", "active", "trialing", "past_due", "canceled", "incomplete", "unpaid"], "description": "Stripe subscription status" },
-        "stripeCustomerId": { "type": "string", "description": "Active-mode Stripe customer ID (e.g. cus_...)" },
-        "stripeCustomerIdLive": { "type": "string", "description": "Live-mode Stripe customer ID (kept separate from test mode)" },
-        "stripeCustomerIdTest": { "type": "string", "description": "Test/sandbox-mode Stripe customer ID (kept separate from live mode)" },
-        "stripeSubscriptionId": { "type": "string", "description": "Stripe subscription ID (e.g. sub_...)" },
-        "stripePriceId": { "type": "string", "description": "Active Stripe price ID" },
+        "stripeCustomerId": { "type": "string", "maxLength": 128, "description": "Active-mode Stripe customer ID" },
+        "stripeCustomerIdLive": { "type": "string", "maxLength": 128, "description": "Live-mode Stripe customer ID" },
+        "stripeCustomerIdTest": { "type": "string", "maxLength": 128, "description": "Test/sandbox-mode Stripe customer ID" },
+        "stripeSubscriptionId": { "type": "string", "maxLength": 128, "description": "Stripe subscription ID" },
+        "stripePriceId": { "type": "string", "maxLength": 128, "description": "Active Stripe price ID" },
         "subscriptionCurrentPeriodEnd": { "type": "number", "description": "Subscription period expiration timestamp in Unix epoch ms" },
-        "subscriptionCancelAtPeriodEnd": { "type": "boolean", "description": "Whether subscription is scheduled to cancel at period end" },
-        "isTester": { "type": "boolean", "description": "Whether user has free tester access override separate from paid subscription" },
+        "subscriptionCancelAtPeriodEnd": { "type": "boolean", "description": "Whether subscription cancels at period end" },
+        "isTester": { "type": "boolean", "description": "Free tester access override separate from paid subscription" },
+        "testerAccessGranted": { "type": "boolean", "description": "Owner-granted tester flag" },
+        "testerAccessGrantedAt": { "type": "number", "description": "Timestamp when tester access was granted" },
+        "testerAccessGrantedBy": { "type": "string", "maxLength": 254, "description": "Founder email that granted access" },
         "createdAt": { "type": "number", "description": "Account registration timestamp in Unix epoch ms" },
         "lastSignIn": { "type": "number", "description": "Last sign-in timestamp in Unix epoch ms" },
-        "isBanned": { "type": "boolean", "description": "Whether account is suspended for safety violations" }
+        "isBanned": { "type": "boolean", "description": "Whether account is suspended for safety violations" },
+        "emailVerified": { "type": "boolean", "description": "Whether the member completed email address verification" },
+        "emailVerifiedAt": { "type": "number", "description": "Timestamp in Unix epoch ms when email verification succeeded" },
+        "emailVerificationTokenHash": { "type": "string", "maxLength": 128, "description": "SHA-256 hash of pending verification link token" },
+        "emailVerificationCodeHash": { "type": "string", "maxLength": 128, "description": "SHA-256 hash of pending 6-digit verification code" },
+        "emailVerificationSentAt": { "type": "number", "description": "Timestamp when latest verification email was sent" },
+        "emailVerificationExpiresAt": { "type": "number", "description": "Expiration timestamp of current verification challenge" },
+        "emailVerificationAttempts": { "type": "number", "description": "Failed verification code attempt counter" },
+        "launchOfferGrantNumber": { "type": "number", "description": "Permanent sequential grant spot (1 to 50) for free 30-day Premium launch offer" },
+        "launchOfferGrantedAt": { "type": "number", "description": "Timestamp in Unix epoch ms when the 30-day free Premium launch grant started" },
+        "launchOfferExpiresAt": { "type": "number", "description": "Timestamp in Unix epoch ms when the 30-day free Premium launch grant expires" },
+        "launchOfferCelebrationShownAt": { "type": "number", "description": "Timestamp in Unix epoch ms when the recipient acknowledged the first-visit celebration modal" }
       },
-      "required": ["userId", "email", "passwordHash", "passwordSalt", "firstName", "age", "gender", "createdAt"]
+      "required": ["userId", "email", "firstName", "age", "gender", "createdAt"]
     },
     "BannedUser": {
       "title": "BannedUser",
       "description": "Record of suspended user IDs and emails for instant access revocation",
       "type": "object",
       "properties": {
-        "identifier": { "type": "string", "description": "User ID or normalized email address" },
+        "identifier": { "type": "string", "maxLength": 254, "description": "User ID or normalized email address" },
         "bannedAt": { "type": "number", "description": "Timestamp when ban was enforced" }
       },
       "required": ["identifier", "bannedAt"]
@@ -49,12 +75,12 @@
       "description": "In-app community safety or CSAM report submitted by a member",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Report ID" },
-        "reporterId": { "type": "string", "description": "User ID of reporting member" },
-        "reportedUserId": { "type": "string", "description": "User ID of reported offender" },
-        "reason": { "type": "string", "description": "Category of violation" },
-        "notes": { "type": "string", "description": "Detailed incident description" },
-        "timestamp": { "type": "string", "description": "Formatted report timestamp" },
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Report ID" },
+        "reporterId": { "type": "string", "maxLength": 128, "description": "User ID of reporting member" },
+        "reportedUserId": { "type": "string", "maxLength": 128, "description": "User ID of reported offender" },
+        "reason": { "type": "string", "maxLength": 120, "description": "Category of violation" },
+        "notes": { "type": "string", "maxLength": 2000, "description": "Detailed incident description" },
+        "timestamp": { "type": "string", "maxLength": 64, "description": "Formatted report timestamp" },
         "createdAt": { "type": "number", "description": "Creation timestamp in Unix epoch ms" },
         "status": { "type": "string", "enum": ["pending", "banned", "dismissed", "reviewed"], "description": "Review status" }
       },
@@ -62,13 +88,13 @@
     },
     "GrantedTester": {
       "title": "GrantedTester",
-      "description": "Tester account granted free Premium Plus access by the owner",
+      "description": "Tester account granted free Premium Plus access by the founder/owner",
       "type": "object",
       "properties": {
-        "email": { "type": "string", "format": "email", "description": "Normalized tester email address" },
+        "email": { "type": "string", "format": "email", "maxLength": 254, "description": "Normalized tester email address" },
         "grantedAt": { "type": "number", "description": "Timestamp when tester access was granted in Unix epoch ms" },
-        "grantedBy": { "type": "string", "description": "Owner email address that granted access" },
-        "notes": { "type": "string", "description": "Optional notes from the owner" }
+        "grantedBy": { "type": "string", "maxLength": 254, "description": "Owner email address that granted access" },
+        "notes": { "type": "string", "maxLength": 500, "description": "Optional notes from the owner" }
       },
       "required": ["email", "grantedAt", "grantedBy"]
     },
@@ -77,16 +103,16 @@
       "description": "Free launch waiting list interest entry saved once per authenticated member",
       "type": "object",
       "properties": {
-        "userId": { "type": "string", "description": "Unique member userId" },
-        "email": { "type": "string", "format": "email", "description": "Member email address" },
-        "firstName": { "type": "string", "description": "Member first name" },
-        "lastName": { "type": "string", "description": "Member last name" },
-        "gender": { "type": "string", "description": "Member gender identity" },
-        "interestedIn": { "type": "string", "description": "Member dating preference" },
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique member userId" },
+        "email": { "type": "string", "format": "email", "maxLength": 254, "description": "Member email address" },
+        "firstName": { "type": "string", "maxLength": 80, "description": "Member first name" },
+        "lastName": { "type": "string", "maxLength": 80, "description": "Member last name" },
+        "gender": { "type": "string", "maxLength": 32, "description": "Member gender identity" },
+        "interestedIn": { "type": "string", "maxLength": 32, "description": "Member dating preference" },
         "age": { "type": "number", "description": "Member age (18+)" },
-        "location": { "type": "string", "description": "Member city/state" },
-        "relationshipIntent": { "type": "string", "description": "Member relationship goal" },
-        "subscriptionTier": { "type": "string", "description": "Current tier at join time" },
+        "location": { "type": "string", "maxLength": 120, "description": "Member city/state" },
+        "relationshipIntent": { "type": "string", "maxLength": 64, "description": "Member relationship goal" },
+        "subscriptionTier": { "type": "string", "maxLength": 32, "description": "Current tier at join time" },
         "joinedAt": { "type": "number", "description": "Unix epoch ms when interest was recorded" },
         "updatedAt": { "type": "number", "description": "Unix epoch ms of last profile sync" }
       },
@@ -97,58 +123,94 @@
       "description": "Manually scheduled launch event managed by the founder/admin",
       "type": "object",
       "properties": {
-        "EventID": { "type": "string", "description": "Unique launch event ID" },
-        "EventName": { "type": "string", "description": "Title of launch event" },
-        "DayOfWeek": { "type": "string", "description": "Day label (Friday | Saturday | Sunday)" },
-        "EventDate": { "type": "string", "description": "Calendar date YYYY-MM-DD" },
-        "EventStartTime": { "type": "string", "description": "24h start time (e.g. 19:00)" },
-        "EventEndTime": { "type": "string", "description": "24h end time (e.g. 20:15)" },
-        "TimeZone": { "type": "string", "description": "Eastern Time display label" },
+        "EventID": { "type": "string", "maxLength": 128, "description": "Unique launch event ID" },
+        "EventName": { "type": "string", "maxLength": 160, "description": "Title of launch event" },
+        "DayOfWeek": { "type": "string", "enum": ["Friday", "Saturday", "Sunday"], "description": "Day label" },
+        "EventDate": { "type": "string", "maxLength": 20, "description": "Calendar date YYYY-MM-DD" },
+        "EventStartTime": { "type": "string", "maxLength": 16, "description": "24h start time" },
+        "EventEndTime": { "type": "string", "maxLength": 16, "description": "24h end time" },
+        "TimeZone": { "type": "string", "maxLength": 80, "description": "Eastern Time display label" },
         "MaxParticipants": { "type": "number", "description": "Maximum spots" },
         "ParticipantsList": { "type": "array", "description": "Registered userIds" },
         "EventStatus": { "type": "string", "enum": ["Upcoming", "Live", "Completed"] },
         "RoundsGenerated": { "type": "boolean" },
-        "HostID": { "type": "string" },
-        "EventType": { "type": "string" },
-        "Description": { "type": "string" },
+        "HostID": { "type": "string", "maxLength": 128 },
+        "EventType": { "type": "string", "maxLength": 48 },
+        "Description": { "type": "string", "maxLength": 1000 },
         "TotalRounds": { "type": "number" },
         "RoundDurationSeconds": { "type": "number" },
         "BreakDurationSeconds": { "type": "number" },
         "MinAge": { "type": "number" },
         "MaxAge": { "type": "number" },
-        "LocationName": { "type": "string" },
+        "LocationName": { "type": "string", "maxLength": 160 },
         "Confirmed": { "type": "boolean", "description": "Whether founder has confirmed/published this launch event" },
         "ConfirmedAt": { "type": "number", "description": "Unix epoch ms when confirmed" },
+        "IsManualLaunch": { "type": "boolean", "description": "Marks manually scheduled launch events" },
         "CreatedAt": { "type": "number", "description": "Unix epoch ms when scheduled" },
-        "CreatedBy": { "type": "string", "description": "Founder email or userId" }
+        "CreatedBy": { "type": "string", "maxLength": 254, "description": "Founder email or userId" }
       },
       "required": ["EventID", "EventName", "EventDate", "Confirmed", "CreatedAt"]
+    },
+    "LaunchOfferGrant": {
+      "title": "LaunchOfferGrant",
+      "description": "Server-authoritative permanent grant ledger entry for First-50 eligible members receiving 30 days free Premium",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 254 },
+        "grantNumber": { "type": "number", "description": "Unique permanent sequential number from 1 to 50" },
+        "grantedAt": { "type": "number", "description": "Unix epoch ms when 30-day grant started" },
+        "expiresAt": { "type": "number", "description": "Unix epoch ms when 30-day grant expires" },
+        "source": { "type": "string", "enum": ["existing_verified", "post_verification"] },
+        "celebrationShownAt": { "type": "number", "description": "Unix epoch ms when celebration modal was acknowledged" }
+      },
+      "required": ["userId", "grantNumber", "grantedAt", "expiresAt", "source"]
+    },
+    "LaunchOfferConfig": {
+      "title": "LaunchOfferConfig",
+      "description": "Persistent go-live anchor state for the First-50 Launch Offer",
+      "type": "object",
+      "properties": {
+        "liveAt": { "type": "number", "description": "Unix epoch ms when First-50 launch offer went live" },
+        "maxGrants": { "type": "number" },
+        "durationDays": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["liveAt", "maxGrants", "durationDays"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "UserAccount",
-      "description": "Durable collection of registered Speed Meet Love member accounts"
+      "description": "Durable collection of registered Speed Meet Love member accounts (strict owner/founder read & write isolation)"
     },
     "/banned_users/{userId}": {
       "schema": "BannedUser",
-      "description": "Durable lookup of accounts banned for community safety violations"
+      "description": "Durable lookup of accounts banned for community safety violations (founder/admin only)"
     },
     "/reports/{reportId}": {
       "schema": "SafetyReport",
-      "description": "Durable collection of member safety reports for owner review"
+      "description": "Durable collection of member safety reports for founder/owner review"
     },
     "/granted_testers/{emailDocId}": {
       "schema": "GrantedTester",
-      "description": "Durable collection of tester accounts granted free Premium Plus access by the owner"
+      "description": "Durable collection of tester accounts granted free Premium Plus access by the founder/owner"
     },
     "/event_waitlist/{userId}": {
       "schema": "WaitlistEntry",
-      "description": "Durable collection of free event waiting list entries (one per member)"
+      "description": "Durable collection of free event waiting list entries (strict owner/founder isolation)"
     },
     "/launch_events/{eventId}": {
       "schema": "LaunchEvent",
-      "description": "Durable collection of founder-scheduled launch events"
+      "description": "Durable collection of founder-scheduled launch events (founder/admin write only)"
+    },
+    "/launch_offer_grants/{userId}": {
+      "schema": "LaunchOfferGrant",
+      "description": "Durable server-managed ledger of permanent 1-50 launch offer recipients"
+    },
+    "/launch_offer_config/{configId}": {
+      "schema": "LaunchOfferConfig",
+      "description": "Persistent First-50 launch offer configuration (founder/admin access only)"
     }
   }
 }

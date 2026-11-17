@@ -145,13 +145,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
           </h1>
 
           {/* Launch Waiting List Announcement */}
-          <div className="max-w-3xl mx-auto p-4 sm:p-5 rounded-2xl bg-white/95 border-2 border-pink-300 shadow-md space-y-2">
+          <div className="max-w-3xl mx-auto p-4 sm:p-5 rounded-2xl bg-white/95 border-2 border-pink-300 shadow-md space-y-2.5">
             <p className="text-sm sm:text-lg font-bold text-[#111827] leading-relaxed">
               We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined.
             </p>
             <p className="text-xs sm:text-sm font-medium text-[#111827] leading-relaxed">
               Curated 5-minute live video dates with comfortable 2-minute breaks and confidential mutual matching.
             </p>
+            {(!isAuthenticated || !currentUser?.EmailVerified) && (
+              <div className="mt-2 p-3 rounded-xl bg-gradient-to-r from-pink-50 via-rose-50 to-teal-50 border border-pink-200 text-xs sm:text-sm font-bold text-[#111827] flex items-center justify-center gap-2">
+                <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D] shrink-0" />
+                <span>
+                  Our first 50 eligible members receive one month of Premium FREE! Sign up and verify your email to discover if you’ve claimed a spot.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* OVERLAPPING RECTANGULAR PROFILE PHOTOGRAPHS WITH CENTRAL KRISTY PHOTO */}

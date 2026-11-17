@@ -12,6 +12,65 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Open+Sans:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Poppins:wght@600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-1GQNQ69X6C"></script>
+    <script>
+      (function () {
+        var MEASUREMENT_ID = 'G-1GQNQ69X6C';
+        if (window.__smlGaConfigured) return;
+        window.__smlGaConfigured = true;
+
+        function isOptedOut() {
+          try {
+            if (navigator.globalPrivacyControl === true) return true;
+            var dnt = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+            if (dnt === '1' || dnt === 'yes') return true;
+            var keys = ['sml_analytics_consent', 'sml_cookie_consent', 'cookie_consent', 'analytics_consent'];
+            for (var i = 0; i < keys.length; i++) {
+              var val = window.localStorage ? window.localStorage.getItem(keys[i]) : null;
+              if (!val) continue;
+              var normalized = String(val).trim().toLowerCase();
+              if (normalized === 'denied' || normalized === 'false' || normalized === '0' || normalized === 'opt-out' || normalized === 'essential') {
+                return true;
+              }
+              if (normalized.charAt(0) === '{') {
+                try {
+                  var parsed = JSON.parse(val);
+                  if (parsed && (parsed.analytics === false || parsed.analytics_storage === 'denied')) {
+                    return true;
+                  }
+                } catch (e) {}
+              }
+            }
+          } catch (e) {}
+          return false;
+        }
+
+        var optedOut = isOptedOut();
+        window['ga-disable-' + MEASUREMENT_ID] = optedOut;
+
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = window.gtag || function () {
+          window.dataLayer.push(arguments);
+        };
+
+        window.gtag('consent', 'default', {
+          ad_storage: 'denied',
+          ad_user_data: 'denied',
+          ad_personalization: 'denied',
+          analytics_storage: optedOut ? 'denied' : 'granted',
+        });
+
+        window.gtag('js', new Date());
+        window.gtag('config', MEASUREMENT_ID, {
+          send_page_view: false,
+          allow_google_signals: false,
+          allow_ad_personalization_signals: false,
+          page_path: window.location.pathname || '/',
+          page_location: window.location.origin + (window.location.pathname || '/'),
+        });
+      })();
+    </script>
   </head>
   <body class="bg-[#FFF8FA] text-[#1E293B] antialiased selection:bg-[#FF2E93] selection:text-white">
     <div id="root"></div>
