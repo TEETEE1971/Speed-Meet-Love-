@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Flame,
   Compass,
+  MessageCircle,
 } from 'lucide-react';
 import { FloatingHearts } from './FloatingHearts';
 import { RainbowHeart } from './RainbowHeart';
@@ -137,11 +138,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
             <Sparkles className="w-4 h-4 text-[#B45309] fill-amber-400" />
           </div>
 
-          {/* Bold Headline: Real People. Real Connections. In Minutes. */}
+          {/* Bold Descriptive H1 Headline */}
           <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-[#111827] font-heading tracking-tight leading-tight">
-            Real People. Real Connections.{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#B91C1C] via-[#BE123C] to-[#BE185D]">
-              In Minutes.
+            Meet Singles on Speed Meet Love{' '}
+            <span className="block mt-2 text-2xl sm:text-4xl lg:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-[#B91C1C] via-[#BE123C] to-[#BE185D]">
+              Real People. Real Connections. In Minutes.
             </span>
           </h1>
 
@@ -360,10 +361,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
               <span>Launch Event Schedule</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-[#111827] font-heading tracking-tight mt-0.5">
-              {launchEvents.length > 0 ? 'Confirmed Launch Event' : 'First event date coming soon.'}
+              {launchEvents.length > 0 ? 'Confirmed Launch Event' : 'Upcoming Live Video Speed-Dating Schedule'}
             </h2>
             <p className="text-xs sm:text-sm font-medium text-[#111827] mt-0.5">
-              We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined.
+              We’re welcoming our first members! The first event date will be announced once enough compatible singles join.
             </p>
           </div>
 
@@ -540,6 +541,107 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
             })}
           </div>
         )}
+      </section>
+
+      {/* =========================================================================
+          PUBLIC PLATFORM GUIDE: BROWSING, MUTUAL MATCHES, PREMIUM MESSAGING & WAITING LIST
+          ========================================================================= */}
+      <section aria-labelledby="how-speed-meet-love-works" className="space-y-6">
+        <div className="rounded-3xl bg-white border-2 border-rose-200 p-6 sm:p-10 shadow-lg space-y-6">
+          <div className="max-w-3xl space-y-2.5">
+            <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#B91C1C] font-heading">
+              <Sparkles className="w-4 h-4 text-[#B45309] fill-amber-400" />
+              <span>How It Works</span>
+            </div>
+            <h2
+              id="how-speed-meet-love-works"
+              className="text-2xl sm:text-3xl font-bold text-[#111827] font-heading tracking-tight"
+            >
+              How Speed Meet Love Connects Singles: Profiles, Mutual Matches, Messaging &amp; Live Events
+            </h2>
+            <p className="text-sm sm:text-base text-[#111827] font-medium leading-relaxed">
+              Speed Meet Love is an adults-only (18+) dating community built for singles who prefer real face-to-face chemistry over endless swiping. Join for free to browse profiles, discover mutual interest privately, message confirmed matches with Premium, and reserve your spot on the waiting list for upcoming live video speed-dating events.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <article className="rounded-2xl bg-[#FFF8FA] border border-rose-200 p-5 sm:p-6 space-y-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-white border border-rose-200 text-[#BE185D] flex items-center justify-center shrink-0 shadow-2xs">
+                  <Compass className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-bold text-[#111827] font-heading">
+                  Browse Verified Singles Profiles for Free
+                </h3>
+              </div>
+              <p className="text-sm text-[#111827] font-medium leading-relaxed">
+                Every new account starts with free profile browsing across flexible grid and detailed card layouts. Explore genuine member bios, hobbies, city locations, dating preferences, and photos at your own pace before joining a live room. You can update your profile anytime and send likes to members who catch your attention, keeping discovery relaxed, authentic, and completely transparent from day one.
+              </p>
+            </article>
+
+            <article className="rounded-2xl bg-[#FFF8FA] border border-rose-200 p-5 sm:p-6 space-y-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-white border border-rose-200 text-[#B91C1C] flex items-center justify-center shrink-0 shadow-2xs">
+                  <Heart className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-bold text-[#111827] font-heading">
+                  Find Genuine Mutual Matches Confidentially
+                </h3>
+              </div>
+              <p className="text-sm text-[#111827] font-medium leading-relaxed">
+                Speed Meet Love protects your comfort through strict mutual matching. Whether you like someone while browsing profiles or cast a confidential post-date vote during live video rounds, your selection stays private unless the other person chooses you back. When interest is shared on both sides, a mutual match appears immediately—eliminating awkward guesswork, public rejection, and unwanted inbox noise.
+              </p>
+            </article>
+
+            <article className="rounded-2xl bg-[#FFF8FA] border border-rose-200 p-5 sm:p-6 space-y-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-white border border-rose-200 text-[#0F766E] flex items-center justify-center shrink-0 shadow-2xs">
+                  <MessageCircle className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-bold text-[#111827] font-heading">
+                  Keep Sparking Conversations with Premium Messaging
+                </h3>
+              </div>
+              <p className="text-sm text-[#111827] font-medium leading-relaxed">
+                Once two members confirm a mutual match, upgrading to our Premium membership ($9.99/month) unlocks direct one-on-one messaging in your private portal. Continue getting to know your matches between events, share stories, and plan a relaxed follow-up date at your own pace. Free members can always browse singles and track mutual matches, while Premium opens unlimited private chat whenever you want to connect deeper.
+              </p>
+            </article>
+
+            <article className="rounded-2xl bg-[#FFF8FA] border border-rose-200 p-5 sm:p-6 space-y-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-white border border-rose-200 text-[#2563EB] flex items-center justify-center shrink-0 shadow-2xs">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-bold text-[#111827] font-heading">
+                  Join the Free Live Video Speed-Dating Waiting List
+                </h3>
+              </div>
+              <p className="text-sm text-[#111827] font-medium leading-relaxed">
+                Upcoming live events feature structured 5-minute face-to-face video rounds with calm 2-minute breaks and mutual consent before every date begins. The first event date will be announced once enough compatible singles join, so every room launches with balanced, engaging conversations across your preferences. Joining the waiting list is completely free and puts you first in line for our opening night invitation.
+              </p>
+            </article>
+          </div>
+
+          <div className="rounded-2xl bg-gradient-to-r from-rose-50 via-pink-50 to-white border border-rose-200 p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1.5 max-w-3xl">
+              <h3 className="text-base sm:text-lg font-bold text-[#111827] font-heading flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-[#B91C1C] shrink-0" />
+                <span>Adults-Only (18+) Safety, Privacy &amp; Real Chemistry</span>
+              </h3>
+              <p className="text-sm text-[#111827] font-medium leading-relaxed">
+                Every member confirms adult 18+ eligibility, verifies their email address, and participates under clear community safety rules and consent-first video controls. Create your free profile today, explore singles, and add your name to the event waiting list so you hear the moment our inaugural event date is set.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleWaitlistAction}
+              disabled={waitlistLoading}
+              className="shrink-0 py-3 px-6 rounded-full bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer disabled:opacity-60"
+            >
+              {isAuthenticated && waitlistJoined ? 'On the Event Waiting List' : 'Join Free Waiting List'}
+            </button>
+          </div>
+        </div>
       </section>
 
       {/* =========================================================================

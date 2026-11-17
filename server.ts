@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -3403,12 +3404,36 @@ function escapeEmailHtml(input: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function hasConfiguredOutboundEmailProvider(): boolean {
-  return Boolean(
-    (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim()) ||
-    (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY.trim()) ||
-    (process.env.SMTP_HOST && process.env.SMTP_HOST.trim())
-  );
+function sanitizeEmailEnvValue(rawValue: string | undefined, envVarPrefix?: string): string {
+  let current = (rawValue || '').trim();
+  while (
+    current.length >= 2 &&
+    ((current.startsWith('"') && current.endsWith('"')) ||
+      (current.startsWith("'") && current.endsWith("'")) ||
+      (current.startsWith('`') && current.endsWith('`')))
+  ) {
+    current = current.slice(1, -1).trim();
+  }
+  if (envVarPrefix && current.toUpperCase().startsWith(`${envVarPrefix.toUpperCase()}=`)) {
+    current = current.slice(envVarPrefix.length + 1).trim();
+    while (
+      current.length >= 2 &&
+      ((current.startsWith('"') && current.endsWith('"')) ||
+        (current.startsWith("'") && current.endsWith("'")) ||
+        (current.startsWith('`') && current.endsWith('`')))
+    ) {
+      current = current.slice(1, -1).trim();
+    }
+  }
+  return current;
+}
+
+function getResendEmailConfig() {
+  const apiKey = sanitizeEmailEnvValue(process.env.RESEND_API_KEY, 'RESEND_API_KEY').replace(/\s+/g, '');
+  const fromAddress =
+    sanitizeEmailEnvValue(process.env.EMAIL_FROM, 'EMAIL_FROM') ||
+    'Speed Meet Love <noreply@speedmeetlove.com>';
+  return { apiKey, fromAddress };
 }
 
 function resolveVerificationBaseUrl(reqOrigin?: string): string {
@@ -3437,7 +3462,7 @@ async function dispatchVerificationEmail(
   firstName: string,
   verifyUrl: string
 ): Promise<{ sent: boolean; provider: 'resend' | 'sendgrid' | 'smtp' | 'none' }> {
-  const fromAddress = (process.env.EMAIL_FROM || 'Speed Meet Love <noreply@speedmeetlove.com>').trim();
+  const { apiKey: resendKey, fromAddress } = getResendEmailConfig();
   const subject = 'Verify your email for Speed Meet Love';
   const safeFirstName = escapeEmailHtml(firstName || 'Member');
   const html = `
@@ -3460,7 +3485,6 @@ async function dispatchVerificationEmail(
     'This verification link expires in 24 hours.',
   ].join('\n');
 
-  const resendKey = process.env.RESEND_API_KEY?.trim();
   if (resendKey) {
     try {
       const resp = await fetch('https://api.resend.com/emails', {
@@ -3480,10 +3504,13 @@ async function dispatchVerificationEmail(
       if (resp.ok) {
         return { sent: true, provider: 'resend' };
       }
-      console.warn('[EMAIL] Resend dispatch failed:', resp.status);
+      const errBody = await resp.text().catch(() => '');
+      console.warn('[EMAIL] Resend dispatch failed:', resp.status, errBody);
     } catch (err) {
       console.warn('[EMAIL] Resend error:', err);
     }
+  } else {
+    console.warn('[EMAIL] Verification email not sent: RESEND_API_KEY is not configured in environment variables.');
   }
 
   const sendgridKey = process.env.SENDGRID_API_KEY?.trim();

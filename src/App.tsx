@@ -53,6 +53,26 @@ const MainContent: React.FC = () => {
 
   useEffect(() => {
     trackScreenPageView(currentView);
+    const canonicalEl = document.querySelector('link[rel="canonical"]');
+    const canonicalPathMap: Record<string, string> = {
+      home: '/',
+      pricing: '/pricing',
+      terms: '/terms',
+      acceptable_use: '/acceptable-use',
+      privacy: '/privacy',
+      refund_policy: '/refund-policy',
+      law_enforcement: '/law-enforcement',
+      child_safety: '/child-safety',
+      delete_account: '/delete-account',
+      contact: '/contact',
+    };
+    const pathSuffix = canonicalPathMap[currentView] || '/';
+    if (canonicalEl) {
+      canonicalEl.setAttribute('href', `https://speedmeetlove.com${pathSuffix}`);
+    }
+    if (currentView === 'home') {
+      document.title = 'Speed Meet Love - Fast Connections. Real Chemistry.';
+    }
   }, [currentView]);
 
   return (
