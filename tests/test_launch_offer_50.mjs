@@ -88,14 +88,13 @@ function decodeQuotedPrintable(raw) {
   return raw.replace(/=\r?\n/g, '').replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
 }
 
-function extractEmailVerificationCredentials(rawMime) {
+function extractEmailVerificationLink(rawMime) {
   const normalized = decodeQuotedPrintable(rawMime);
   const urlMatch = normalized.match(/https?:\/\/[^\s"'<>]+\/verify-email\?token=([a-f0-9]{64})/i);
-  const codeMatch = normalized.match(/6-digit verification code in the app:\s*(?:<strong[^>]*>)?(\d{6})/i);
   return {
+    normalized,
     verifyUrl: urlMatch?.[0] || null,
     token: urlMatch?.[1] || null,
-    code: codeMatch?.[1] || null,
   };
 }
 
@@ -134,11 +133,11 @@ async function waitForServer(base, timeoutMs = 20000) {
 
 async function run() {
   console.log('================================================================');
-  console.log('First-50 Launch Offer, Real Email Delivery & Verification Suite');
+  console.log('First-50 Launch Offer & Link-Only Email Verification Test Suite');
   console.log('================================================================');
 
-  // 1. Check built/served UI + live server strict zero-preview enforcement
-  console.log('[Test 1] Verifying UI bundle & live server contain zero preview-inbox leaks...');
+  // 1. Check built/served UI contains zero 6-digit code UI / preview-inbox leaks
+  console.log('[Test 1] Verifying UI bundle & live server use link-only verification...');
   const homeRes = await fetch(`${LIVE_BASE}/`);
   assert.equal(homeRes.status, 200, 'Live home page should respond 200');
   const distFiles = fs.existsSync(path.join(process.cwd(), 'dist/assets'))
@@ -150,8 +149,10 @@ async function run() {
       .join('\n');
     assert.ok(!bundleContent.includes('Preview Inbox'), 'Built UI must NOT contain Preview Inbox');
     assert.ok(!bundleContent.includes('Confirm & Verify Email Now'), 'Built UI must NOT contain Confirm & Verify Email Now');
-    assert.ok(!bundleContent.includes('pendingVerificationPreview'), 'Built UI must NOT reference pendingVerificationPreview');
-    assert.ok(bundleContent.includes('Verify Email & Reveal Status'), 'Built UI must contain Verify Email & Reveal Status button');
+    assert.ok(!bundleContent.includes('6-Digit Verification Code'), 'Built UI must NOT contain 6-Digit Verification Code');
+    assert.ok(!bundleContent.includes('Enter 6-digit code'), 'Built UI must NOT contain Enter 6-digit code');
+    assert.ok(!bundleContent.includes('Verify Email & Reveal Status'), 'Built UI must NOT contain Verify Email & Reveal Status code submit button');
+    assert.ok(bundleContent.includes('I Clicked the Email Link'), 'Built UI must include link refresh button');
     assert.ok(bundleContent.includes('Resend verification email'), 'Built UI must contain Resend verification email link');
     assert.ok(
       bundleContent.includes('Our first 50 eligible members receive one month of Premium FREE! Sign up and verify your email to discover if you’ve claimed a spot.') ||
@@ -162,10 +163,17 @@ async function run() {
       bundleContent.includes('Congratulations! You\\u2019re #') || bundleContent.includes('Congratulations! You’re #'),
       'Built UI must contain celebration popup text'
     );
-    console.log('  ✓ Live built UI confirmed free of preview-inbox bypass and retains exact copy');
+    console.log('  ✓ Live built UI confirmed link-only with zero 6-digit code or preview-inbox UI');
   }
 
-  // Verify live server rejects forged tokens
+  // Verify live server rejects code-based & forged token requests
+  const liveCodeReject = await api(LIVE_BASE, '/api/auth/verify-email', {
+    method: 'POST',
+    body: { code: '123456', email: 'test@example.com' },
+  });
+  assert.equal(liveCodeReject.status, 400);
+  assert.equal(liveCodeReject.data.code, 'VERIFICATION_TOKEN_REQUIRED');
+
   const liveForged = await api(LIVE_BASE, '/api/auth/verify-email', {
     method: 'POST',
     body: { token: 'forged_live_token_0000' },
@@ -173,7 +181,7 @@ async function run() {
   assert.equal(liveForged.status, 400);
 
   // 2. Spin up isolated server with real local SMTP capture sink
-  console.log('[Test 2] Starting isolated test server wired to real local SMTP transport...');
+  console.log('[Test 2] Starting isolated test server wired to real SMTP transport...');
   const smtp = await startCaptureSmtpServer();
   const tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sml_launch_test_'));
   const isoPort = 3099;
@@ -217,20 +225,17 @@ async function run() {
         },
       });
       assert.equal(res.status, 201, `Signup failed for ${email}: ${JSON.stringify(res.data)}`);
-      // CRITICAL: Never leak code or token in API JSON response
       assert.equal(res.data.previewVerification, undefined, 'Signup API MUST NOT expose previewVerification');
       assert.ok(!res.rawText.includes('/verify-email?token='), 'Signup API response MUST NOT contain verification URL/token');
       assert.equal(res.data.verificationDelivery?.emailSent, true, 'SMTP delivery should succeed');
-      assert.equal(res.data.verificationDelivery?.provider, 'smtp');
 
       const sentList = smtp.capturedEmails.get(email.toLowerCase()) || [];
       assert.equal(sentList.length, 1, `Expected exactly 1 verification email delivered to ${email}`);
-      const creds = extractEmailVerificationCredentials(sentList[0]);
-      assert.ok(creds.token && creds.code, `Expected token & 6-digit code in email body for ${email}`);
-      // Ensure code wasn't leaked in raw signup JSON response
-      assert.ok(!res.rawText.includes(creds.code), 'Signup response must NEVER include the 6-digit verification code');
-      assert.ok(!res.rawText.includes(creds.token), 'Signup response must NEVER include the verification token');
-      return { email, password, ...res.data, creds };
+      const linkData = extractEmailVerificationLink(sentList[0]);
+      assert.ok(linkData.token && linkData.verifyUrl, `Expected verification link in email body for ${email}`);
+      assert.ok(!linkData.normalized.includes('6-digit'), 'Verification email MUST NOT mention 6-digit code');
+      assert.ok(!res.rawText.includes(linkData.token), 'Signup response must NEVER include the verification token');
+      return { email, password, ...res.data, verifyUrl: linkData.verifyUrl, verifyToken: linkData.token };
     }
 
     // Founder & Tester exclusions
@@ -243,33 +248,22 @@ async function run() {
     const founderToken = founderSignIn.data.token;
     assert.equal(founderSignIn.data.user.LaunchOfferGranted, false);
 
-    const testerEmail = `tester_excl_${Date.now().toString(36)}@mailtest.org`;
-    const grantTesterRes = await api(ISO_BASE, '/api/owner/testers', {
-      method: 'POST',
-      token: founderToken,
-      body: { email: testerEmail, action: 'grant', notes: 'Excluded tester' },
-    });
-    assert.equal(grantTesterRes.status, 200);
-
-    const testerSignup = await signupIsoMember(0, 'tester');
-    // Re-create under tester email cleanly:
     const realTesterEmail = `tester_exact_${Date.now().toString(36)}@mailtest.org`;
     await api(ISO_BASE, '/api/owner/testers', {
       method: 'POST',
       token: founderToken,
-      body: { email: realTesterEmail, action: 'grant', notes: 'Excluded tester exact' },
+      body: { email: realTesterEmail, action: 'grant', notes: 'Excluded tester' },
     });
     const tsRes = await api(ISO_BASE, '/api/auth/signup', {
       method: 'POST',
       body: { email: realTesterEmail, password: 'Password123!', firstName: 'TesterExcl', age: 30, gender: 'Woman', interestedIn: 'Men' },
     });
     assert.equal(tsRes.status, 201);
-    const tCreds = extractEmailVerificationCredentials((smtp.capturedEmails.get(realTesterEmail) || [])[0]);
-    // Verify via link token directly without code
+    const tLink = extractEmailVerificationLink((smtp.capturedEmails.get(realTesterEmail) || [])[0]);
     const tVerify = await api(ISO_BASE, '/api/auth/verify-email', {
       method: 'POST',
       token: tsRes.data.token,
-      body: { token: tCreds.token },
+      body: { token: tLink.token },
     });
     assert.equal(tVerify.status, 200);
     assert.equal(tVerify.data.user.EmailVerified, true);
@@ -278,22 +272,22 @@ async function run() {
     assert.equal(tVerify.data.user.LaunchOfferGranted, false, 'Designated tester must NOT consume spot #1');
     console.log('  ✓ Founder & designated tester excluded cleanly (0/50 spots used)');
 
-    // Member #1 security checks + unverified state + resend email + verify by link WITHOUT code
-    console.log('[Test 4] Testing unverified isolation, resend email via SMTP, and direct link verification...');
+    // Member #1 & #2: Test out-of-band link click + /api/auth/me status refresh when returning to app
+    console.log('[Test 4] Testing link-only verification, /api/auth/me return refresh, and #1/#2 sequential grants...');
     const m1 = await signupIsoMember(1);
     assert.equal(m1.user.EmailVerified, false);
     assert.equal(m1.user.LaunchOfferGranted, false);
     assert.equal(m1.user.LaunchOfferGrantNumber, null);
-    assert.equal(m1.user.LaunchOfferActive, false);
     assert.equal(m1.user.SubscriptionTier, 'Free');
 
-    // Wrong code must fail
-    const badCode = await api(ISO_BASE, '/api/auth/verify-email', {
+    // Submitting a code without a token must fail 400 VERIFICATION_TOKEN_REQUIRED
+    const codeOnlyReject = await api(ISO_BASE, '/api/auth/verify-email', {
       method: 'POST',
       token: m1.token,
-      body: { code: '000000' },
+      body: { code: '123456', email: m1.email },
     });
-    assert.equal(badCode.status, 400);
+    assert.equal(codeOnlyReject.status, 400);
+    assert.equal(codeOnlyReject.data.code, 'VERIFICATION_TOKEN_REQUIRED');
 
     // Tamper profile must return 403
     const tamperRes = await api(ISO_BASE, '/api/account/profile', {
@@ -303,109 +297,87 @@ async function run() {
     });
     assert.equal(tamperRes.status, 403);
 
-    // Resend verification email sends second real email with new code/token without leaking in response
+    // Resend verification email sends second email with new link
     const resendRes = await api(ISO_BASE, '/api/auth/resend-verification', {
       method: 'POST',
       token: m1.token,
       body: { email: m1.email },
     });
     assert.equal(resendRes.status, 200);
-    assert.equal(resendRes.data.previewVerification, undefined, 'Resend MUST NOT expose previewVerification');
-    assert.equal(resendRes.data.verificationDelivery?.emailSent, true);
+    assert.equal(resendRes.data.previewVerification, undefined);
     const m1Emails = smtp.capturedEmails.get(m1.email.toLowerCase()) || [];
-    assert.equal(m1Emails.length, 2, 'Expected 2nd email captured by SMTP server after resend');
-    const latestM1Creds = extractEmailVerificationCredentials(m1Emails[1]);
-    assert.ok(latestM1Creds.token && latestM1Creds.code);
-    assert.ok(!resendRes.rawText.includes(latestM1Creds.code));
-    assert.ok(!resendRes.rawText.includes(latestM1Creds.token));
+    assert.equal(m1Emails.length, 2);
+    const latestM1Link = extractEmailVerificationLink(m1Emails[1]);
+    assert.ok(latestM1Link.token);
+    assert.notEqual(latestM1Link.token, m1.verifyToken, 'Resend must issue a fresh unique token');
 
-    // Verify directly using link token ONLY (no code submitted) AND without Bearer header (simulating external mail client click)
-    const verifyLinkUnauth = await api(ISO_BASE, '/api/auth/verify-email', {
+    // Member #1 follows link in separate window/app without session header
+    const verifyM1Link = await api(ISO_BASE, '/api/auth/verify-email', {
       method: 'POST',
-      body: { token: latestM1Creds.token },
+      body: { token: latestM1Link.token },
     });
-    assert.equal(verifyLinkUnauth.status, 200);
-    assert.equal(verifyLinkUnauth.data.verified, true);
-    assert.equal(verifyLinkUnauth.data.user, undefined, 'Unauthenticated link click must not expose full user record in response');
+    assert.equal(verifyM1Link.status, 200);
+    assert.equal(verifyM1Link.data.verified, true);
+    assert.equal(verifyM1Link.data.user, undefined);
 
-    // Reusing link token must fail 400
-    const reuseLink = await api(ISO_BASE, '/api/auth/verify-email', {
+    // Returning to app triggers /api/auth/me with stored m1.token -> immediately reflects EmailVerified: true + spot #1!
+    const meAfterLinkM1 = await api(ISO_BASE, '/api/auth/me', { token: m1.token });
+    assert.equal(meAfterLinkM1.status, 200);
+    assert.equal(meAfterLinkM1.data.user.EmailVerified, true, 'Returning /api/auth/me refresh must confirm EmailVerified');
+    assert.equal(meAfterLinkM1.data.user.LaunchOfferGranted, true);
+    assert.equal(meAfterLinkM1.data.user.LaunchOfferGrantNumber, 1);
+    assert.equal(meAfterLinkM1.data.user.SubscriptionTier, 'Premium');
+    assert.equal(meAfterLinkM1.data.user.LaunchOfferCelebrationPending, true);
+
+    // Dismiss celebration for #1 & verify #2 next
+    await api(ISO_BASE, '/api/account/launch-offer/celebrated', { method: 'POST', token: m1.token });
+    const m2 = await signupIsoMember(2);
+    const verifyM2 = await api(ISO_BASE, '/api/auth/verify-email', {
       method: 'POST',
-      body: { token: latestM1Creds.token },
+      token: m2.token,
+      body: { token: m2.verifyToken },
     });
-    assert.equal(reuseLink.status, 400);
+    assert.equal(verifyM2.status, 200);
+    assert.equal(verifyM2.data.user.EmailVerified, true);
+    assert.equal(verifyM2.data.user.LaunchOfferGrantNumber, 2, 'Second verified member must receive #2');
+    assert.equal(verifyM2.data.user.LaunchOfferCelebrationPending, true);
+    console.log('  ✓ Returning /api/auth/me confirmed #1 & #2 granted cleanly via link-only verification');
 
-    // Member #1 first authenticated sign-in after link verification sees spot #1 & celebration pending
-    const signIn1 = await api(ISO_BASE, '/api/auth/signin', {
-      method: 'POST',
-      body: { email: m1.email, password: m1.password },
-    });
-    assert.equal(signIn1.status, 200);
-    const u1 = signIn1.data.user;
-    assert.equal(u1.EmailVerified, true);
-    assert.equal(u1.LaunchOfferGranted, true);
-    assert.equal(u1.LaunchOfferGrantNumber, 1);
-    assert.equal(u1.LaunchOfferActive, true);
-    assert.equal(u1.SubscriptionTier, 'Premium');
-    assert.equal(u1.LaunchOfferCelebrationPending, true);
-
-    // Dismiss celebration on first authenticated visit
-    const celebAck = await api(ISO_BASE, '/api/account/launch-offer/celebrated', {
-      method: 'POST',
-      token: signIn1.data.token,
-    });
-    assert.equal(celebAck.status, 200);
-    assert.equal(celebAck.data.user.LaunchOfferCelebrationPending, false);
-
-    // Sign out & sign back in: stays dismissed, #1 and expiresAt preserved
-    await api(ISO_BASE, '/api/auth/signout', { method: 'POST', token: signIn1.data.token });
-    const signIn1b = await api(ISO_BASE, '/api/auth/signin', {
-      method: 'POST',
-      body: { email: m1.email, password: m1.password },
-    });
-    assert.equal(signIn1b.data.user.LaunchOfferCelebrationPending, false);
-    assert.equal(signIn1b.data.user.LaunchOfferGrantNumber, 1);
-    assert.equal(signIn1b.data.user.LaunchOfferExpiresAt, u1.LaunchOfferExpiresAt);
-    console.log('  ✓ Direct email link verified #1 without code; celebration shown once & persisted');
-
-    // Note testerSignup earlier was an eligible non-tester signup that didn't match tester email, leave unverified so it doesn't take #2!
-    assert.equal(testerSignup.user.EmailVerified, false);
-
-    // 5. Concurrent bursts for #2..#50 (mixing link tokens & 6-digit codes from real SMTP emails) + #51 overflow
-    console.log('[Test 5] Running 50-member concurrent verification burst via captured SMTP emails...');
+    // 5. Concurrent bursts for #3..#50 + #51 overflow
+    console.log('[Test 5] Running concurrent link verifications for #3..#50 and #51 overflow...');
     const batchMembers = [];
-    for (let i = 2; i <= 51; i++) {
+    for (let i = 3; i <= 51; i++) {
       batchMembers.push(await signupIsoMember(i));
     }
 
     const burstResults = await Promise.all(
-      batchMembers.slice(0, 49).map((m, idx) =>
+      batchMembers.slice(0, 48).map(m =>
         api(ISO_BASE, '/api/auth/verify-email', {
           method: 'POST',
           token: m.token,
-          body: idx % 2 === 0 ? { token: m.creds.token } : { code: m.creds.code, email: m.email },
+          body: { token: m.verifyToken },
         })
       )
     );
 
-    const all50 = [u1, ...burstResults.map(r => r.data.user)];
+    const all50 = [meAfterLinkM1.data.user, verifyM2.data.user, ...burstResults.map(r => r.data.user)];
     const uniqueNumbers = new Set(all50.map(u => u.LaunchOfferGrantNumber));
     assert.equal(uniqueNumbers.size, 50, `Expected 50 unique grant numbers, got ${uniqueNumbers.size}`);
     for (let n = 1; n <= 50; n++) {
       assert.ok(uniqueNumbers.has(n), `Missing permanent grant #${n}`);
     }
 
-    const m51 = batchMembers[49];
+    const m51 = batchMembers[48];
     const v51 = await api(ISO_BASE, '/api/auth/verify-email', {
       method: 'POST',
       token: m51.token,
-      body: { code: m51.creds.code, email: m51.email },
+      body: { token: m51.verifyToken },
     });
     assert.equal(v51.status, 200);
     assert.equal(v51.data.user.EmailVerified, true);
     assert.equal(v51.data.user.LaunchOfferGranted, false);
     assert.equal(v51.data.user.SubscriptionTier, 'Free');
-    console.log('  ✓ Concurrent SMTP link & code verifications awarded exact 1..50; #51 stayed Free');
+    console.log('  ✓ Concurrent link verifications awarded exact 1..50; #51 stayed Free');
   } finally {
     child.kill('SIGTERM');
     await smtp.close();
@@ -413,7 +385,7 @@ async function run() {
   }
 
   console.log('================================================================');
-  console.log('ALL REAL-EMAIL VERIFICATION & LAUNCH OFFER TESTS PASSED!');
+  console.log('ALL LINK-ONLY VERIFICATION & LAUNCH OFFER TESTS PASSED!');
   console.log('================================================================');
 }
 

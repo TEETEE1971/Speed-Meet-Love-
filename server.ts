@@ -2733,6 +2733,8 @@ function seedDefaultUsersIfEmpty() {
         ...acc,
         passwordSalt: salt,
         passwordHash,
+        emailVerified: true,
+        emailVerifiedAt: Date.now(),
         createdAt: Date.now(),
       };
       serverUsers.set(acc.userId, userRecord);
@@ -3433,8 +3435,7 @@ function resolveVerificationBaseUrl(reqOrigin?: string): string {
 async function dispatchVerificationEmail(
   email: string,
   firstName: string,
-  verifyUrl: string,
-  code: string
+  verifyUrl: string
 ): Promise<{ sent: boolean; provider: 'resend' | 'sendgrid' | 'smtp' | 'none' }> {
   const fromAddress = (process.env.EMAIL_FROM || 'Speed Meet Love <noreply@speedmeetlove.com>').trim();
   const subject = 'Verify your email for Speed Meet Love';
@@ -3442,12 +3443,12 @@ async function dispatchVerificationEmail(
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; color: #111827;">
       <h2 style="color: #be185d;">Welcome to Speed Meet Love, ${safeFirstName}!</h2>
-      <p>Please verify your email address to activate full member verification and discover if you’ve claimed one of our first 50 eligible spots for one month of free Premium.</p>
+      <p>Please verify your email address by clicking the link below to activate full member verification and discover if you’ve claimed one of our first 50 eligible spots for one month of free Premium.</p>
       <p style="margin: 24px 0;">
         <a href="${verifyUrl}" style="background: #dc2626; color: #ffffff; padding: 12px 22px; border-radius: 9999px; text-decoration: none; font-weight: bold;">Verify Email Address</a>
       </p>
-      <p>Or enter this 6-digit verification code in the app: <strong style="font-size: 18px; letter-spacing: 3px;">${code}</strong></p>
-      <p style="font-size: 12px; color: #6b7280;">This link and code expire in 24 hours.</p>
+      <p style="font-size: 13px; color: #374151; word-break: break-all;">Or copy and open this link in your browser:<br /><a href="${verifyUrl}" style="color: #be185d;">${verifyUrl}</a></p>
+      <p style="font-size: 12px; color: #6b7280;">This verification link expires in 24 hours.</p>
     </div>
   `;
   const text = [
@@ -3456,9 +3457,7 @@ async function dispatchVerificationEmail(
     'Verify your email address by clicking this link:',
     verifyUrl,
     '',
-    `Or enter this 6-digit verification code in the app: ${code}`,
-    '',
-    'This link and code expire in 24 hours.',
+    'This verification link expires in 24 hours.',
   ].join('\n');
 
   const resendKey = process.env.RESEND_API_KEY?.trim();
@@ -3553,11 +3552,10 @@ async function issueEmailVerificationForUser(
   emailSent: boolean;
 }> {
   const rawToken = crypto.randomBytes(32).toString('hex');
-  const code = String(crypto.randomInt(100000, 999999));
   const now = Date.now();
 
   user.emailVerificationTokenHash = sha256Hex(rawToken);
-  user.emailVerificationCodeHash = sha256Hex(code);
+  user.emailVerificationCodeHash = undefined;
   user.emailVerificationSentAt = now;
   user.emailVerificationExpiresAt = now + 24 * 60 * 60 * 1000;
   user.emailVerificationAttempts = 0;
@@ -3565,7 +3563,7 @@ async function issueEmailVerificationForUser(
 
   const baseUrl = resolveVerificationBaseUrl(reqOrigin);
   const verifyUrl = `${baseUrl}/verify-email?token=${rawToken}`;
-  const delivery = await dispatchVerificationEmail(user.email, user.firstName, verifyUrl, code);
+  const delivery = await dispatchVerificationEmail(user.email, user.firstName, verifyUrl);
 
   return {
     provider: delivery.provider,
@@ -3868,7 +3866,7 @@ app.post('/api/auth/signup', async (req, res) => {
       emailSent: verification.emailSent,
     },
     message: verification.emailSent
-      ? 'Account created! Please check your email for your verification link or 6-digit code.'
+      ? 'Account created! Please check your email and click the verification link to confirm your account.'
       : 'Account created! Please verify your email address once outbound email delivery is available.',
   });
 });
@@ -3883,98 +3881,38 @@ function timingSafeEqualHex(a?: string, b?: string): boolean {
   }
 }
 
-// API: Verify Email Address (Required before a new/unverified member can qualify for First-50 Launch Offer)
+// API: Verify Email Address via Link Token (Required before a new/unverified member can qualify for First-50 Launch Offer)
 app.post('/api/auth/verify-email', async (req, res) => {
-  const { token, code, email } = req.body || {};
+  const { token } = req.body || {};
   const authUser = verifyAuthenticatedUser(req);
 
   const rawToken = typeof token === 'string' ? token.trim() : '';
-  const rawCode = typeof code === 'string' ? code.trim() : '';
 
-  if (!rawToken && !rawCode) {
+  if (!rawToken) {
     return res.status(400).json({
       success: false,
-      code: 'VERIFICATION_CREDENTIAL_REQUIRED',
-      error: 'A verification link token or 6-digit verification code is required.',
+      code: 'VERIFICATION_TOKEN_REQUIRED',
+      error: 'A valid verification link token is required.',
     });
   }
 
   let targetUser: ServerUserRecord | null = null;
   const now = Date.now();
+  const hashedToken = sha256Hex(rawToken);
 
-  if (rawToken) {
-    const hashedToken = sha256Hex(rawToken);
-    for (const u of serverUsers.values()) {
-      if (u.emailVerificationTokenHash && timingSafeEqualHex(u.emailVerificationTokenHash, hashedToken)) {
-        targetUser = u;
-        break;
-      }
+  for (const u of serverUsers.values()) {
+    if (u.emailVerificationTokenHash && timingSafeEqualHex(u.emailVerificationTokenHash, hashedToken)) {
+      targetUser = u;
+      break;
     }
-    if (!targetUser) {
-      return res.status(400).json({
-        success: false,
-        code: 'INVALID_VERIFICATION_TOKEN',
-        error: 'Verification link is invalid or has already been used.',
-      });
-    }
-  } else {
-    if (authUser) {
-      targetUser = serverUsers.get(authUser.userId) || null;
-    } else if (typeof email === 'string' && email.trim()) {
-      const normEmail = email.trim().toLowerCase();
-      for (const u of serverUsers.values()) {
-        if ((u.email || '').toLowerCase().trim() === normEmail) {
-          targetUser = u;
-          break;
-        }
-      }
-    }
+  }
 
-    if (!targetUser) {
-      return res.status(400).json({
-        success: false,
-        code: 'INVALID_VERIFICATION_CODE',
-        error: 'Invalid or expired verification code.',
-      });
-    }
-
-    if (targetUser.emailVerified === true) {
-      await tryAwardLaunchOfferSpot(targetUser.userId, 'post_verification');
-      return res.json({
-        success: true,
-        verified: true,
-        alreadyVerified: true,
-        ...(authUser && authUser.userId === targetUser.userId ? { user: sanitizeUser(targetUser) } : {}),
-        message: 'Your email address is already verified.',
-      });
-    }
-
-    if (typeof targetUser.emailVerificationAttempts === 'number' && targetUser.emailVerificationAttempts >= 5) {
-      return res.status(429).json({
-        success: false,
-        code: 'TOO_MANY_ATTEMPTS',
-        error: 'Too many failed verification attempts. Please request a new verification code.',
-      });
-    }
-
-    if (!targetUser.emailVerificationExpiresAt || now > targetUser.emailVerificationExpiresAt) {
-      return res.status(400).json({
-        success: false,
-        code: 'VERIFICATION_EXPIRED',
-        error: 'Your verification code has expired. Please request a new one.',
-      });
-    }
-
-    const hashedCode = sha256Hex(rawCode);
-    if (!targetUser.emailVerificationCodeHash || !timingSafeEqualHex(targetUser.emailVerificationCodeHash, hashedCode)) {
-      targetUser.emailVerificationAttempts = (targetUser.emailVerificationAttempts || 0) + 1;
-      await saveUserToDurableDatabase(targetUser);
-      return res.status(400).json({
-        success: false,
-        code: 'INVALID_VERIFICATION_CODE',
-        error: 'Incorrect 6-digit verification code. Please check and try again.',
-      });
-    }
+  if (!targetUser) {
+    return res.status(400).json({
+      success: false,
+      code: 'INVALID_VERIFICATION_TOKEN',
+      error: 'Verification link is invalid or has already been used.',
+    });
   }
 
   if (targetUser.isBanned || bannedUsers.has(targetUser.userId) || bannedUsers.has((targetUser.email || '').toLowerCase())) {
@@ -4247,13 +4185,35 @@ app.post('/api/auth/signout', (req, res) => {
 });
 
 // API: Get Current Authenticated User (from Bearer token)
-app.get('/api/auth/me', (req, res) => {
+app.get('/api/auth/me', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const authUser = verifyAuthenticatedUser(req);
   if (!authUser) {
     return res.status(401).json({ success: false, authenticated: false, error: 'Not authenticated' });
   }
 
-  const user = serverUsers.get(authUser.userId);
+  let user = serverUsers.get(authUser.userId);
+  if (firestoreDb && (!user || user.emailVerified !== true)) {
+    try {
+      const snap = await firestoreGetDoc(firestoreDoc(firestoreDb, 'users', authUser.userId));
+      if (snap && snap.exists()) {
+        const remote = snap.data() as ServerUserRecord;
+        if (remote && remote.userId) {
+          user = user ? { ...user, ...remote } : remote;
+          serverUsers.set(authUser.userId, user);
+          saveUsersToDisk();
+        }
+      }
+    } catch {
+      // Fall back to in-memory user record
+    }
+  }
+
+  if (user && user.emailVerified === true && isLaunchOfferEligibleMember(user) && !serverLaunchOfferGrants.has(user.userId)) {
+    await tryAwardLaunchOfferSpot(user.userId, 'post_verification');
+    user = serverUsers.get(authUser.userId) || user;
+  }
+
   if (user) {
     return res.json({
       success: true,

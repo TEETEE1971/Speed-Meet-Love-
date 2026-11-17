@@ -1,50 +1,49 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Mail, CheckCircle2, AlertTriangle, RefreshCw, X, Sparkles } from 'lucide-react';
+import { Mail, CheckCircle2, AlertTriangle, RefreshCw, X, Sparkles, ExternalLink } from 'lucide-react';
 import { SpeedMeetLoveLogo } from './SpeedMeetLoveLogo';
 
 export const EmailVerificationModal: React.FC = () => {
   const {
     currentUser,
     isAuthenticated,
+    isOwner,
     isEmailVerificationModalOpen,
     setIsEmailVerificationModalOpen,
     emailVerificationSent,
-    verifyEmail,
+    refreshCurrentUser,
     resendVerificationEmail,
   } = useApp();
 
-  const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
   const [isResending, setIsResending] = useState(false);
 
-  if (!isEmailVerificationModalOpen || !isAuthenticated || !currentUser || currentUser.EmailVerified) {
+  if (
+    !isEmailVerificationModalOpen ||
+    !isAuthenticated ||
+    !currentUser ||
+    currentUser.EmailVerified === true ||
+    isOwner ||
+    currentUser.IsTester
+  ) {
     return null;
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCheckStatus = async () => {
     setError(null);
     setStatusMessage(null);
-    const cleaned = code.trim();
-    if (!cleaned || cleaned.length < 6) {
-      setError('Please enter the 6-digit verification code sent to your email.');
-      return;
-    }
-
-    setIsSubmitting(true);
+    setIsChecking(true);
     try {
-      const res = await verifyEmail({ code: cleaned, email: currentUser.Email });
-      if (res.success) {
-        setCode('');
+      const updated = await refreshCurrentUser();
+      if (updated?.EmailVerified) {
         setIsEmailVerificationModalOpen(false);
       } else {
-        setError(res.error || 'Verification failed. Please check your code and try again.');
+        setStatusMessage('Not verified yet. Open the verification email we sent you and click the link, then return here.');
       }
     } finally {
-      setIsSubmitting(false);
+      setIsChecking(false);
     }
   };
 
@@ -55,7 +54,7 @@ export const EmailVerificationModal: React.FC = () => {
     try {
       const res = await resendVerificationEmail(currentUser.Email);
       if (res.success && res.emailSent) {
-        setStatusMessage(`A new verification email has been sent to ${currentUser.Email}. Check your inbox and spam folder.`);
+        setStatusMessage(`A new verification link has been sent to ${currentUser.Email}. Check your inbox and spam folder.`);
       } else {
         setError(res.error || 'Unable to send verification email right now. Please try again shortly.');
       }
@@ -86,8 +85,8 @@ export const EmailVerificationModal: React.FC = () => {
           </h2>
           <p className="text-xs text-rose-100 font-medium mt-1">
             {emailVerificationSent === false
-              ? <>Enter the 6-digit verification code sent to <strong className="text-white">{currentUser.Email}</strong>, or tap resend below once email delivery is available.</>
-              : <>We sent a verification link and 6-digit code to <strong className="text-white">{currentUser.Email}</strong>. Check your inbox (or spam folder) and enter the code below or click the link in your email.</>}
+              ? <>Your verification link for <strong className="text-white">{currentUser.Email}</strong> has not been confirmed delivered yet. Tap “Resend verification email” below.</>
+              : <>We sent a verification link to <strong className="text-white">{currentUser.Email}</strong>. Open your inbox (or spam folder) and click the link in that email to verify your account.</>}
           </p>
         </div>
 
@@ -102,7 +101,7 @@ export const EmailVerificationModal: React.FC = () => {
           {emailVerificationSent === false && !error && !statusMessage && (
             <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-[#92400E] text-xs font-semibold flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-[#B45309] shrink-0" />
-              <span>We could not confirm outbound delivery for your verification email yet. Tap “Resend verification email” below or try again shortly.</span>
+              <span>We could not confirm outbound delivery for your verification link yet. Tap “Resend verification email” below or try again shortly.</span>
             </div>
           )}
 
@@ -120,31 +119,21 @@ export const EmailVerificationModal: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="space-y-1">
-              <label htmlFor="email-verification-code-input" className="block text-xs font-bold text-[#111827]">
-                6-Digit Verification Code
-              </label>
-              <input
-                id="email-verification-code-input"
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={code}
-                onChange={e => setCode(e.target.value.replace(/[^0-9]/g, ''))}
-                placeholder="Enter 6-digit code"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#BE185D] text-center font-mono text-base font-bold tracking-[0.35em] text-[#111827]"
-              />
-            </div>
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-[#111827] font-medium leading-relaxed flex items-start gap-2.5">
+            <ExternalLink className="w-4 h-4 text-[#BE185D] shrink-0 mt-0.5" />
+            <span>
+              After you follow the link in your email, return to this screen — your verification status refreshes automatically.
+            </span>
+          </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting || code.length < 6}
-              className="w-full py-3 rounded-2xl btn-glossy-red-pink text-white font-bold text-xs sm:text-sm shadow-md cursor-pointer disabled:opacity-60 transition-all"
-            >
-              {isSubmitting ? 'Verifying Email...' : 'Verify Email & Reveal Status'}
-            </button>
-          </form>
+          <button
+            type="button"
+            disabled={isChecking}
+            onClick={handleCheckStatus}
+            className="w-full py-3 rounded-2xl btn-glossy-red-pink text-white font-bold text-xs sm:text-sm shadow-md cursor-pointer disabled:opacity-60 transition-all"
+          >
+            {isChecking ? 'Checking Verification Status...' : 'I Clicked the Email Link · Refresh Status'}
+          </button>
 
           <div className="flex items-center justify-center pt-2 border-t border-slate-200 text-xs">
             <button

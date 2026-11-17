@@ -59,7 +59,7 @@ const MainContent: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-[#FFF8FA] text-[#111827] font-medium">
       <Navbar />
 
-      {isAuthenticated && currentUser && !currentUser.EmailVerified && !isOwner && !currentUser.IsTester && (
+      {isAuthenticated && currentUser && currentUser.EmailVerified !== true && !isOwner && !currentUser.IsTester && (
         <div className="bg-gradient-to-r from-pink-50 via-rose-50 to-teal-50 border-b border-pink-200 px-4 py-2.5">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#111827] font-medium">
             <div className="flex items-center gap-2 text-center sm:text-left">

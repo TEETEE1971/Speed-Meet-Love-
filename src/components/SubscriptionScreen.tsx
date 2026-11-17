@@ -54,6 +54,7 @@ export const SubscriptionScreen: React.FC = () => {
   const {
     currentUser,
     isAuthenticated,
+    isOwner,
     setSubscriptionTier,
     showNotification,
     appMode,
@@ -417,7 +418,7 @@ export const SubscriptionScreen: React.FC = () => {
           Free allows browsing and joining the free event waiting list. Upgrade to Premium ($9.99/mo) for private messaging after mutual matches. New Premium Plus event memberships are paused while we welcome our first members.
         </p>
 
-        {(!isAuthenticated || !currentUser?.EmailVerified) && (
+        {(!isAuthenticated || (currentUser?.EmailVerified !== true && !isOwner && !currentUser?.IsTester)) && (
           <div className="max-w-3xl mx-auto p-4 rounded-2xl bg-gradient-to-r from-pink-50 via-rose-50 to-teal-50 border-2 border-pink-300 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
             <div className="flex items-start gap-2.5 text-xs sm:text-sm font-bold text-[#111827]">
               <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D] shrink-0 mt-0.5" />

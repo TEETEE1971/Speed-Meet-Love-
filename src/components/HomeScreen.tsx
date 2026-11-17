@@ -29,6 +29,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
   const {
     currentUser,
     isAuthenticated,
+    isOwner,
     openAuthModal,
     setCurrentView,
     setSelectedEventId,
@@ -152,7 +153,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
             <p className="text-xs sm:text-sm font-medium text-[#111827] leading-relaxed">
               Curated 5-minute live video dates with comfortable 2-minute breaks and confidential mutual matching.
             </p>
-            {(!isAuthenticated || !currentUser?.EmailVerified) && (
+            {(!isAuthenticated || (currentUser?.EmailVerified !== true && !isOwner && !currentUser?.IsTester)) && (
               <div className="mt-2 p-3 rounded-xl bg-gradient-to-r from-pink-50 via-rose-50 to-teal-50 border border-pink-200 text-xs sm:text-sm font-bold text-[#111827] flex items-center justify-center gap-2">
                 <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D] shrink-0" />
                 <span>
