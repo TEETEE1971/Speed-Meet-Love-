@@ -60,6 +60,8 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
   const [reports, setReports] = useState<OwnerReportItem[]>([]);
   const [bannedUsers, setBannedUsers] = useState<string[]>([]);
   const [loadingReports, setLoadingReports] = useState<boolean>(true);
+  const [isRefreshingReports, setIsRefreshingReports] = useState<boolean>(false);
+  const hasLoadedReportsOnceRef = useRef<boolean>(false);
   const [reportsFilter, setReportsFilter] = useState<'all' | 'pending' | 'banned' | 'dismissed'>('all');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [actionModal, setActionModal] = useState<{
@@ -93,6 +95,15 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
     projectId?: string;
     databaseId?: string;
     isDurableDatabaseActive?: boolean;
+    firestoreReadVerified?: boolean;
+    firestoreWriteVerified?: boolean;
+    activePersistenceBackend?: string;
+    lastFirestoreError?: {
+      code?: number | string | null;
+      message?: string;
+      operation?: string;
+      path?: string | null;
+    } | null;
     survivesRedeployments?: boolean;
     filePath?: string;
     totalServerRecords?: number;
@@ -134,9 +145,13 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
     }
   }, [defaultTab]);
 
-  // Fetch Safety Reports
-  const fetchReports = useCallback(async () => {
-    setLoadingReports(true);
+  // Fetch Safety Reports - retains current list during background refreshes to avoid loading-screen flicker
+  const fetchReports = useCallback(async (isBackgroundRefresh: boolean = false) => {
+    if (!hasLoadedReportsOnceRef.current && !isBackgroundRefresh) {
+      setLoadingReports(true);
+    } else {
+      setIsRefreshingReports(true);
+    }
     try {
       const token = authToken || localStorage.getItem('sml_brand_v6_authToken');
       const res = await fetch('/api/owner/reports', {
@@ -149,6 +164,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
         const data = await res.json();
         if (data.success && Array.isArray(data.reports)) {
           setReports(data.reports);
+          hasLoadedReportsOnceRef.current = true;
           if (Array.isArray(data.bannedUsers)) {
             setBannedUsers(data.bannedUsers);
           }
@@ -172,6 +188,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
       showNotification('Could not reach server to load reports.', 'pink');
     } finally {
       setLoadingReports(false);
+      setIsRefreshingReports(false);
     }
   }, [authToken, showNotification]);
 
@@ -230,7 +247,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
       const data = await res.json();
       if (res.ok && data.success) {
         showNotification(data.message || `${params.userName || params.userId} removed from active round.`, 'success');
-        await Promise.all([fetchActiveRounds(), fetchReports()]);
+        await Promise.all([fetchActiveRounds(), fetchReports(true)]);
       } else {
         showNotification(data.error || 'Failed to remove member from active round.', 'pink');
       }
@@ -341,12 +358,12 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
     }
   }, [authToken]);
 
-  // Initial load
+  // Initial load (runs background refreshes without replacing existing lists once loaded)
   useEffect(() => {
     if (isOwner) {
-      fetchReports();
+      fetchReports(hasLoadedReportsOnceRef.current);
       fetchActiveRounds();
-      fetchRegisteredUsers();
+      fetchRegisteredUsers(hasLoadedUsersOnceRef.current);
       fetchGrantedTesters();
       fetchWaitlistMembers();
     }
@@ -412,7 +429,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
         );
         setActionModal(null);
         setOwnerNote('');
-        fetchReports();
+        fetchReports(true);
         fetchRegisteredUsers(true);
       } else {
         showNotification(data.error || 'Action failed.', 'pink');
@@ -438,7 +455,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
       const data = await res.json();
       if (res.ok && data.success) {
         showNotification(`User ${userId} unbanned.`, 'success');
-        fetchReports();
+        fetchReports(true);
         fetchRegisteredUsers(true);
       } else {
         showNotification(data.error || 'Unban failed.', 'pink');
@@ -476,7 +493,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
     const exportData = {
       title: 'Speed Meet Love - Real Registered Users (Sanitized)',
       exportedAt: new Date().toISOString(),
-      ownerEmail: 'kristylten@gmail.com',
+      ownerEmail: currentUser?.Email || 'speedmeetlove@gmail.com',
       totalRegistrations: registeredUsers.length,
       demoProfilesExcluded: storageDiagnostic?.demoRecordsExcluded || 0,
       storageFile: storageDiagnostic?.filePath || '.data/users.json',
@@ -588,12 +605,12 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-[#065F46] text-xs font-bold font-mono">
             <Lock className="w-3.5 h-3.5 text-[#047857]" />
-            <span>Owner Authenticated: kristylten@gmail.com</span>
+            <span>Owner Authenticated: {currentUser?.Email || 'speedmeetlove@gmail.com'}</span>
           </span>
           <button
             onClick={() => {
               if (activeDashboardTab === 'reports') {
-                fetchReports();
+                fetchReports(true);
                 fetchActiveRounds();
               } else if (activeDashboardTab === 'users') {
                 fetchRegisteredUsers(true);
@@ -603,7 +620,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
             }}
             disabled={
               activeDashboardTab === 'reports'
-                ? loadingReports
+                ? loadingReports || isRefreshingReports
                 : activeDashboardTab === 'users'
                 ? loadingUsers || isRefreshingUsers
                 : loadingWaitlist
@@ -614,7 +631,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
             <RefreshCw
               className={`w-4 h-4 ${
                 (activeDashboardTab === 'reports'
-                  ? loadingReports
+                  ? loadingReports || isRefreshingReports
                   : activeDashboardTab === 'users'
                   ? loadingUsers || isRefreshingUsers
                   : loadingWaitlist)
@@ -737,7 +754,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                 </div>
                 <div className="p-3 rounded-2xl bg-emerald-500/20 backdrop-blur-xs border border-emerald-400/30">
                   <span className="text-[11px] font-bold text-emerald-200 uppercase block">Owner Contact</span>
-                  <span className="text-xs font-extrabold text-white truncate block">kristylten@gmail.com</span>
+                  <span className="text-xs font-extrabold text-white truncate block">{currentUser?.Email || 'speedmeetlove@gmail.com'}</span>
                 </div>
               </div>
             </div>
@@ -821,7 +838,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                       const res = await push.subscribe();
                       if (res.success) {
                         showNotification('Owner browser push alerts enabled for urgent safety reports.', 'success');
-                        fetchReports();
+                        fetchReports(true);
                       } else {
                         showNotification(res.error || 'Could not enable browser push alerts.', 'pink');
                       }
@@ -865,7 +882,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                 </div>
                 <p className="text-[11px] text-[#111827] font-medium">
                   {notificationCapabilities?.emailConfigured
-                    ? 'Urgent reports trigger immediate email notifications to kristylten@gmail.com.'
+                    ? `Urgent reports trigger immediate email notifications to ${currentUser?.Email || 'speedmeetlove@gmail.com'}.`
                     : 'Outbound urgent email requires RESEND_API_KEY in server environment variables; reports still save and flag in-app.'}
                 </p>
               </div>
@@ -1097,7 +1114,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
           </div>
 
           {/* Reports List */}
-          {loadingReports ? (
+          {loadingReports && !hasLoadedReportsOnceRef.current && reports.length === 0 ? (
             <div className="p-12 text-center text-[#111827] space-y-2 bg-white rounded-3xl border border-rose-200">
               <RefreshCw className="w-6 h-6 mx-auto animate-spin text-[#B91C1C]" />
               <p className="text-xs font-bold">Loading persistent reports from server storage...</p>
@@ -1401,18 +1418,48 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                     {launchOfferSummary ? `${launchOfferSummary.grantedCount} / ${launchOfferSummary.maxGrants}` : '0 / 50'}
                   </span>
                 </div>
-                <div className="p-3 rounded-2xl bg-emerald-500/20 backdrop-blur-xs border border-emerald-400/30">
-                  <span className="text-[11px] font-bold text-emerald-200 uppercase block">Durable Database</span>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <Database className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                    <span className="text-xs font-mono font-black text-white truncate">
-                      {storageDiagnostic?.storageType === 'durable-cloud-firestore' ? 'Cloud Firestore' : 'Local File'}
-                    </span>
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
-                      Active
-                    </span>
-                  </div>
-                </div>
+                {(() => {
+                  const isFirestoreVerified = Boolean(
+                    storageDiagnostic?.firestoreReadVerified &&
+                      storageDiagnostic?.firestoreWriteVerified
+                  );
+                  return (
+                    <div
+                      className={`p-3 rounded-2xl backdrop-blur-xs border ${
+                        isFirestoreVerified
+                          ? 'bg-emerald-500/20 border-emerald-400/30'
+                          : 'bg-amber-500/20 border-amber-400/40'
+                      }`}
+                    >
+                      <span
+                        className={`text-[11px] font-bold uppercase block ${
+                          isFirestoreVerified ? 'text-emerald-200' : 'text-amber-200'
+                        }`}
+                      >
+                        Persistence Backend
+                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Database
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            isFirestoreVerified ? 'text-emerald-300' : 'text-amber-300'
+                          }`}
+                        />
+                        <span className="text-xs font-mono font-black text-white truncate">
+                          {isFirestoreVerified ? 'Cloud Firestore' : 'Local Fallback'}
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase border ${
+                            isFirestoreVerified
+                              ? 'bg-emerald-400/20 text-emerald-300 border-emerald-400/30'
+                              : 'bg-amber-400/20 text-amber-200 border-amber-400/40'
+                          }`}
+                        >
+                          {isFirestoreVerified ? 'Verified' : 'Fallback'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -1431,15 +1478,33 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
             </div>
 
             {/* Storage Architecture & Persistence Guarantee Advisory */}
-            <div className="p-4 sm:p-5 rounded-3xl bg-emerald-50 border border-emerald-300 space-y-2 shadow-xs">
-              <div className="flex items-center gap-2 text-[#064E3B] font-bold font-heading text-xs sm:text-sm">
-                <ShieldCheck className="w-4 h-4 text-[#047857] shrink-0" />
-                <span>Durable Database Persistence: Active</span>
+            {storageDiagnostic?.firestoreReadVerified && storageDiagnostic?.firestoreWriteVerified ? (
+              <div className="p-4 sm:p-5 rounded-3xl bg-emerald-50 border border-emerald-300 space-y-2 shadow-xs">
+                <div className="flex items-center gap-2 text-[#064E3B] font-bold font-heading text-xs sm:text-sm">
+                  <ShieldCheck className="w-4 h-4 text-[#047857] shrink-0" />
+                  <span>Durable Database Persistence: Verified (Cloud Firestore)</span>
+                </div>
+                <p className="text-[11px] text-[#111827] font-medium leading-relaxed">
+                  User accounts, sign-ins, and bans are reading from and writing to <strong>Cloud Firestore</strong> (database <code className="bg-emerald-100 px-1 py-0.5 rounded font-mono font-bold text-[#064E3B]">{storageDiagnostic.databaseId || 'default'}</code>) with local mirror backups. <strong>Registrations survive container redeployments and multi-instance scaling</strong>. Passwords, hashes, and secrets are strictly redacted.
+                </p>
               </div>
-              <p className="text-[11px] text-[#111827] font-medium leading-relaxed">
-                User accounts, sign-ins, and bans are connected to <strong>Cloud Firestore</strong> (collection <code className="bg-emerald-100 px-1 py-0.5 rounded font-mono font-bold text-[#064E3B]">users</code>) with local mirror backups. <strong>Registrations survive container redeployments, image builds, and multi-instance scaling</strong>. Passwords, hashes, and secrets are strictly redacted.
-              </p>
-            </div>
+            ) : (
+              <div className="p-4 sm:p-5 rounded-3xl bg-amber-50 border border-amber-300 space-y-2 shadow-xs">
+                <div className="flex items-center gap-2 text-amber-950 font-bold font-heading text-xs sm:text-sm">
+                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>Fallback Storage Active (Firestore Read/Write Unverified)</span>
+                </div>
+                <p className="text-[11px] text-[#111827] font-medium leading-relaxed">
+                  {storageDiagnostic?.persistenceNotice ||
+                    'Cloud Firestore read/write is not yet verified in this runtime; server is currently using local fallback storage (.data/*.json).'}
+                  {storageDiagnostic?.lastFirestoreError?.message ? (
+                    <span className="block mt-1 font-mono text-[10px] text-amber-900">
+                      Last Firestore notice: {storageDiagnostic.lastFirestoreError.message}
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Tester Privileges Management (Owner Exclusive) */}

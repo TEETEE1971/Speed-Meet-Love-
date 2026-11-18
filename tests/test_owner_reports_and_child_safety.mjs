@@ -51,7 +51,25 @@ async function run() {
   // Test 3: In-app report submission to server (POST /api/reports)
   // -------------------------------------------------------------
   console.log('[Test 3] Testing in-app member safety report submission to server...');
-  const testTargetUserId = `usr_test_target_${Date.now()}`;
+  const targetEmail = `target_${Date.now()}@mailtest.org`;
+  const targetSignupRes = await fetch(`${BASE_URL}/api/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: targetEmail,
+      password: 'TargetPassword2026!',
+      firstName: 'Target',
+      lastName: 'TestUser',
+      age: 29,
+      gender: 'Man',
+      interestedIn: 'Women',
+      location: 'New York, NY',
+    }),
+  });
+  const targetSignupData = await targetSignupRes.json();
+  assert.strictEqual(targetSignupRes.status, 201, `Disposable target signup must succeed: ${JSON.stringify(targetSignupData)}`);
+  const testTargetUserId = targetSignupData.user.UserID;
+  const targetToken = targetSignupData.token;
   const testReporterUserId = `usr_test_reporter_${Date.now()}`;
 
   const reportPayload = {
@@ -93,13 +111,14 @@ async function run() {
   const anonRes = await fetch(`${BASE_URL}/api/owner/reports`);
   assert.strictEqual(anonRes.status, 401, 'Anonymous request must return 401 Unauthorized');
 
-  // B. Regular user session token (usr_me is not the owner)
-  const regUserSessionRes = await fetch(`${BASE_URL}/api/auth/session`, {
+  // B. Regular user session token (alex.rivera@example.com is not the owner)
+  const regUserSessionRes = await fetch(`${BASE_URL}/api/auth/signin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: 'usr_me', email: 'alex.rivera@example.com' }),
+    body: JSON.stringify({ email: 'alex.rivera@example.com', password: 'SpeedMeetLove2026!' }),
   });
   const regUserData = await regUserSessionRes.json();
+  assert.strictEqual(regUserSessionRes.status, 200, `Regular user sign-in must succeed: ${JSON.stringify(regUserData)}`);
   const regUserToken = regUserData.token;
 
   const forbiddenRes = await fetch(`${BASE_URL}/api/owner/reports`, {
@@ -112,11 +131,11 @@ async function run() {
   // Test 5: Owner Access - Owner can securely review reports
   // -------------------------------------------------------------
   console.log('[Test 5] Verifying owner access to GET /api/owner/reports with owner credentials...');
-  // Obtain owner session token (kristylten@gmail.com / usr_kristy)
-  const ownerSessionRes = await fetch(`${BASE_URL}/api/auth/session`, {
+  // Obtain owner session token (speedmeetlove@gmail.com / usr_kristy)
+  const ownerSessionRes = await fetch(`${BASE_URL}/api/auth/signin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: 'usr_kristy', email: 'kristylten@gmail.com' }),
+    body: JSON.stringify({ email: 'speedmeetlove@gmail.com', password: 'SpeedMeetLove2026!' }),
   });
   const ownerSessionData = await ownerSessionRes.json();
   const ownerToken = ownerSessionData.token;
@@ -138,14 +157,6 @@ async function run() {
   // Test 6: Owner Action - Owner bans user & terminates sessions
   // -------------------------------------------------------------
   console.log('[Test 6] Testing owner enforcement action: Banning user and revoking sessions...');
-  // First, create a temporary active session for the target user to verify eviction
-  const targetSessionRes = await fetch(`${BASE_URL}/api/auth/session`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: testTargetUserId, email: `${testTargetUserId}@example.com` }),
-  });
-  const targetSessionData = await targetSessionRes.json();
-  const targetToken = targetSessionData.token;
 
   // Verify target user token works before ban
   const targetPreCheck = await fetch(`${BASE_URL}/api/auth/me`, {
@@ -231,6 +242,28 @@ async function run() {
   const updatedBannedList = JSON.parse(fs.readFileSync(bannedDiskFile, 'utf8'));
   assert(!updatedBannedList.includes(testTargetUserId), 'User must be removed from banned_users.json');
   console.log('✓ Confirmed: Owner can unban user if needed');
+
+  // -------------------------------------------------------------
+  // Cleanup disposable target user & test reports
+  // -------------------------------------------------------------
+  const targetResignin = await fetch(`${BASE_URL}/api/auth/signin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: targetEmail, password: 'TargetPassword2026!' }),
+  }).then(r => r.json());
+  if (targetResignin?.token) {
+    await fetch(`${BASE_URL}/api/account/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${targetResignin.token}` },
+      body: JSON.stringify({ targetUserId: testTargetUserId, confirmEmail: targetEmail }),
+    });
+  }
+  try {
+    const cleanedReports = JSON.parse(fs.readFileSync(reportsDiskFile, 'utf8')).filter(
+      r => r.id !== createdReportId && r.id !== reportId2
+    );
+    fs.writeFileSync(reportsDiskFile, JSON.stringify(cleanedReports, null, 2));
+  } catch {}
 
   console.log('\n================================================================');
   console.log('ALL OWNER REPORTS & CHILD SAFETY TESTS PASSED SUCCESSFULLY');

@@ -8,20 +8,23 @@ async function runTests() {
   console.log('Testing Cloud Firestore Durable Database Integration');
   console.log('================================================================');
 
-  // Test 1: Check /api/auth/status reports durable database
-  console.log('\n[Test 1] Checking /api/auth/status reports durable Cloud Firestore...');
+  // Test 1: Check /api/auth/status reports storage configuration and real Firestore verification status
+  console.log('\n[Test 1] Checking /api/auth/status storage and Firestore verification state...');
   const statusRes = await fetch(`${BASE_URL}/api/auth/status`);
   const statusData = await statusRes.json();
   assert.strictEqual(statusData.database, 'durable-cloud-firestore', 'database should be durable-cloud-firestore');
-  assert.strictEqual(statusData.durableDatabaseActive, true, 'durableDatabaseActive should be true');
-  console.log('✓ /api/auth/status confirms durable Cloud Firestore is active');
+  assert.strictEqual(statusData.durableDatabaseActive, true, 'Admin SDK client should be configured');
+  const verifiedCloudMode = Boolean(statusData.firestoreReadVerified && statusData.firestoreWriteVerified);
+  console.log(
+    `✓ /api/auth/status configured=${statusData.firestoreConfigured}, readVerified=${statusData.firestoreReadVerified}, writeVerified=${statusData.firestoreWriteVerified}, backend=${statusData.activePersistenceBackend}`
+  );
 
   // Test 2: Owner sign-in and check diagnostics
   console.log('\n[Test 2] Owner sign-in and verifying storage diagnostics...');
   const ownerSignin = await fetch(`${BASE_URL}/api/auth/signin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'kristylten@gmail.com', password: 'SpeedMeetLove2026!' }),
+    body: JSON.stringify({ email: 'speedmeetlove@gmail.com', password: 'SpeedMeetLove2026!' }),
   });
   const ownerData = await ownerSignin.json();
   assert(ownerSignin.ok, 'Owner sign-in must succeed');
@@ -32,14 +35,21 @@ async function runTests() {
   });
   const usersData = await usersRes.json();
   assert(usersRes.ok, 'Owner registered-users fetch must succeed');
-  assert.strictEqual(usersData.storageDiagnostic.storageType, 'durable-cloud-firestore');
+  assert.strictEqual(
+    usersData.storageDiagnostic.storageType,
+    verifiedCloudMode ? 'durable-cloud-firestore' : 'local-fallback-only'
+  );
   assert.strictEqual(usersData.storageDiagnostic.isDurableDatabaseActive, true);
-  assert.strictEqual(usersData.storageDiagnostic.survivesRedeployments, true);
-  assert.strictEqual(usersData.storageDiagnostic.consistentAcrossInstances, true);
-  console.log('✓ Storage diagnostics confirm durable Firestore with persistence guarantee across container rebuilds');
+  assert.strictEqual(usersData.storageDiagnostic.survivesRedeployments, verifiedCloudMode);
+  assert.strictEqual(usersData.storageDiagnostic.consistentAcrossInstances, verifiedCloudMode);
+  console.log(
+    verifiedCloudMode
+      ? '✓ Storage diagnostics confirm live Cloud Firestore read & write verification'
+      : `✓ Storage diagnostics accurately report fallback storage (${usersData.storageDiagnostic.activePersistenceBackend})`
+  );
 
-  // Test 3: Create a test user via signup and verify in Firestore and Registered Users
-  console.log('\n[Test 3] Sign up a new user and verify real-time durable persistence...');
+  // Test 3: Create a test user via signup and verify in Registered Users
+  console.log('\n[Test 3] Sign up a new user and verify server persistence...');
   const testEmail = `durability.test.${Date.now()}@testdomain.org`;
   const signupRes = await fetch(`${BASE_URL}/api/auth/signup`, {
     method: 'POST',
@@ -71,7 +81,7 @@ async function runTests() {
   console.log('✓ New user immediately reflected in registered users list');
 
   // Test 4: Delete the user and verify removal
-  console.log('\n[Test 4] Deleting test user account and verifying durable deletion...');
+  console.log('\n[Test 4] Deleting test user account and verifying removal...');
   const deleteRes = await fetch(`${BASE_URL}/api/account/delete`, {
     method: 'POST',
     headers: {
@@ -91,24 +101,19 @@ async function runTests() {
   }).then(r => r.json());
   const foundAfterDelete = usersAfterDelete.users.find(u => u.userId === testUserId || u.id === testUserId);
   assert(!foundAfterDelete, 'Deleted user must no longer appear in registered users list');
-  console.log('✓ Deleted user completely removed from durable database');
+  console.log('✓ Deleted user removed from registered users list');
 
-  // Test 5: Verify preserved accounts in durable database (or backup file if present)
-  console.log('\n[Test 5] Verifying durable storage accounts are intact and preserved...');
-  const backupExists = fs.existsSync('.data/users_backup_pre_migration.json');
-  if (backupExists) {
-    const backupContent = JSON.parse(fs.readFileSync('.data/users_backup_pre_migration.json', 'utf8'));
-    const backupList = Array.isArray(backupContent) ? backupContent : Object.values(backupContent);
-    assert(backupList.some(u => u.userId === 'usr_kristy'), 'Pre-migration backup must contain usr_kristy');
-    console.log('✓ Pre-migration backup verified with accounts preserved');
-  } else {
-    // Durable Firestore is the primary store; verify owner account is safely preserved
-    assert(usersAfterDelete.users.some(u => u.isOwner && u.email === 'kristylten@gmail.com'), 'Owner account must be preserved in durable store');
-    console.log('✓ Durable Cloud Firestore accounts confirmed preserved without requiring local JSON files');
-  }
+  // Test 5: Verify owner account preserved in active store
+  console.log('\n[Test 5] Verifying owner account preservation...');
+  assert(usersAfterDelete.users.some(u => u.isOwner && u.email === 'speedmeetlove@gmail.com'), 'Owner account must be preserved');
+  console.log(
+    verifiedCloudMode
+      ? '✓ Verified live Cloud Firestore read/write persistence'
+      : '✓ Passed using local fallback storage (.data/*.json); Cloud Firestore read/write requires running in an authorized runtime'
+  );
 
   console.log('\n================================================================');
-  console.log('ALL DURABLE DATABASE CHECKS PASSED SUCCESSFULLY!');
+  console.log('STORAGE DIAGNOSTIC & PERSISTENCE CHECKS COMPLETED');
   console.log('================================================================');
 }
 

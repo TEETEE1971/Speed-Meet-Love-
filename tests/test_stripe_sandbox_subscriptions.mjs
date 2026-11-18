@@ -358,11 +358,11 @@ async function runTests() {
 
   // Test 8: Free Tester Access Isolation
   console.log('\n[Test 8] Verifying Free Tester Access is kept separate from paid subscription status...');
-  // Owner account (kristylten@gmail.com) has isOwner / tester privilege
+  // Owner account (speedmeetlove@gmail.com) has isOwner / tester privilege
   const ownerSignin = await fetch(`${BASE_URL}/api/auth/signin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'kristylten@gmail.com', password: 'SpeedMeetLove2026!' }),
+    body: JSON.stringify({ email: 'speedmeetlove@gmail.com', password: 'SpeedMeetLove2026!' }),
   });
   const ownerData = await ownerSignin.json();
   assert(ownerSignin.ok, 'Owner sign-in must succeed');

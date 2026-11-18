@@ -42,7 +42,7 @@ async function runTests() {
   const unauthSession = await fetch(`${BASE_URL}/api/auth/session`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: 'usr_kristy', email: 'kristylten@gmail.com' }),
+    body: JSON.stringify({ userId: 'usr_kristy', email: 'speedmeetlove@gmail.com' }),
   });
   assert.strictEqual(unauthSession.status, 401, 'Unauthenticated POST /api/auth/session must return 401');
   console.log('  ✓ Unauthenticated requests return 401');
@@ -145,7 +145,7 @@ async function runTests() {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${tokenA}`,
     },
-    body: JSON.stringify({ userId: 'usr_kristy', email: 'kristylten@gmail.com' }),
+    body: JSON.stringify({ userId: 'usr_kristy', email: 'speedmeetlove@gmail.com' }),
   });
   assert.strictEqual(impersonateRes.status, 403, 'Member A impersonating founder session must return 403');
 
@@ -207,7 +207,7 @@ async function runTests() {
   const founderSignin = await fetch(`${BASE_URL}/api/auth/signin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'kristylten@gmail.com', password: 'SpeedMeetLove2026!' }),
+    body: JSON.stringify({ email: 'speedmeetlove@gmail.com', password: 'SpeedMeetLove2026!' }),
   });
   assert.strictEqual(founderSignin.status, 200, 'Founder sign-in must succeed');
   const founderData = await founderSignin.json();

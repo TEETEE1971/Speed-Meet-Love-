@@ -230,7 +230,7 @@ async function runTests() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: 'kristylten@gmail.com',
+        email: 'speedmeetlove@gmail.com',
         password: 'SpeedMeetLove2026!',
       }),
     });

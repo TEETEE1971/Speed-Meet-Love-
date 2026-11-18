@@ -24,7 +24,7 @@ async function run() {
   const ownerSessionRes = await fetch(`${BASE_URL}/api/auth/signin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'kristylten@gmail.com', password: 'SpeedMeetLove2026!' }),
+    body: JSON.stringify({ email: 'speedmeetlove@gmail.com', password: 'SpeedMeetLove2026!' }),
   });
   const ownerSessionData = await ownerSessionRes.json();
   assert(ownerSessionData.success && ownerSessionData.token, `Owner sign-in must succeed: ${JSON.stringify(ownerSessionData)}`);

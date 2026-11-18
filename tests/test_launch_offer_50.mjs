@@ -242,7 +242,7 @@ async function run() {
     console.log('[Test 3] Verifying Founder & Designated Tester exclusions...');
     const founderSignIn = await api(ISO_BASE, '/api/auth/signin', {
       method: 'POST',
-      body: { email: 'kristylten@gmail.com', password: 'SpeedMeetLove2026!' },
+      body: { email: 'speedmeetlove@gmail.com', password: 'SpeedMeetLove2026!' },
     });
     assert.equal(founderSignIn.status, 200);
     const founderToken = founderSignIn.data.token;

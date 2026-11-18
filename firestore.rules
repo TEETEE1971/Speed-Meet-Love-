@@ -27,7 +27,7 @@ service cloud.firestore {
     }
 
     function isFounderAdmin() {
-      return isVerifiedUser() && request.auth.token.email == 'kristylten@gmail.com';
+      return isVerifiedUser() && request.auth.token.email == 'speedmeetlove@gmail.com';
     }
 
     function isValidId(id) {
@@ -64,7 +64,8 @@ service cloud.firestore {
           'testerAccessGrantedAt', 'testerAccessGrantedBy', 'createdAt', 'lastSignIn', 'isBanned',
           'emailVerified', 'emailVerifiedAt', 'emailVerificationTokenHash',
           'emailVerificationCodeHash', 'emailVerificationSentAt', 'emailVerificationExpiresAt',
-          'emailVerificationAttempts', 'launchOfferGrantNumber', 'launchOfferGrantedAt',
+          'emailVerificationAttempts', 'passwordResetTokenHash', 'passwordResetExpiresAt',
+          'passwordResetSentAt', 'launchOfferGrantNumber', 'launchOfferGrantedAt',
           'launchOfferExpiresAt', 'launchOfferCelebrationShownAt'
         ]) &&
         isValidId(data.userId) &&
@@ -110,6 +111,9 @@ service cloud.firestore {
         isOptionalNumber(data, 'emailVerificationSentAt', 0, 9999999999999) &&
         isOptionalNumber(data, 'emailVerificationExpiresAt', 0, 9999999999999) &&
         isOptionalNumber(data, 'emailVerificationAttempts', 0, 100) &&
+        isOptionalString(data, 'passwordResetTokenHash', 128) &&
+        isOptionalNumber(data, 'passwordResetExpiresAt', 0, 9999999999999) &&
+        isOptionalNumber(data, 'passwordResetSentAt', 0, 9999999999999) &&
         isOptionalNumber(data, 'launchOfferGrantNumber', 1, 50) &&
         isOptionalNumber(data, 'launchOfferGrantedAt', 0, 9999999999999) &&
         isOptionalNumber(data, 'launchOfferExpiresAt', 0, 9999999999999) &&
@@ -129,6 +133,9 @@ service cloud.firestore {
         (!('testerAccessGranted' in data) || data.testerAccessGranted == false) &&
         (!('isBanned' in data) || data.isBanned == false) &&
         (!('emailVerified' in data) || data.emailVerified == false) &&
+        !('passwordResetTokenHash' in data) &&
+        !('passwordResetExpiresAt' in data) &&
+        !('passwordResetSentAt' in data) &&
         !('launchOfferGrantNumber' in data) &&
         !('launchOfferGrantedAt' in data) &&
         !('launchOfferExpiresAt' in data) &&

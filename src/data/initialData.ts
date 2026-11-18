@@ -48,7 +48,7 @@ export const INITIAL_USERS: User[] = [
     UserID: 'usr_kristy',
     FirstName: 'Kristy',
     LastName: '',
-    Email: 'kristylten@gmail.com',
+    Email: 'speedmeetlove@gmail.com',
     Gender: 'Woman',
     InterestedIn: 'Men',
     Age: 28,

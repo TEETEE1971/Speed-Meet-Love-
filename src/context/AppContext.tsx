@@ -89,6 +89,9 @@ interface AppContextType {
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   signUp: (formData: any) => Promise<{ success: boolean; error?: string; user?: User }>;
   sendPasswordResetEmail: (email: string) => Promise<{ success: boolean; message: string; error?: string }>;
+  resetPasswordToken: string | null;
+  setResetPasswordToken: (token: string | null) => void;
+  confirmPasswordReset: (token: string, newPassword: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   signOut: () => Promise<void>;
   users: User[];
   events: SpeedEvent[];
@@ -269,7 +272,6 @@ function hasSavedOwnerSession(): boolean {
   const savedToken = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
   const savedUserId = localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user_id`);
   if (!savedToken || !savedUserId) return false;
-  if (savedUserId === 'usr_kristy') return true;
   try {
     const savedUsersRaw = localStorage.getItem(`${STORAGE_KEY_PREFIX}users`);
     if (savedUsersRaw) {
@@ -277,7 +279,7 @@ function hasSavedOwnerSession(): boolean {
       if (Array.isArray(parsed)) {
         const matched = parsed.find((u: any) => (u.UserID || u.userId) === savedUserId);
         const email = (matched?.Email || matched?.email || '').toLowerCase().trim();
-        if (email === 'kristylten@gmail.com' || matched?.IsOwner || matched?.isOwner) {
+        if (email === 'speedmeetlove@gmail.com' && (matched?.IsOwner === true || matched?.isOwner === true)) {
           return true;
         }
       }
@@ -426,11 +428,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isOwner = Boolean(
     isAuthenticated &&
-    currentUser && (
-      currentUser.IsOwner ||
-      (currentUser.Email && currentUser.Email.toLowerCase().trim() === 'kristylten@gmail.com') ||
-      currentUser.UserID === 'usr_kristy'
-    )
+    currentUser &&
+    currentUser.IsOwner === true &&
+    currentUser.Email &&
+    currentUser.Email.toLowerCase().trim() === 'speedmeetlove@gmail.com'
   );
 
   const appMode: AppMode = isOwner ? rawAppMode : 'production';
@@ -672,11 +673,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const toggleSimulateLiveEvent = async (eventId: string, enable: boolean) => {
-    if (!isOwner) return;
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+    if (!isOwner || !token) return;
     try {
       const res = await fetch(`/api/events/${eventId}/simulate-start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ enable }),
       });
       if (res.ok) {
@@ -849,6 +854,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalTab, setAuthModalTab] = useState<'signin' | 'signup'>('signin');
+  const [resetPasswordToken, setResetPasswordToken] = useState<string | null>(null);
   const [isEmailVerificationModalOpen, setIsEmailVerificationModalOpen] = useState<boolean>(false);
   const [emailVerificationSent, setEmailVerificationSent] = useState<boolean | null>(null);
 
@@ -1030,21 +1036,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [currentUserId]);
 
-  const showNotification = (message: string, type: 'success' | 'info' | 'pink' = 'info') => {
+  const showNotification = useCallback((message: string, type: 'success' | 'info' | 'pink' = 'info') => {
     setNotification({ message, type });
     setTimeout(() => {
       setNotification(prev => (prev?.message === message ? null : prev));
     }, 4500);
-  };
+  }, []);
 
-  const clearNotification = () => setNotification(null);
+  const clearNotification = useCallback(() => setNotification(null), []);
 
   // Access rule 1: Live Speed Dating requires Premium Plus ($14.99/mo) or Free Tester access
   const canAccessLiveSpeedDating = (user?: User | null): boolean => {
     const target = user !== undefined ? user : currentUser;
     if (!target) return false;
     // Free tester access is kept strictly separate from paid subscription status
-    if (target.IsTester || target.UserID === 'usr_kristy' || isOwner) return true;
+    if (target.IsTester || target.IsOwner || isOwner) return true;
     return target.SubscriptionTier === 'Premium Plus';
   };
 
@@ -1061,7 +1067,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       u.SubscriptionTier === 'Premium Plus' ||
       Boolean(u.LaunchOfferActive && (!u.LaunchOfferExpiresAt || Date.now() < u.LaunchOfferExpiresAt)) ||
       Boolean(u.IsTester) ||
-      u.UserID === 'usr_kristy' ||
+      Boolean(u.IsOwner) ||
       isOwner;
 
     const partnerId = match.UserA === currentUser.UserID ? match.UserB : match.UserA;
@@ -2665,7 +2671,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const normalizeUserFromApi = useCallback((apiUser: any): User => {
     const userId = apiUser.UserID || apiUser.userId || '';
     const email = apiUser.Email || apiUser.email || '';
-    const isFounder = userId === 'usr_kristy' || userId === 'usr_kristy_demo' || (email && email.toLowerCase().trim() === 'kristylten@gmail.com');
+    const isFounder = userId === 'usr_kristy' || userId === 'usr_kristy_demo' || (email && email.toLowerCase().trim() === 'speedmeetlove@gmail.com');
     const firstName = apiUser.FirstName || apiUser.firstName || 'Member';
     const lastName = apiUser.LastName || apiUser.lastName || '';
     const age = typeof apiUser.Age === 'number' ? apiUser.Age : (typeof apiUser.age === 'number' ? apiUser.age : 28);
@@ -2713,7 +2719,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       SubscriptionStatus: apiUser.SubscriptionStatus || apiUser.subscriptionStatus || 'none',
       StripeCustomerId: apiUser.StripeCustomerId || apiUser.stripeCustomerId || undefined,
       IsTester: Boolean(apiUser.IsTester || apiUser.isTester),
-      IsOwner: Boolean(apiUser.IsOwner || apiUser.isOwner || isFounder),
+      IsOwner: Boolean(apiUser.IsOwner ?? apiUser.isOwner),
       EmailVerified: emailVerified,
       EmailVerifiedAt: emailVerified ? (apiUser.EmailVerifiedAt ?? apiUser.emailVerifiedAt ?? null) : null,
       LaunchOfferGranted: launchOfferGranted,
@@ -2767,9 +2773,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const normalized = normalizeUserFromApi(rawUser);
     const userId = normalized.UserID;
     const userIsOwner = Boolean(
-      normalized.IsOwner ||
-      (normalized.Email && normalized.Email.toLowerCase().trim() === 'kristylten@gmail.com') ||
-      userId === 'usr_kristy'
+      normalized.IsOwner === true &&
+      normalized.Email &&
+      normalized.Email.toLowerCase().trim() === 'speedmeetlove@gmail.com'
     );
     setAuthToken(tokenValue);
     setCurrentUserId(userId);
@@ -2832,6 +2838,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const storedToken = localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
       const params = new URLSearchParams(window.location.search);
       const linkVerifyToken = window.location.pathname === '/verify-email' ? params.get('token') : null;
+      const linkResetToken = window.location.pathname === '/reset-password' ? params.get('token') : null;
+
+      if (linkResetToken) {
+        window.history.replaceState({}, '', '/');
+        setResetPasswordToken(linkResetToken);
+        openAuthModal('signin');
+      }
 
       let linkError: string | null = null;
       let linkSucceeded = false;
@@ -3159,6 +3172,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
   }, []);
+
+  const confirmPasswordReset = useCallback(async (token: string, newPassword: string): Promise<{ success: boolean; message?: string; error?: string }> => {
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token.trim(), password: newPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        return {
+          success: false,
+          error: data.error || 'Failed to update password. Please request a new reset link.',
+        };
+      }
+      // Clear any stale local session since server revoked active tokens
+      setAuthToken(null);
+      setCurrentUserId('');
+      setAppModeState('production');
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}authToken`);
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}current_user_id`);
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}appMode`, 'production');
+      showNotification('Password updated! You can now sign in with your new password.', 'success');
+      return {
+        success: true,
+        message: data.message || 'Your password has been updated. You can now sign in with your new password.',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Network error while resetting password.',
+      };
+    }
+  }, [showNotification]);
 
   const signOut = useCallback(async () => {
     const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
@@ -3633,6 +3680,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         signIn,
         signUp,
         sendPasswordResetEmail,
+        resetPasswordToken,
+        setResetPasswordToken,
+        confirmPasswordReset,
         signOut,
         users,
         events,

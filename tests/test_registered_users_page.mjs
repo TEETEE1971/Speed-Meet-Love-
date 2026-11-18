@@ -4,7 +4,7 @@
  * Verifies:
  * 1. Endpoint security: Unauthenticated requests return 401.
  * 2. RBAC security: Non-owner authenticated users receive 403 Forbidden.
- * 3. Owner access: Owner session with kristylten@gmail.com receives 200 OK.
+ * 3. Owner access: Owner session with speedmeetlove@gmail.com receives 200 OK.
  * 4. Data redaction: NEVER exposes passwordHash, passwordSalt, passwords, or session tokens.
  * 5. Exclusion of demo accounts: usr_kristy_demo, usr_me, @speedmeetlove.internal, @example.com are excluded.
  * 6. Real user signup tracking: Real registrations increment total, record createdAt and lastSignIn.
@@ -79,14 +79,14 @@ async function runTests() {
   }
 
   // 3. Owner authenticated access
-  console.log('\n[Test 3] Testing verified owner access with kristylten@gmail.com...');
+  console.log('\n[Test 3] Testing verified owner access with speedmeetlove@gmail.com...');
   let ownerToken = null;
   try {
     const ownerLoginRes = await fetch(`${BASE_URL}/api/auth/signin`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: 'kristylten@gmail.com',
+        email: 'speedmeetlove@gmail.com',
         password: 'SpeedMeetLove2026!',
       }),
     });
@@ -102,7 +102,7 @@ async function runTests() {
     assert(ownerData.success === true, 'Owner data indicates success');
     assert(typeof ownerData.totalRegistrations === 'number', `totalRegistrations is a valid number (${ownerData.totalRegistrations})`);
     assert(Array.isArray(ownerData.users), 'users is returned as an array');
-    assert(ownerData.ownerEmail === 'kristylten@gmail.com', 'ownerEmail matches owner identity');
+    assert(ownerData.ownerEmail === 'speedmeetlove@gmail.com', 'ownerEmail matches owner identity');
 
     // 4. Verify data redaction
     console.log('\n[Test 4] Verifying cryptographic redaction: No sensitive credentials returned...');
@@ -123,8 +123,8 @@ async function runTests() {
 
     // 6. Verify owner profile is present and marked isOwner: true
     console.log('\n[Test 6] Verifying owner profile metadata...');
-    const ownerRecord = ownerData.users.find(u => u.email.toLowerCase() === 'kristylten@gmail.com');
-    assert(!!ownerRecord, 'Owner account kristylten@gmail.com is present in real accounts');
+    const ownerRecord = ownerData.users.find(u => u.email.toLowerCase() === 'speedmeetlove@gmail.com');
+    assert(!!ownerRecord, 'Owner account speedmeetlove@gmail.com is present in real accounts');
     if (ownerRecord) {
       assert(ownerRecord.isOwner === true, 'Owner record has isOwner: true');
       assert(typeof ownerRecord.createdAt === 'number' && ownerRecord.createdAt > 0, 'Valid signup createdAt timestamp');

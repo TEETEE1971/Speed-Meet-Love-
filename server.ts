@@ -7,18 +7,15 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import webpush from 'web-push';
-import { initializeApp as initFirebaseApp } from 'firebase/app';
 import {
-  getFirestore,
-  doc as firestoreDoc,
-  getDoc as firestoreGetDoc,
-  setDoc as firestoreSetDoc,
-  deleteDoc as firestoreDeleteDoc,
-  getDocs as firestoreGetDocs,
-  collection as firestoreCollection,
-  getDocFromServer,
-  Firestore,
-} from 'firebase/firestore';
+  initializeApp as initFirebaseAdminApp,
+  getApps as getFirebaseAdminApps,
+  getApp as getFirebaseAdminApp,
+} from 'firebase-admin/app';
+import {
+  getFirestore as getAdminFirestore,
+  Firestore as AdminFirestore,
+} from 'firebase-admin/firestore';
 
 import Stripe from 'stripe';
 import nodemailer from 'nodemailer';
@@ -2325,6 +2322,9 @@ export interface ServerUserRecord {
   emailVerificationSentAt?: number;
   emailVerificationExpiresAt?: number;
   emailVerificationAttempts?: number;
+  passwordResetTokenHash?: string;
+  passwordResetExpiresAt?: number;
+  passwordResetSentAt?: number;
   launchOfferGrantNumber?: number;
   launchOfferGrantedAt?: number;
   launchOfferExpiresAt?: number;
@@ -2580,7 +2580,7 @@ function seedDesignatedTesterRecordsIfMissing() {
       grantedTesterRecords.set(normEmail, {
         email: normEmail,
         grantedAt: now,
-        grantedBy: 'kristylten@gmail.com',
+        grantedBy: 'speedmeetlove@gmail.com',
         notes: 'Dedicated Stripe reviewer account (Premium & Premium Plus features without payment)',
       });
       added = true;
@@ -2733,12 +2733,12 @@ export function areParticipantsCompatible(
   return true;
 }
 
-export const OWNER_EMAILS = new Set(['kristylten@gmail.com']);
+export const OWNER_EMAILS = new Set(['speedmeetlove@gmail.com']);
 export const OWNER_USER_IDS = new Set(['usr_kristy']);
 
 export function isOwnerUser(authUser: { userId: string; email: string }): boolean {
   const normEmail = authUser.email ? authUser.email.toLowerCase().trim() : '';
-  return OWNER_EMAILS.has(normEmail) || OWNER_USER_IDS.has(authUser.userId);
+  return Boolean(normEmail && OWNER_EMAILS.has(normEmail));
 }
 
 export const TESTER_USER_IDS = new Set(['usr_kristy', 'usr_kristy_demo', 'usr_me']);
@@ -2992,7 +2992,7 @@ function seedDefaultUsersIfEmpty() {
   const defaultAccounts = [
     {
       userId: 'usr_kristy',
-      email: 'kristylten@gmail.com',
+      email: 'speedmeetlove@gmail.com',
       firstName: 'Kristy',
       lastName: '',
       age: 28,
@@ -3083,9 +3083,37 @@ seedDefaultUsersIfEmpty();
 // DURABLE DATABASE INTEGRATION (CLOUD FIRESTORE)
 // Ensures accounts persist across container redeployments and server instances
 // ============================================================================
-let firestoreDb: Firestore | null = null;
+let firestoreDb: AdminFirestore | null = null;
 let firestoreConfig: any = null;
 let isDurableDatabaseActive = false;
+let firestoreReadVerified = false;
+let firestoreWriteVerified = false;
+let lastFirestoreReadAt: number | null = null;
+let lastFirestoreWriteAt: number | null = null;
+let lastFirestoreError: {
+  code: string | number | null;
+  message: string;
+  operation: string;
+  path: string | null;
+  at: number;
+} | null = null;
+
+function getFirestoreHealthSummary() {
+  return {
+    firestoreConfigured: Boolean(firestoreDb),
+    firestoreReadVerified,
+    firestoreWriteVerified,
+    activePersistenceBackend:
+      firestoreReadVerified && firestoreWriteVerified
+        ? 'cloud-firestore'
+        : firestoreReadVerified
+        ? 'cloud-firestore-read-local-write-fallback'
+        : 'local-fallback-only',
+    lastFirestoreReadAt,
+    lastFirestoreWriteAt,
+    lastFirestoreError,
+  };
+}
 
 function initDurableDatabase() {
   if (process.env.DISABLE_FIRESTORE === 'true') {
@@ -3096,15 +3124,27 @@ function initDurableDatabase() {
     if (fs.existsSync(configPath)) {
       const raw = fs.readFileSync(configPath, 'utf-8');
       firestoreConfig = JSON.parse(raw);
-      if (firestoreConfig.apiKey && firestoreConfig.projectId) {
-        const app = initFirebaseApp(firestoreConfig, 'sml_server_authoritative');
-        firestoreDb = getFirestore(app, firestoreConfig.firestoreDatabaseId || undefined);
+      if (firestoreConfig.projectId && firestoreConfig.projectId !== 'remixed-project-id') {
+        const adminApp = getFirebaseAdminApps().length
+          ? getFirebaseAdminApp()
+          : initFirebaseAdminApp({ projectId: firestoreConfig.projectId });
+        const dbId = typeof firestoreConfig.firestoreDatabaseId === 'string'
+          ? firestoreConfig.firestoreDatabaseId.trim()
+          : '';
+        firestoreDb =
+          dbId && dbId !== '(default)' && dbId !== 'remixed-firestore-database-id'
+            ? getAdminFirestore(adminApp, dbId)
+            : getAdminFirestore(adminApp);
         isDurableDatabaseActive = true;
-        console.log('[DURABLE DB] Connected to Cloud Firestore database:', firestoreConfig.projectId, firestoreConfig.firestoreDatabaseId || 'default');
+        console.log(
+          '[DURABLE DB] Initialized Firebase Admin SDK for Cloud Firestore database:',
+          firestoreConfig.projectId,
+          dbId || '(default)'
+        );
       }
     }
   } catch (err) {
-    console.warn('[DURABLE DB] Could not initialize Cloud Firestore:', err);
+    console.warn('[DURABLE DB] Could not initialize Firebase Admin Firestore:', err);
   }
 }
 initDurableDatabase();
@@ -3112,12 +3152,12 @@ initDurableDatabase();
 async function syncDurableDatabaseOnStartup() {
   if (!firestoreDb) return;
   try {
-    // Validate connection from server per skill guidelines
-    await getDocFromServer(firestoreDoc(firestoreDb, 'system_test', 'startup_ping')).catch(() => null);
-
-    // 1. Fetch all accounts from durable Firestore
-    const usersCol = firestoreCollection(firestoreDb, 'users');
-    const snap = await firestoreGetDocs(usersCol);
+    // 1. Verify live read access from durable Firestore
+    const usersCol = firestoreDb.collection('users');
+    const snap = await usersCol.get();
+    firestoreReadVerified = true;
+    lastFirestoreReadAt = Date.now();
+    lastFirestoreError = null;
     if (!snap.empty) {
       snap.forEach(d => {
         const data = d.data() as ServerUserRecord;
@@ -3149,21 +3189,19 @@ async function syncDurableDatabaseOnStartup() {
       }
       for (const u of accountsToMigrate) {
         serverUsers.set(u.userId, u);
-        await firestoreSetDoc(firestoreDoc(firestoreDb, 'users', u.userId), u);
+        await firestoreDb.collection('users').doc(u.userId).set(cleanFirestoreObject(u));
       }
       console.log(`[DURABLE DB] Successfully migrated ${accountsToMigrate.length} accounts to Cloud Firestore.`);
     }
 
     // 2. Sync banned users from durable storage
-    const bannedCol = firestoreCollection(firestoreDb, 'banned_users');
-    const bannedSnap = await firestoreGetDocs(bannedCol);
+    const bannedSnap = await firestoreDb.collection('banned_users').get();
     bannedSnap.forEach(d => {
       bannedUsers.add(d.id);
     });
 
     // 2b. Sync granted tester accounts from durable storage
-    const testersCol = firestoreCollection(firestoreDb, 'granted_testers');
-    const testersSnap = await firestoreGetDocs(testersCol).catch(() => null);
+    const testersSnap = await firestoreDb.collection('granted_testers').get().catch(() => null);
     if (testersSnap && !testersSnap.empty) {
       testersSnap.forEach(d => {
         const item = d.data() as GrantedTesterRecord;
@@ -3175,14 +3213,13 @@ async function syncDurableDatabaseOnStartup() {
     } else if (grantedTesterRecords.size > 0) {
       for (const [email, record] of grantedTesterRecords.entries()) {
         const docId = email.replace(/[^a-zA-Z0-9_.-]/g, '_');
-        await firestoreSetDoc(firestoreDoc(firestoreDb, 'granted_testers', docId), record).catch(() => null);
+        await firestoreDb.collection('granted_testers').doc(docId).set(cleanFirestoreObject(record)).catch(() => null);
       }
     }
     seedDesignatedTesterRecordsIfMissing();
 
     // 2c. Sync event waiting list from durable storage
-    const waitlistCol = firestoreCollection(firestoreDb, 'event_waitlist');
-    const waitlistSnap = await firestoreGetDocs(waitlistCol).catch(() => null);
+    const waitlistSnap = await firestoreDb.collection('event_waitlist').get().catch(() => null);
     if (waitlistSnap && !waitlistSnap.empty) {
       waitlistSnap.forEach(d => {
         const item = d.data() as ServerWaitlistEntry;
@@ -3193,13 +3230,12 @@ async function syncDurableDatabaseOnStartup() {
       console.log(`[DURABLE DB] Rehydrated ${serverWaitlist.size} waitlist entries from Cloud Firestore.`);
     } else if (serverWaitlist.size > 0) {
       for (const [uid, entry] of serverWaitlist.entries()) {
-        await firestoreSetDoc(firestoreDoc(firestoreDb, 'event_waitlist', uid), entry).catch(() => null);
+        await firestoreDb.collection('event_waitlist').doc(uid).set(cleanFirestoreObject(entry)).catch(() => null);
       }
     }
 
     // 2d. Sync manually scheduled launch events from durable storage
-    const launchEventsCol = firestoreCollection(firestoreDb, 'launch_events');
-    const launchSnap = await firestoreGetDocs(launchEventsCol).catch(() => null);
+    const launchSnap = await firestoreDb.collection('launch_events').get().catch(() => null);
     if (launchSnap && !launchSnap.empty) {
       launchSnap.forEach(d => {
         const item = d.data() as ServerLaunchEventRecord;
@@ -3210,13 +3246,13 @@ async function syncDurableDatabaseOnStartup() {
       console.log(`[DURABLE DB] Rehydrated ${serverLaunchEvents.size} launch event(s) from Cloud Firestore.`);
     } else if (serverLaunchEvents.size > 0) {
       for (const [eid, evt] of serverLaunchEvents.entries()) {
-        await firestoreSetDoc(firestoreDoc(firestoreDb, 'launch_events', eid), evt).catch(() => null);
+        await firestoreDb.collection('launch_events').doc(eid).set(cleanFirestoreObject(evt)).catch(() => null);
       }
     }
 
     // 2e. Sync launch offer state & grants from durable storage
-    const launchCfgSnap = await firestoreGetDoc(firestoreDoc(firestoreDb, 'launch_offer_config', 'state')).catch(() => null);
-    if (launchCfgSnap && launchCfgSnap.exists()) {
+    const launchCfgSnap = await firestoreDb.collection('launch_offer_config').doc('state').get().catch(() => null);
+    if (launchCfgSnap && launchCfgSnap.exists) {
       const cfg = launchCfgSnap.data() as LaunchOfferConfigState;
       if (cfg && typeof cfg.liveAt === 'number' && cfg.liveAt > 0) {
         launchOfferConfig = {
@@ -3227,11 +3263,10 @@ async function syncDurableDatabaseOnStartup() {
         };
       }
     } else {
-      await firestoreSetDoc(firestoreDoc(firestoreDb, 'launch_offer_config', 'state'), cleanFirestoreObject(launchOfferConfig)).catch(() => null);
+      await firestoreDb.collection('launch_offer_config').doc('state').set(cleanFirestoreObject(launchOfferConfig)).catch(() => null);
     }
 
-    const launchGrantsCol = firestoreCollection(firestoreDb, 'launch_offer_grants');
-    const launchGrantsSnap = await firestoreGetDocs(launchGrantsCol).catch(() => null);
+    const launchGrantsSnap = await firestoreDb.collection('launch_offer_grants').get().catch(() => null);
     if (launchGrantsSnap && !launchGrantsSnap.empty) {
       launchGrantsSnap.forEach(d => {
         const item = d.data() as LaunchOfferGrantRecord;
@@ -3255,8 +3290,7 @@ async function syncDurableDatabaseOnStartup() {
     }
 
     // 2f. Sync reports from durable storage
-    const reportsCol = firestoreCollection(firestoreDb, 'reports');
-    const reportsSnap = await firestoreGetDocs(reportsCol).catch(() => null);
+    const reportsSnap = await firestoreDb.collection('reports').get().catch(() => null);
     if (reportsSnap && !reportsSnap.empty) {
       reportsSnap.forEach(d => {
         const item = d.data() as ServerReportRecord;
@@ -3266,7 +3300,7 @@ async function syncDurableDatabaseOnStartup() {
       });
     }
 
-    // 3. Keep local backup files in sync
+    // Keep local backup files in sync
     saveUsersToDisk();
     saveReportsToDisk();
     saveRoundRemovalsToDisk();
@@ -3276,6 +3310,44 @@ async function syncDurableDatabaseOnStartup() {
     saveLaunchEventsToDisk();
     saveLaunchOfferConfigToDisk();
     saveLaunchOfferGrantsToDisk();
+
+    // Migrate founder usr_kristy account & tester grant metadata cleanly to speedmeetlove@gmail.com
+    const primaryOwnerEmail = Array.from(OWNER_EMAILS)[0] || 'speedmeetlove@gmail.com';
+    const legacyOwnerEmails = new Set(['kristylten@gmail.com', 'kristysback411@gmail.com']);
+    const existingPrimaryOwner = Array.from(serverUsers.values()).find(
+      u => u.email && u.email.toLowerCase().trim() === primaryOwnerEmail
+    );
+    const founderRecord = serverUsers.get('usr_kristy');
+    if (
+      founderRecord &&
+      (!existingPrimaryOwner || existingPrimaryOwner.userId === founderRecord.userId) &&
+      legacyOwnerEmails.has((founderRecord.email || '').toLowerCase().trim())
+    ) {
+      founderRecord.email = primaryOwnerEmail;
+      await saveUserToDurableDatabase(founderRecord);
+      console.log(`[FOUNDER MIGRATION] Preserved usr_kristy profile & data and updated email to ${primaryOwnerEmail}`);
+    }
+
+    let testersMigrated = false;
+    for (const [tEmail, tRecord] of grantedTesterRecords.entries()) {
+      if (tRecord.grantedBy && legacyOwnerEmails.has(tRecord.grantedBy.toLowerCase().trim())) {
+        tRecord.grantedBy = primaryOwnerEmail;
+        testersMigrated = true;
+        if (firestoreDb) {
+          const docId = tEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
+          await firestoreDb.collection('granted_testers').doc(docId).set(cleanFirestoreObject(tRecord)).catch(() => null);
+        }
+      }
+    }
+    if (testersMigrated) {
+      saveGrantedTestersToDisk();
+    }
+    for (const u of serverUsers.values()) {
+      if (u.testerAccessGrantedBy && legacyOwnerEmails.has(u.testerAccessGrantedBy.toLowerCase().trim())) {
+        u.testerAccessGrantedBy = primaryOwnerEmail;
+        await saveUserToDurableDatabase(u);
+      }
+    }
 
     // Ensure all registered users matching granted testers have Premium Plus tester privileges
     for (const [email, record] of grantedTesterRecords.entries()) {
@@ -3303,7 +3375,7 @@ async function syncDurableDatabaseOnStartup() {
     let repairedCount = 0;
     const FOUNDER_PHOTO = '/assets/aistudio/Screenshot_20261109-051148_Facebook_4fd2d1a3.png';
     for (const [uid, userRecord] of serverUsers.entries()) {
-      const isFounder = uid === 'usr_kristy' || (userRecord.email && userRecord.email.toLowerCase().trim() === 'kristylten@gmail.com');
+      const isFounder = uid === 'usr_kristy' || (userRecord.email && OWNER_EMAILS.has(userRecord.email.toLowerCase().trim()));
       if (isFounder) {
         let changed = false;
         if (userRecord.profilePhoto !== FOUNDER_PHOTO) {
@@ -3331,8 +3403,28 @@ async function syncDurableDatabaseOnStartup() {
     if (repairedCount > 0) {
       console.log(`[PROFILE REPAIR] Successfully cleared founder photo from ${repairedCount} non-founder registered account(s).`);
     }
+
+    // 3. Verify live write access against Speed Meet Love's Firestore database
+    try {
+      await firestoreDb.collection('system_test').doc('startup_ping').set({
+        lastVerifiedAt: Date.now(),
+        source: 'firebase-admin',
+      });
+      firestoreWriteVerified = true;
+      lastFirestoreWriteAt = Date.now();
+      lastFirestoreError = null;
+      console.log(
+        `[DURABLE DB] Verified live Cloud Firestore read & write access (database: ${firestoreConfig?.firestoreDatabaseId || '(default)'}).`
+      );
+    } catch (writeErr) {
+      firestoreWriteVerified = false;
+      logFirestoreError(writeErr, FirestoreOperationType.WRITE, 'system_test/startup_ping');
+    }
   } catch (err) {
-    console.error('[DURABLE DB] Error during startup sync with Firestore:', err);
+    firestoreReadVerified = false;
+    firestoreWriteVerified = false;
+    logFirestoreError(err, FirestoreOperationType.LIST, 'users');
+    console.error('[DURABLE DB] Startup sync with Cloud Firestore failed; falling back to local disk (.data/*.json):', err);
   }
 }
 reconcileLaunchOfferGrants().catch(err => console.warn('[LAUNCH OFFER] Initial reconcile error:', err));
@@ -3364,10 +3456,7 @@ interface ServerFirestoreErrorInfo {
   error: string;
   operationType: FirestoreOperationType;
   path: string | null;
-  authInfo: {
-    userId: string | null;
-    email: string | null;
-  };
+  authMode: 'firebase-admin-adc';
 }
 
 function logFirestoreError(
@@ -3375,14 +3464,25 @@ function logFirestoreError(
   operationType: FirestoreOperationType,
   path: string | null
 ): ServerFirestoreErrorInfo {
+  const errCode = (err as any)?.code ?? null;
+  const errMsg = err instanceof Error ? err.message : String(err);
+  if (operationType === FirestoreOperationType.WRITE || operationType === FirestoreOperationType.CREATE || operationType === FirestoreOperationType.UPDATE || operationType === FirestoreOperationType.DELETE) {
+    firestoreWriteVerified = false;
+  } else {
+    firestoreReadVerified = false;
+  }
+  lastFirestoreError = {
+    code: errCode,
+    message: errMsg,
+    operation: operationType,
+    path,
+    at: Date.now(),
+  };
   const errInfo: ServerFirestoreErrorInfo = {
-    error: err instanceof Error ? err.message : String(err),
+    error: errMsg,
     operationType,
     path,
-    authInfo: {
-      userId: null,
-      email: null,
-    },
+    authMode: 'firebase-admin-adc',
   };
   console.warn('[DURABLE DB] Firestore operation notice:', JSON.stringify(errInfo));
   return errInfo;
@@ -3391,7 +3491,7 @@ function logFirestoreError(
 function isFirestorePermissionError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   const code = (err as any)?.code;
-  return code === 'permission-denied' || /permission[_-]?denied|insufficient permissions/i.test(msg);
+  return code === 7 || code === 'permission-denied' || /permission[_-]?denied|insufficient permissions/i.test(msg);
 }
 
 async function saveUserToDurableDatabase(user: ServerUserRecord): Promise<void> {
@@ -3404,7 +3504,10 @@ async function saveUserToDurableDatabase(user: ServerUserRecord): Promise<void> 
       if (user.profilePhoto === undefined) {
         cleanRecord.profilePhoto = null;
       }
-      await firestoreSetDoc(firestoreDoc(firestoreDb, 'users', user.userId), cleanRecord);
+      await firestoreDb.collection('users').doc(user.userId).set(cleanRecord);
+      firestoreWriteVerified = true;
+      lastFirestoreWriteAt = Date.now();
+      lastFirestoreError = null;
     } catch (err) {
       logFirestoreError(err, FirestoreOperationType.WRITE, docPath);
       if (!isFirestorePermissionError(err)) {
@@ -3419,7 +3522,7 @@ async function deleteUserFromDurableDatabase(userId: string): Promise<void> {
   saveUsersToDisk();
   if (firestoreDb) {
     try {
-      await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'users', userId));
+      await firestoreDb.collection('users').doc(userId).delete();
     } catch (err) {
       logFirestoreError(err, FirestoreOperationType.DELETE, `users/${userId}`);
     }
@@ -3431,7 +3534,7 @@ async function banUserInDurableDatabase(identifier: string): Promise<void> {
   saveBannedUsersToDisk();
   if (firestoreDb) {
     try {
-      await firestoreSetDoc(firestoreDoc(firestoreDb, 'banned_users', identifier), {
+      await firestoreDb.collection('banned_users').doc(identifier).set({
         identifier,
         bannedAt: Date.now(),
       });
@@ -3446,7 +3549,7 @@ async function unbanUserInDurableDatabase(identifier: string): Promise<void> {
   saveBannedUsersToDisk();
   if (firestoreDb) {
     try {
-      await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'banned_users', identifier));
+      await firestoreDb.collection('banned_users').doc(identifier).delete();
     } catch (err) {
       logFirestoreError(err, FirestoreOperationType.DELETE, `banned_users/${identifier}`);
     }
@@ -3459,7 +3562,7 @@ async function saveWaitlistEntryToDurableDatabase(entry: ServerWaitlistEntry): P
   if (firestoreDb) {
     const docPath = `event_waitlist/${entry.userId}`;
     try {
-      await firestoreSetDoc(firestoreDoc(firestoreDb, 'event_waitlist', entry.userId), cleanFirestoreObject(entry));
+      await firestoreDb.collection('event_waitlist').doc(entry.userId).set(cleanFirestoreObject(entry));
     } catch (err) {
       logFirestoreError(err, FirestoreOperationType.WRITE, docPath);
       if (!isFirestorePermissionError(err)) {
@@ -3474,7 +3577,7 @@ async function deleteWaitlistEntryFromDurableDatabase(userId: string): Promise<v
   saveWaitlistToDisk();
   if (firestoreDb) {
     try {
-      await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'event_waitlist', userId));
+      await firestoreDb.collection('event_waitlist').doc(userId).delete();
     } catch (err) {
       logFirestoreError(err, FirestoreOperationType.DELETE, `event_waitlist/${userId}`);
     }
@@ -3487,7 +3590,7 @@ async function saveLaunchEventToDurableDatabase(evt: ServerLaunchEventRecord): P
   if (firestoreDb) {
     const docPath = `launch_events/${evt.EventID}`;
     try {
-      await firestoreSetDoc(firestoreDoc(firestoreDb, 'launch_events', evt.EventID), cleanFirestoreObject(evt));
+      await firestoreDb.collection('launch_events').doc(evt.EventID).set(cleanFirestoreObject(evt));
     } catch (err) {
       logFirestoreError(err, FirestoreOperationType.WRITE, docPath);
       if (!isFirestorePermissionError(err)) {
@@ -3502,7 +3605,7 @@ async function deleteLaunchEventFromDurableDatabase(eventId: string): Promise<vo
   saveLaunchEventsToDisk();
   if (firestoreDb) {
     try {
-      await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'launch_events', eventId));
+      await firestoreDb.collection('launch_events').doc(eventId).delete();
     } catch (err) {
       logFirestoreError(err, FirestoreOperationType.DELETE, `launch_events/${eventId}`);
     }
@@ -3514,10 +3617,7 @@ async function saveLaunchOfferGrantToDurableDatabase(grant: LaunchOfferGrantReco
   saveLaunchOfferGrantsToDisk();
   if (firestoreDb) {
     try {
-      await firestoreSetDoc(
-        firestoreDoc(firestoreDb, 'launch_offer_grants', grant.userId),
-        cleanFirestoreObject(grant)
-      );
+      await firestoreDb.collection('launch_offer_grants').doc(grant.userId).set(cleanFirestoreObject(grant));
     } catch (err) {
       logFirestoreError(err, FirestoreOperationType.WRITE, `launch_offer_grants/${grant.userId}`);
     }
@@ -3961,6 +4061,38 @@ async function issueEmailVerificationForUser(
 }
 
 
+async function dispatchPasswordResetEmail(
+  email: string,
+  firstName: string,
+  resetUrl: string
+): Promise<{ sent: boolean; provider: 'resend' | 'sendgrid' | 'smtp' | 'none' }> {
+  const subject = 'Reset your password for Speed Meet Love';
+  const safeFirstName = escapeEmailHtml(firstName || 'Member');
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; color: #111827;">
+      <h2 style="color: #be185d;">Reset your Speed Meet Love password</h2>
+      <p>Hi ${safeFirstName}, we received a request to reset the password for your Speed Meet Love account.</p>
+      <p style="margin: 24px 0;">
+        <a href="${resetUrl}" style="background: #dc2626; color: #ffffff; padding: 12px 22px; border-radius: 9999px; text-decoration: none; font-weight: bold;">Set New Password</a>
+      </p>
+      <p style="font-size: 13px; color: #374151; word-break: break-all;">Or copy and open this link in your browser:<br /><a href="${resetUrl}" style="color: #be185d;">${resetUrl}</a></p>
+      <p style="font-size: 12px; color: #6b7280;">This password-reset link expires in 1 hour. If you did not request a reset, you can safely ignore this email.</p>
+    </div>
+  `;
+  const text = [
+    `Hi ${firstName || 'Member'},`,
+    '',
+    'We received a request to reset the password for your Speed Meet Love account.',
+    'Open the link below to set a new password:',
+    resetUrl,
+    '',
+    'This link expires in 1 hour. If you did not request a reset, you can ignore this email.',
+  ].join('\n');
+
+  return dispatchTransactionalEmail({ to: email, subject, text, html });
+}
+
+
 function sanitizeUser(u: ServerUserRecord) {
   const {
     passwordHash: _,
@@ -3970,12 +4102,15 @@ function sanitizeUser(u: ServerUserRecord) {
     emailVerificationAttempts: _va,
     emailVerificationSentAt: _vs,
     emailVerificationExpiresAt: _ve,
+    passwordResetTokenHash: _prt,
+    passwordResetExpiresAt: _pre,
+    passwordResetSentAt: _prs,
     ...safe
   } = u;
   const normEmail = (u.email || '').toLowerCase().trim();
   const isGrantedTester = grantedTesterRecords.has(normEmail) || u.testerAccessGranted === true;
   const isTester = Boolean(u.isTester || isTesterAccount(u) || isGrantedTester);
-  const isFounder = u.userId === 'usr_kristy' || u.userId === 'usr_kristy_demo' || (u.email && u.email.toLowerCase().trim() === 'kristylten@gmail.com');
+  const isFounder = u.userId === 'usr_kristy' || u.userId === 'usr_kristy_demo' || (normEmail && OWNER_EMAILS.has(normEmail));
   const isFounderPhoto = u.profilePhoto === '/assets/kristy_exact.png' || u.profilePhoto === '/assets/aistudio/Screenshot_20261109-051148_Facebook_4fd2d1a3.png';
   // Only the founder defaults to the founder photo; normal members default to null/empty string (initials avatar)
   const resolvedPhoto = (u.profilePhoto && !isFounderPhoto)
@@ -4133,25 +4268,30 @@ export function verifyAuthenticatedUser(req: express.Request): { userId: string;
 
 // API: Check Authentication & Durable Database Provider Status
 app.get('/api/auth/status', (_req, res) => {
+  const health = getFirestoreHealthSummary();
   res.json({
     success: true,
     provider: 'server-native-pbkdf2',
     database: 'durable-cloud-firestore',
     databaseConnected: isDurableDatabaseActive,
     durableDatabaseActive: isDurableDatabaseActive,
+    ...health,
     projectId: firestoreConfig?.projectId || 'rise-again-57ba5',
     firestoreDatabaseId: firestoreConfig?.firestoreDatabaseId || 'default',
-    survivesRedeployments: true,
-    consistentAcrossInstances: true,
+    survivesRedeployments: health.firestoreReadVerified && health.firestoreWriteVerified,
+    consistentAcrossInstances: health.firestoreReadVerified && health.firestoreWriteVerified,
     features: {
       passwordHashing: 'PBKDF2-SHA512 (100,000 iterations + 16-byte random salt)',
       adultVerification: '18+ age enforcement on registration',
       tokenSecurity: 'Cryptographic 256-bit bearer tokens',
       serverAuthoritative: true,
       guestIsolation: true,
-      durableDatabase: 'Google Cloud Firestore',
+      durableDatabase: 'Google Cloud Firestore (Firebase Admin SDK)',
     },
-    message: 'Durable storage is active with Google Cloud Firestore. Account registrations, password verification, sign-ins, and deletions persist across server instances and survive container redeployments.',
+    message:
+      health.firestoreReadVerified && health.firestoreWriteVerified
+        ? 'Verified Cloud Firestore read and write access is active.'
+        : 'Firebase Admin SDK is configured for Cloud Firestore, but live read/write access has not been verified yet; requests currently fall back to local disk (.data/*.json).',
   });
 });
 
@@ -4483,11 +4623,9 @@ app.post('/api/auth/signin', (req, res) => {
   });
 });
 
-// API: Real Password Reset Email via Firebase Authentication Provider
-// Validates email, sends genuine password-reset email via Google Identity Toolkit,
-// and protects user privacy by returning identical success confirmation whether or not account exists.
+// API: Production Password Reset Request (Unified with PBKDF2-SHA512 user store + Resend email delivery)
 app.post('/api/auth/forgot-password', async (req, res) => {
-  const { email } = req.body;
+  const { email } = req.body || {};
 
   if (!email || typeof email !== 'string') {
     return res.status(400).json({
@@ -4505,63 +4643,253 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     });
   }
 
-  // Check if account is in database or server memory
-  let accountExists = false;
+  let targetUser: ServerUserRecord | null = null;
   for (const u of serverUsers.values()) {
     if (u.email && u.email.toLowerCase().trim() === normalizedEmail) {
-      accountExists = true;
+      targetUser = u;
       break;
     }
   }
 
-  try {
-    const apiKey = firestoreConfig?.apiKey;
-    if (apiKey) {
-      // Connect to the app's real Firebase authentication provider via Google Identity Toolkit REST API
-      const firebaseResetUrl = `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`;
-      const fbResponse = await fetch(firebaseResetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestType: 'PASSWORD_RESET',
-          email: normalizedEmail,
-        }),
-      });
-
-      const fbData: any = await fbResponse.json().catch(() => ({}));
-
-      if (!fbResponse.ok) {
-        const errorCode = fbData?.error?.message;
-        if (errorCode === 'INVALID_EMAIL') {
-          return res.status(400).json({
-            success: false,
-            error: 'The email address format is invalid.',
-          });
+  if (!targetUser && firestoreDb) {
+    try {
+      const snap = await firestoreDb.collection('users').get();
+      snap.forEach(d => {
+        const remote = d.data() as ServerUserRecord;
+        if (remote && remote.userId && remote.email) {
+          serverUsers.set(remote.userId, remote);
+          if (remote.email.toLowerCase().trim() === normalizedEmail) {
+            targetUser = remote;
+          }
         }
-        // If EMAIL_NOT_FOUND, Google Identity returns 200 with email enumeration protection,
-        // but if it errors out for other reasons, log and continue to safe confirmation
-        console.warn('[AUTH] Firebase password reset response warning:', errorCode || fbResponse.status);
-      } else {
-        console.log(`[AUTH] Real password-reset email dispatched via Firebase Auth provider for: ${normalizedEmail}`);
-      }
-    } else {
-      console.warn('[AUTH] Firebase apiKey not loaded for password reset.');
+      });
+    } catch {
+      // Keep existing in-memory lookup
     }
+  }
 
-    // Required user confirmation message:
-    // “If an account exists for this email, you’ll receive a password-reset link. Check your spam folder too.”
+  const emailProviderStatus = getConfiguredEmailProvider();
+  if (!emailProviderStatus.configured) {
+    return res.status(503).json({
+      success: false,
+      code: 'EMAIL_DELIVERY_UNAVAILABLE',
+      error: 'Unable to send password-reset email right now because outbound email delivery is unavailable.',
+    });
+  }
+
+  const confirmationMessage =
+    "If an account exists for this email, you’ll receive a password-reset link. Check your spam folder too.";
+
+  if (!targetUser) {
     return res.json({
       success: true,
-      message: "If an account exists for this email, you’ll receive a password-reset link. Check your spam folder too.",
-      accountExists,
+      message: confirmationMessage,
+      accountExists: false,
+    });
+  }
+
+  try {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const now = Date.now();
+    targetUser.passwordResetTokenHash = sha256Hex(rawToken);
+    targetUser.passwordResetSentAt = now;
+    targetUser.passwordResetExpiresAt = now + 60 * 60 * 1000; // 1 hour expiry
+    await saveUserToDurableDatabase(targetUser);
+
+    const baseUrl = resolveVerificationBaseUrl(req.get('origin'));
+    const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+    const delivery = await dispatchPasswordResetEmail(targetUser.email, targetUser.firstName, resetUrl);
+
+    if (!delivery.sent) {
+      targetUser.passwordResetTokenHash = undefined;
+      targetUser.passwordResetExpiresAt = undefined;
+      targetUser.passwordResetSentAt = undefined;
+      await saveUserToDurableDatabase(targetUser);
+
+      return res.status(503).json({
+        success: false,
+        code: 'EMAIL_DELIVERY_UNAVAILABLE',
+        error: 'Unable to send password-reset email right now because outbound email delivery failed.',
+      });
+    }
+
+    console.log(`[AUTH] Password-reset email dispatched via ${delivery.provider} for user ${targetUser.userId}`);
+    return res.json({
+      success: true,
+      message: confirmationMessage,
+      accountExists: true,
+      deliveryProvider: delivery.provider,
     });
   } catch (err: any) {
     console.error('[AUTH] Error sending password reset email:', err);
     return res.status(500).json({
       success: false,
-      error: 'Failed to dispatch password-reset email. Please check your internet connection and try again.',
+      error: 'Failed to dispatch password-reset email. Please try again.',
     });
   }
+});
+
+// API: Validate Password Reset Link Token Before Displaying Reset Form
+app.get('/api/auth/reset-password/validate', async (req, res) => {
+  const rawToken = typeof req.query.token === 'string' ? req.query.token.trim() : '';
+  if (!rawToken) {
+    return res.status(400).json({
+      success: false,
+      valid: false,
+      code: 'RESET_TOKEN_REQUIRED',
+      error: 'A valid password-reset token is required.',
+    });
+  }
+
+  const hashedToken = sha256Hex(rawToken);
+  let targetUser: ServerUserRecord | null = null;
+  for (const u of serverUsers.values()) {
+    if (u.passwordResetTokenHash && timingSafeEqualHex(u.passwordResetTokenHash, hashedToken)) {
+      targetUser = u;
+      break;
+    }
+  }
+
+  if (!targetUser && firestoreDb) {
+    try {
+      const snap = await firestoreDb.collection('users').get();
+      snap.forEach(d => {
+        const remote = d.data() as ServerUserRecord;
+        if (remote && remote.userId && remote.email) {
+          serverUsers.set(remote.userId, remote);
+          if (remote.passwordResetTokenHash && timingSafeEqualHex(remote.passwordResetTokenHash, hashedToken)) {
+            targetUser = remote;
+          }
+        }
+      });
+    } catch {
+      // Fallback to memory lookup
+    }
+  }
+
+  if (!targetUser) {
+    return res.status(400).json({
+      success: false,
+      valid: false,
+      code: 'INVALID_RESET_TOKEN',
+      error: 'This password-reset link is invalid or has already been used.',
+    });
+  }
+
+  if (!targetUser.passwordResetExpiresAt || Date.now() > targetUser.passwordResetExpiresAt) {
+    return res.status(400).json({
+      success: false,
+      valid: false,
+      code: 'RESET_TOKEN_EXPIRED',
+      error: 'This password-reset link has expired. Please request a new password reset.',
+    });
+  }
+
+  return res.json({
+    success: true,
+    valid: true,
+  });
+});
+
+// API: Confirm Password Reset & Update PBKDF2-SHA512 Credentials in Production User Store
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, password } = req.body || {};
+  const rawToken = typeof token === 'string' ? token.trim() : '';
+
+  if (!rawToken) {
+    return res.status(400).json({
+      success: false,
+      code: 'RESET_TOKEN_REQUIRED',
+      error: 'A valid password-reset token is required.',
+    });
+  }
+
+  if (!password || typeof password !== 'string' || password.length < 8) {
+    return res.status(400).json({
+      success: false,
+      code: 'INVALID_PASSWORD',
+      error: 'Password must be at least 8 characters long.',
+    });
+  }
+
+  const hashedToken = sha256Hex(rawToken);
+  const now = Date.now();
+  let targetUser: ServerUserRecord | null = null;
+
+  for (const u of serverUsers.values()) {
+    if (u.passwordResetTokenHash && timingSafeEqualHex(u.passwordResetTokenHash, hashedToken)) {
+      targetUser = u;
+      break;
+    }
+  }
+
+  if (!targetUser && firestoreDb) {
+    try {
+      const snap = await firestoreDb.collection('users').get();
+      snap.forEach(d => {
+        const remote = d.data() as ServerUserRecord;
+        if (remote && remote.userId && remote.email) {
+          serverUsers.set(remote.userId, remote);
+          if (remote.passwordResetTokenHash && timingSafeEqualHex(remote.passwordResetTokenHash, hashedToken)) {
+            targetUser = remote;
+          }
+        }
+      });
+    } catch {
+      // Fallback to memory lookup
+    }
+  }
+
+  if (!targetUser) {
+    return res.status(400).json({
+      success: false,
+      code: 'INVALID_RESET_TOKEN',
+      error: 'This password-reset link is invalid or has already been used.',
+    });
+  }
+
+  if (targetUser.isBanned || bannedUsers.has(targetUser.userId) || bannedUsers.has((targetUser.email || '').toLowerCase())) {
+    return res.status(403).json({
+      success: false,
+      code: 'ACCOUNT_BANNED',
+      error: 'This account has been suspended for community safety violations.',
+    });
+  }
+
+  if (!targetUser.passwordResetExpiresAt || now > targetUser.passwordResetExpiresAt) {
+    targetUser.passwordResetTokenHash = undefined;
+    targetUser.passwordResetExpiresAt = undefined;
+    targetUser.passwordResetSentAt = undefined;
+    await saveUserToDurableDatabase(targetUser);
+    return res.status(400).json({
+      success: false,
+      code: 'RESET_TOKEN_EXPIRED',
+      error: 'This password-reset link has expired. Please request a new password reset.',
+    });
+  }
+
+  // Update the exact PBKDF2-SHA512 hash & salt checked by POST /api/auth/signin
+  const newSalt = crypto.randomBytes(16).toString('hex');
+  const newHash = hashPassword(password, newSalt);
+  targetUser.passwordSalt = newSalt;
+  targetUser.passwordHash = newHash;
+  targetUser.passwordResetTokenHash = undefined;
+  targetUser.passwordResetExpiresAt = undefined;
+  targetUser.passwordResetSentAt = undefined;
+  await saveUserToDurableDatabase(targetUser);
+
+  // Revoke all existing sessions for this user so prior sessions cannot linger after password change
+  for (const [sessToken, sess] of serverAuthSessions.entries()) {
+    if (sess.userId === targetUser.userId) {
+      serverAuthSessions.delete(sessToken);
+    }
+  }
+
+  console.log(`[AUTH] Password updated cleanly in production user store for user ${targetUser.userId}`);
+  return res.json({
+    success: true,
+    message: 'Your password has been updated. You can now sign in with your new password.',
+  });
 });
 
 // API: Sign Out & Revoke Server Session
@@ -4584,8 +4912,8 @@ app.get('/api/auth/me', async (req, res) => {
   let user = serverUsers.get(authUser.userId);
   if (firestoreDb && (!user || user.emailVerified !== true)) {
     try {
-      const snap = await firestoreGetDoc(firestoreDoc(firestoreDb, 'users', authUser.userId));
-      if (snap && snap.exists()) {
+      const snap = await firestoreDb.collection('users').doc(authUser.userId).get();
+      if (snap && snap.exists) {
         const remote = snap.data() as ServerUserRecord;
         if (remote && remote.userId) {
           user = user ? { ...user, ...remote } : remote;
@@ -5119,7 +5447,7 @@ async function saveReportToDurableDatabase(report: ServerReportRecord): Promise<
   saveReportsToDisk();
   if (firestoreDb) {
     try {
-      await firestoreSetDoc(firestoreDoc(firestoreDb, 'reports', report.id), cleanFirestoreObject(report));
+      await firestoreDb.collection('reports').doc(report.id).set(cleanFirestoreObject(report));
     } catch (err) {
       logFirestoreError(err, FirestoreOperationType.WRITE, `reports/${report.id}`);
     }
@@ -5161,7 +5489,7 @@ async function notifyOwnerOfUrgentReport(report: ServerReportRecord): Promise<{
   let emailProvider: string = emailStatus.provider;
 
   if (emailStatus.configured) {
-    const recipient = Array.from(OWNER_EMAILS)[0] || 'kristylten@gmail.com';
+    const recipient = Array.from(OWNER_EMAILS)[0] || 'speedmeetlove@gmail.com';
     const safeReason = escapeEmailHtml(report.reason);
     const safeEvent = escapeEmailHtml(report.eventName || report.eventId || 'Platform / Outside Live Round');
     const safeRound = report.roundNumber ? `Round ${report.roundNumber}` : 'N/A';
@@ -5919,7 +6247,7 @@ app.get('/api/owner/registered-users', async (req, res) => {
   // Ensure fresh memory representation from durable Cloud Firestore
   if (firestoreDb) {
     try {
-      const snap = await firestoreGetDocs(firestoreCollection(firestoreDb, 'users'));
+      const snap = await firestoreDb.collection('users').get();
       if (!snap.empty) {
         snap.forEach(d => {
           const data = d.data() as ServerUserRecord;
@@ -6019,16 +6347,23 @@ app.get('/api/owner/registered-users', async (req, res) => {
       liveAt: launchOfferConfig.liveAt,
     },
     storageDiagnostic: {
-      storageType: 'durable-cloud-firestore',
+      storageType:
+        firestoreReadVerified && firestoreWriteVerified
+          ? 'durable-cloud-firestore'
+          : 'local-fallback-only',
       provider: 'Google Cloud Firestore',
       projectId: firestoreConfig?.projectId || 'rise-again-57ba5',
       databaseId: firestoreConfig?.firestoreDatabaseId || 'default',
       isDurableDatabaseActive: Boolean(firestoreDb),
-      survivesRedeployments: true,
-      consistentAcrossInstances: true,
+      ...getFirestoreHealthSummary(),
+      survivesRedeployments: firestoreReadVerified && firestoreWriteVerified,
+      consistentAcrossInstances: firestoreReadVerified && firestoreWriteVerified,
       totalServerRecords: allServerUsers.length,
       demoRecordsExcluded: allServerUsers.length - sanitizedUsers.length,
-      persistenceNotice: 'Durable Cloud Database Active: Accounts are stored in Google Cloud Firestore. Registrations remain consistent across server instances and survive container redeployments and cold revisions.',
+      persistenceNotice:
+        firestoreReadVerified && firestoreWriteVerified
+          ? 'Verified Cloud Firestore Active: Accounts and records are reading from and writing to Google Cloud Firestore.'
+          : 'Fallback Storage Active: Cloud Firestore read/write is not yet verified in this runtime; server is currently using local fallback storage (.data/*.json).',
     },
   });
 });
@@ -6101,7 +6436,7 @@ app.post('/api/owner/testers', async (req, res) => {
     const record: GrantedTesterRecord = {
       email: normEmail,
       grantedAt: Date.now(),
-      grantedBy: authUser.email || 'kristylten@gmail.com',
+      grantedBy: authUser.email || 'speedmeetlove@gmail.com',
       notes: notes || 'Owner granted free Premium Plus tester access',
     };
     grantedTesterRecords.set(normEmail, record);
@@ -6110,7 +6445,7 @@ app.post('/api/owner/testers', async (req, res) => {
     if (firestoreDb) {
       try {
         const docId = normEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-        await firestoreSetDoc(firestoreDoc(firestoreDb, 'granted_testers', docId), record);
+        await firestoreDb.collection('granted_testers').doc(docId).set(cleanFirestoreObject(record));
       } catch (e) {
         console.warn('[DURABLE DB] Error persisting granted tester to Firestore:', e);
       }
@@ -6155,7 +6490,7 @@ app.post('/api/owner/testers', async (req, res) => {
     if (firestoreDb) {
       try {
         const docId = normEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-        await firestoreDeleteDoc(firestoreDoc(firestoreDb, 'granted_testers', docId));
+        await firestoreDb.collection('granted_testers').doc(docId).delete();
       } catch (e) {
         console.warn('[DURABLE DB] Error removing granted tester from Firestore:', e);
       }
@@ -7614,8 +7949,15 @@ app.post('/api/events/:eventId/validate-entry', (req, res) => {
   });
 });
 
-// API: Toggle demo simulation for testing
+// API: Toggle demo simulation for testing (Owner-Only)
 app.post('/api/events/:eventId/simulate-start', (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({ success: false, error: 'Access denied: Owner authorization required.' });
+  }
   const { eventId } = req.params;
   const enable = req.body.enable !== undefined ? req.body.enable : Boolean(req.body.isLive);
   if (enable) {

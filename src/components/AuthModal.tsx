@@ -24,6 +24,9 @@ export const AuthModal: React.FC = () => {
     signIn,
     signUp,
     sendPasswordResetEmail,
+    resetPasswordToken,
+    setResetPasswordToken,
+    confirmPasswordReset,
   } = useApp();
 
   // Sign In form state
@@ -53,7 +56,46 @@ export const AuthModal: React.FC = () => {
   const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
   const [isSendingReset, setIsSendingReset] = useState(false);
 
+  // Confirm Password Reset state (/reset-password?token=...)
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [confirmResetError, setConfirmResetError] = useState<string | null>(null);
+  const [confirmResetSuccess, setConfirmResetSuccess] = useState<string | null>(null);
+  const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+
   if (!isAuthModalOpen) return null;
+
+  const isConfirmResetView = Boolean(resetPasswordToken);
+
+  const handleConfirmResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setConfirmResetError(null);
+    if (!resetPasswordToken) return;
+    if (!newPassword || newPassword.length < 8) {
+      setConfirmResetError('New password must be at least 8 characters long.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setConfirmResetError('Passwords do not match. Please enter the exact same new password twice.');
+      return;
+    }
+
+    setIsConfirmingReset(true);
+    try {
+      const res = await confirmPasswordReset(resetPasswordToken, newPassword);
+      if (res.success) {
+        setConfirmResetSuccess(res.message || 'Your password has been updated. You can now sign in with your new password.');
+        setNewPassword('');
+        setConfirmNewPassword('');
+      } else {
+        setConfirmResetError(res.error || 'This password-reset link is invalid or expired.');
+      }
+    } catch (err: any) {
+      setConfirmResetError(err.message || 'Network error while updating password.');
+    } finally {
+      setIsConfirmingReset(false);
+    }
+  };
 
   const handleSignInSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,6 +228,9 @@ export const AuthModal: React.FC = () => {
             onClick={() => {
               setIsAuthModalOpen(false);
               setIsForgotPasswordView(false);
+              setResetPasswordToken(null);
+              setConfirmResetError(null);
+              setConfirmResetSuccess(null);
             }}
             className="absolute top-4 right-4 p-1 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors cursor-pointer"
             aria-label="Close authentication modal"
@@ -197,14 +242,18 @@ export const AuthModal: React.FC = () => {
             <SpeedMeetLoveLogo variant="on-red" size="sm" />
           </div>
           <h2 className="text-xl font-black font-heading tracking-tight">
-            {isForgotPasswordView
+            {isConfirmResetView
+              ? 'Set a New Password'
+              : isForgotPasswordView
               ? 'Reset Your Password'
               : authModalTab === 'signin'
               ? 'Sign In to Your Account'
               : 'Create Member Account (18+)'}
           </h2>
           <p className="text-xs text-rose-100 font-medium mt-0.5">
-            {isForgotPasswordView
+            {isConfirmResetView
+              ? 'Choose a strong password (minimum 8 characters) to update your Speed Meet Love login.'
+              : isForgotPasswordView
               ? 'Enter your account email to receive a secure password-reset link.'
               : authModalTab === 'signin'
               ? 'Real People. Real Connections. In Minutes.'
@@ -212,8 +261,8 @@ export const AuthModal: React.FC = () => {
           </p>
         </div>
 
-        {/* Tab Switcher - only show when not in Forgot Password view */}
-        {!isForgotPasswordView && (
+        {/* Tab Switcher - only show when not in Forgot/Confirm Password view */}
+        {!isConfirmResetView && !isForgotPasswordView && (
           <div className="flex border-b border-rose-100 bg-rose-50/50">
             <button
               type="button"
@@ -250,9 +299,122 @@ export const AuthModal: React.FC = () => {
 
         {/* Modal Body */}
         <div className="p-5 sm:p-6 space-y-4">
-          
+
+          {/* CONFIRM PASSWORD RESET VIEW (/reset-password?token=...) */}
+          {isConfirmResetView && (
+            <form onSubmit={handleConfirmResetSubmit} className="space-y-4">
+              {confirmResetError && (
+                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{confirmResetError}</span>
+                </div>
+              )}
+
+              {confirmResetSuccess ? (
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-3">
+                  <div className="flex items-center gap-2 text-emerald-700 font-extrabold text-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Password Updated Successfully</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-emerald-800 font-medium">
+                    {confirmResetSuccess}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetPasswordToken(null);
+                      setConfirmResetSuccess(null);
+                      setConfirmResetError(null);
+                      setIsForgotPasswordView(false);
+                      setAuthModalTab('signin');
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Continue to Sign In</span>
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-[#111827]">
+                      New Password (min 8 characters)
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-[#111827] absolute left-3.5 top-3" />
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={e => setNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        required
+                        minLength={8}
+                        autoFocus
+                        autoComplete="new-password"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-600 text-xs font-medium text-[#111827]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-[#111827]">
+                      Confirm New Password
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-[#111827] absolute left-3.5 top-3" />
+                      <input
+                        type="password"
+                        value={confirmNewPassword}
+                        onChange={e => setConfirmNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        required
+                        minLength={8}
+                        autoComplete="new-password"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-600 text-xs font-medium text-[#111827]"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isConfirmingReset}
+                    className="w-full py-3 rounded-2xl btn-glossy-red-pink text-white font-bold text-xs sm:text-sm shadow-md shadow-pink-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                  >
+                    {isConfirmingReset ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Updating Password...</span>
+                      </>
+                    ) : (
+                      <>
+                        <KeyRound className="w-4 h-4" />
+                        <span>Save New Password</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="text-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResetPasswordToken(null);
+                        setConfirmResetError(null);
+                        setIsForgotPasswordView(false);
+                        setAuthModalTab('signin');
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-[#111827] hover:text-[#B91C1C] transition-colors cursor-pointer"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back to sign in</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </form>
+          )}
+
           {/* FORGOT PASSWORD VIEW */}
-          {isForgotPasswordView && (
+          {!isConfirmResetView && isForgotPasswordView && (
             <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
               {resetError && (
                 <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
@@ -343,7 +505,7 @@ export const AuthModal: React.FC = () => {
           )}
 
           {/* TAB 1: SIGN IN */}
-          {!isForgotPasswordView && authModalTab === 'signin' && (
+          {!isConfirmResetView && !isForgotPasswordView && authModalTab === 'signin' && (
             <form onSubmit={handleSignInSubmit} className="space-y-3.5">
               {signInError && (
                 <div className="p-3 rounded-2xl bg-rose-50 border border-rose-300 text-[#881337] text-xs font-semibold flex items-center gap-2">
@@ -435,7 +597,7 @@ export const AuthModal: React.FC = () => {
           )}
 
           {/* TAB 2: SIGN UP */}
-          {authModalTab === 'signup' && (() => {
+          {!isConfirmResetView && !isForgotPasswordView && authModalTab === 'signup' && (() => {
             const ageTrimmed = signUpForm.age.trim();
             const parsedAge = parseInt(ageTrimmed, 10);
             const hasAgeInput = ageTrimmed.length > 0 && !isNaN(parsedAge);

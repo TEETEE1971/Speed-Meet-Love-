@@ -78,7 +78,7 @@ export const SubscriptionScreen: React.FC = () => {
   const isWaitlistModeActive = confirmedLaunchEvents.length === 0;
 
   const currentTier = currentUser?.SubscriptionTier || 'Free';
-  const isTester = Boolean(currentUser?.IsTester || currentUser?.UserID === 'usr_kristy');
+  const isTester = Boolean(currentUser?.IsTester || isOwner);
   const hasActiveLaunchGrant = Boolean(
     isAuthenticated &&
       currentUser?.EmailVerified &&

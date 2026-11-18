@@ -8,11 +8,11 @@ async function runTests() {
   console.log('================================================================');
 
   // Step 1: Sign in Owner
-  console.log('\n[Step 1] Owner sign-in (kristylten@gmail.com)...');
+  console.log('\n[Step 1] Owner sign-in (speedmeetlove@gmail.com)...');
   const ownerSignin = await fetch(`${BASE_URL}/api/auth/signin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'kristylten@gmail.com', password: 'SpeedMeetLove2026!' }),
+    body: JSON.stringify({ email: 'speedmeetlove@gmail.com', password: 'SpeedMeetLove2026!' }),
   });
   const ownerData = await ownerSignin.json();
   assert(ownerSignin.ok && ownerData.success, 'Owner sign-in must succeed');
@@ -286,7 +286,7 @@ async function runTests() {
       Authorization: `Bearer ${ownerToken}`,
     },
     body: JSON.stringify({
-      email: 'kristylten@gmail.com',
+      email: 'speedmeetlove@gmail.com',
       action: 'remove',
     }),
   });
