@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   X,
   CheckCircle2,
+  XCircle,
   ArrowLeft,
   KeyRound,
 } from 'lucide-react';
@@ -143,9 +144,10 @@ export const AuthModal: React.FC = () => {
       return;
     }
 
-    const ageNum = parseInt(signUpForm.age, 10);
-    if (isNaN(ageNum) || ageNum < 18) {
-      setSignUpError('You must be at least 18 years old to join Speed Meet Love.');
+    const trimmedAge = signUpForm.age.trim();
+    const ageNum = parseInt(trimmedAge, 10);
+    if (!trimmedAge || isNaN(ageNum) || ageNum < 18) {
+      setSignUpError('18+ Age Check Failed — Access Blocked: You must be at least 18 years old to join Speed Meet Love.');
       return;
     }
 
@@ -433,11 +435,22 @@ export const AuthModal: React.FC = () => {
           )}
 
           {/* TAB 2: SIGN UP */}
-          {authModalTab === 'signup' && (
-            <form onSubmit={handleSignUpSubmit} className="space-y-3">
+          {authModalTab === 'signup' && (() => {
+            const ageTrimmed = signUpForm.age.trim();
+            const parsedAge = parseInt(ageTrimmed, 10);
+            const hasAgeInput = ageTrimmed.length > 0 && !isNaN(parsedAge);
+            const ageCheckPassed = hasAgeInput && parsedAge >= 18;
+            const ageCheckFailed = hasAgeInput && parsedAge < 18;
+
+            return (
+            <form onSubmit={handleSignUpSubmit} noValidate className="space-y-3">
               {signUpError && (
-                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <div
+                  role="alert"
+                  data-testid="signup-age-blocked-error"
+                  className="p-3.5 rounded-2xl bg-red-50 border-2 border-red-400 text-[#7F1D1D] text-xs font-bold flex items-start gap-2.5"
+                >
+                  <XCircle className="w-4 h-4 text-[#B91C1C] shrink-0 mt-0.5" />
                   <span>{signUpError}</span>
                 </div>
               )}
@@ -497,13 +510,23 @@ export const AuthModal: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-800">Age (18+ Required)</label>
                   <input
                     type="number"
-                    min="18"
+                    min="1"
                     max="100"
                     value={signUpForm.age}
-                    onChange={e => setSignUpForm({ ...signUpForm, age: e.target.value })}
+                    onChange={e => {
+                      setSignUpForm({ ...signUpForm, age: e.target.value });
+                      setSignUpError(null);
+                    }}
                     placeholder="25"
                     required
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-500 text-xs text-slate-900"
+                    aria-label="Age (18+ Required)"
+                    className={`w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 text-xs text-slate-900 ${
+                      ageCheckFailed
+                        ? 'border-red-500 bg-red-50/40 focus:ring-red-600'
+                        : ageCheckPassed
+                        ? 'border-emerald-500 bg-emerald-50/30 focus:ring-emerald-600'
+                        : 'border-slate-300 focus:ring-red-500'
+                    }`}
                   />
                 </div>
                 <div className="space-y-1">
@@ -517,6 +540,36 @@ export const AuthModal: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {ageCheckPassed && (
+                <div
+                  data-testid="age-check-pass"
+                  className="p-3 rounded-2xl bg-emerald-50 border-2 border-emerald-400 text-[#064E3B] text-xs font-bold flex items-start gap-2.5"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
+                  <div>
+                    <div>18+ Adult Age Check: Passed ({parsedAge} years old)</div>
+                    <p className="text-[11px] font-medium text-[#065F46] mt-0.5">
+                      Eligible to create a Speed Meet Love account and participate in adult speed-dating events.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {ageCheckFailed && (
+                <div
+                  data-testid="age-check-fail"
+                  className="p-3 rounded-2xl bg-red-50 border-2 border-red-400 text-[#7F1D1D] text-xs font-bold flex items-start gap-2.5"
+                >
+                  <XCircle className="w-4 h-4 text-[#B91C1C] shrink-0 mt-0.5" />
+                  <div>
+                    <div>18+ Age Check Failed — Access Blocked</div>
+                    <p className="text-[11px] font-medium text-[#991B1B] mt-0.5">
+                      Entered age ({parsedAge}) is under 18. Speed Meet Love is strictly for adults 18 and older; registration is blocked.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
@@ -594,7 +647,8 @@ export const AuthModal: React.FC = () => {
                 </p>
               </div>
             </form>
-          )}
+            );
+          })()}
 
         </div>
 

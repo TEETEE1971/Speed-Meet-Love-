@@ -14,7 +14,10 @@ import {
   MessageCircle,
   LogOut,
   ChevronRight,
+  ShieldAlert,
+  PhoneOff,
 } from 'lucide-react';
+import { DisconnectReason } from 'livekit-client';
 import { Avatar } from './Avatar';
 import { LiveKitVideoStage } from './LiveKitVideoStage';
 import { FloatingHearts } from './FloatingHearts';
@@ -26,11 +29,13 @@ export const SecondChanceDateRoom: React.FC = () => {
     currentUser,
     users,
     matches,
+    events,
     selectedEventId,
     activeSecondDateSession,
     secondDateSessions,
     setCurrentView,
     setSelectedMatchId,
+    setReportModalTarget,
     endSecondDate,
     showNotification,
     appMode,
@@ -70,11 +75,14 @@ export const SecondChanceDateRoom: React.FC = () => {
 
   const [isCompleted, setIsCompleted] = useState(false);
   const [isConcluding, setIsConcluding] = useState(false);
+  const [isEndingCall, setIsEndingCall] = useState(false);
 
-  // LiveKit video room credentials
+  // LiveKit video room credentials & lifecycle refs
   const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
   const [liveKitServerUrl, setLiveKitServerUrl] = useState<string | null>(null);
   const [liveKitError, setLiveKitError] = useState<string | null>(null);
+  const intentionalDisconnectRef = useRef<boolean>(false);
+  const disconnectLiveKitRoomRef = useRef<(() => Promise<void>) | null>(null);
 
   // Audio / Camera controls
   const [micOn, setMicOn] = useState(true);
@@ -109,9 +117,18 @@ export const SecondChanceDateRoom: React.FC = () => {
           };
 
           if (data.isExpired || data.remainingSeconds <= 0 || data.status === 'completed') {
+            intentionalDisconnectRef.current = true;
+            if (disconnectLiveKitRoomRef.current) {
+              disconnectLiveKitRoomRef.current().catch(() => {});
+            }
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach(t => t.stop());
+              streamRef.current = null;
+            }
             setTimeLeft(0);
             setIsCompleted(true);
             setLiveKitToken(null);
+            setLiveKitServerUrl(null);
           } else {
             setTimeLeft(data.remainingSeconds);
           }
@@ -131,7 +148,7 @@ export const SecondChanceDateRoom: React.FC = () => {
 
   // Request LiveKit room token bound to this 10-minute second chance date
   const fetchLiveKitToken = useCallback(async () => {
-    if (!session) return;
+    if (!session || isCompleted || intentionalDisconnectRef.current) return;
     try {
       const res = await fetch('/api/livekit/token', {
         method: 'POST',
@@ -150,6 +167,8 @@ export const SecondChanceDateRoom: React.FC = () => {
       });
 
       const data = await res.json();
+      if (intentionalDisconnectRef.current) return;
+
       if (data.success && data.token) {
         setLiveKitToken(data.token);
         setLiveKitServerUrl(data.liveKitUrl);
@@ -164,12 +183,14 @@ export const SecondChanceDateRoom: React.FC = () => {
         }
       }
     } catch (err) {
-      setLiveKitError('LiveKit connection service error.');
+      if (!intentionalDisconnectRef.current) {
+        setLiveKitError('LiveKit connection service error.');
+      }
     }
-  }, [session, currentUser, partner, appMode]);
+  }, [session, isCompleted, currentUser, partner, appMode]);
 
   useEffect(() => {
-    if (!isCompleted) {
+    if (!isCompleted && !intentionalDisconnectRef.current) {
       fetchLiveKitToken();
     }
   }, [fetchLiveKitToken, isCompleted]);
@@ -282,14 +303,66 @@ export const SecondChanceDateRoom: React.FC = () => {
     setTimeout(() => setIsSendingHeart(false), 800);
   };
 
-  const handleConcludeDate = async () => {
-    setIsConcluding(true);
+  const performRealCallDisconnect = useCallback(async () => {
+    setIsEndingCall(true);
+    intentionalDisconnectRef.current = true;
+    try {
+      if (disconnectLiveKitRoomRef.current) {
+        await disconnectLiveKitRoomRef.current();
+      }
+    } catch (e) {}
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setCameraOn(false);
+    setMicOn(false);
+    setLiveKitToken(null);
+    setLiveKitServerUrl(null);
+    setLiveKitError(null);
+
     if (session) {
       await endSecondDate(session.sessionId);
     } else {
+      setIsCompleted(true);
       setCurrentView('results');
     }
+    setIsEndingCall(false);
+  }, [session, endSecondDate, setCurrentView]);
+
+  const handleConcludeDate = async () => {
+    setIsConcluding(true);
+    await performRealCallDisconnect();
+    setIsConcluding(false);
   };
+
+  const activeEventObj = events.find(e => e.EventID === selectedEventId);
+
+  const openSecondDateReportModal = useCallback(() => {
+    setReportModalTarget(partner, {
+      source: 'second_chance_date',
+      eventId: activeEventObj?.EventID || selectedEventId,
+      eventName: activeEventObj?.EventName || 'Second Chance Date (10-Min Video Session)',
+      roundId: session?.sessionId,
+      participants: [
+        {
+          userId: currentUser.UserID,
+          name: `${currentUser.FirstName} ${currentUser.LastName || ''}`.trim(),
+          email: currentUser.Email,
+          role: 'reporter',
+        },
+        {
+          userId: partner.UserID,
+          name: `${partner.FirstName} ${partner.LastName || ''}`.trim(),
+          email: partner.Email,
+          role: 'reported',
+        },
+      ],
+      callEndedOnReport: true,
+      onAfterSubmitEndCall: performRealCallDisconnect,
+    });
+  }, [setReportModalTarget, partner, activeEventObj, selectedEventId, session?.sessionId, currentUser, performRealCallDisconnect]);
 
   const formatMinutes = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -441,11 +514,23 @@ export const SecondChanceDateRoom: React.FC = () => {
               </button>
 
               <button
-                onClick={handleConcludeDate}
-                disabled={isConcluding}
-                className="px-3 sm:px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-xs font-bold text-[#111827] hover:text-[#B91C1C] transition-colors cursor-pointer"
+                type="button"
+                onClick={openSecondDateReportModal}
+                className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-300 text-xs font-bold text-[#991B1B] flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Report inappropriate behavior during this call"
               >
-                Conclude Date
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>Report</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConcludeDate}
+                disabled={isConcluding || isEndingCall}
+                className="px-3 sm:px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-bold text-white flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                <PhoneOff className="w-3.5 h-3.5" />
+                <span>{isEndingCall || isConcluding ? 'Ending...' : 'End Call'}</span>
               </button>
             </div>
           </div>
@@ -465,10 +550,31 @@ export const SecondChanceDateRoom: React.FC = () => {
                     micOn={micOn}
                     onToggleMic={() => setMicOn(prev => !prev)}
                     onToggleCamera={() => setCameraOn(prev => !prev)}
-                    onReportPartner={() => {}}
+                    onReportPartner={openSecondDateReportModal}
+                    onEndCall={performRealCallDisconnect}
+                    onRegisterDisconnect={fn => {
+                      disconnectLiveKitRoomRef.current = fn;
+                    }}
+                    isEndingCall={isEndingCall || isConcluding}
                     appMode={appMode}
-                    onDisconnect={() => setLiveKitToken(null)}
-                    onError={err => console.warn('LiveKit error:', err)}
+                    onDisconnect={reason => {
+                      setLiveKitToken(null);
+                      setLiveKitServerUrl(null);
+                      if (!intentionalDisconnectRef.current && reason !== DisconnectReason.CLIENT_INITIATED) {
+                        setLiveKitError('Video call disconnected.');
+                      }
+                    }}
+                    onError={err => {
+                      console.warn('LiveKit error:', err);
+                      if (!intentionalDisconnectRef.current) {
+                        setLiveKitError(err.message || 'LiveKit video error.');
+                      }
+                    }}
+                    onReconnectRequest={() => {
+                      if (!intentionalDisconnectRef.current && !isCompleted) {
+                        fetchLiveKitToken();
+                      }
+                    }}
                   />
                 ) : (
                   /* 2-Up Split Screen (Demonstration & Preview Mode) */
@@ -553,6 +659,33 @@ export const SecondChanceDateRoom: React.FC = () => {
                           {currentUser.SubscriptionTier}
                         </span>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {(!liveKitToken || !liveKitServerUrl) && (
+                  <div className="mt-2 px-3 py-2 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="text-[11px] text-slate-300 font-medium">
+                      Live calls are never continuously monitored or automatically scanned.
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={openSecondDateReportModal}
+                        className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/50 text-rose-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <ShieldAlert className="w-3.5 h-3.5" />
+                        <span>Report {partner.FirstName}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={performRealCallDisconnect}
+                        disabled={isEndingCall || isConcluding}
+                        className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                      >
+                        <PhoneOff className="w-3.5 h-3.5" />
+                        <span>{isEndingCall || isConcluding ? 'Disconnecting...' : 'End Call'}</span>
+                      </button>
                     </div>
                   </div>
                 )}

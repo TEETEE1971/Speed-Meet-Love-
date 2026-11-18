@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -6,12 +6,13 @@ import {
   useLocalParticipant,
   VideoTrack,
   useConnectionState,
+  useRoomContext,
 } from '@livekit/components-react';
-import { ConnectionState, Track } from 'livekit-client';
+import { ConnectionState, DisconnectReason, Track } from 'livekit-client';
 import type { RoomOptions } from 'livekit-client';
 import { User } from '../types';
 import { Avatar } from './Avatar';
-import { Mic, MicOff, Video, VideoOff, ShieldAlert, Radio, AlertCircle, RefreshCw } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, ShieldAlert, Radio, AlertCircle, RefreshCw, PhoneOff } from 'lucide-react';
 
 interface LiveKitVideoStageProps {
   token: string;
@@ -20,12 +21,15 @@ interface LiveKitVideoStageProps {
   currentUser: User;
   cameraOn: boolean;
   micOn: boolean;
-  onDisconnect?: (reason?: any) => void;
+  onDisconnect?: (reason?: DisconnectReason | any) => void;
   onError?: (error: Error) => void;
   onReconnectRequest?: () => void;
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onReportPartner: () => void;
+  onEndCall?: () => Promise<void> | void;
+  onRegisterDisconnect?: (disconnectFn: (() => Promise<void>) | null) => void;
+  isEndingCall?: boolean;
   onSimulateDrop?: () => void;
   appMode: 'demonstration' | 'production';
 }
@@ -222,6 +226,130 @@ function SelfLocalVideoFeed({
   );
 }
 
+function RoomLifecycleController({
+  onRegisterDisconnect,
+}: {
+  onRegisterDisconnect?: (disconnectFn: (() => Promise<void>) | null) => void;
+}) {
+  const room = useRoomContext();
+
+  const disconnectRoomNow = useCallback(async () => {
+    try {
+      await room.localParticipant.setCameraEnabled(false).catch(() => {});
+      await room.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+      room.localParticipant.trackPublications.forEach((pub) => {
+        try {
+          pub.track?.stop();
+        } catch (e) {}
+      });
+    } catch (e) {}
+    try {
+      await room.disconnect(true);
+    } catch (e) {}
+  }, [room]);
+
+  useEffect(() => {
+    if (!onRegisterDisconnect) return;
+    onRegisterDisconnect(disconnectRoomNow);
+    return () => {
+      onRegisterDisconnect(null);
+    };
+  }, [disconnectRoomNow, onRegisterDisconnect]);
+
+  return null;
+}
+
+function LiveCallSafetyControls({
+  micOn,
+  cameraOn,
+  isEndingCall,
+  onToggleMic,
+  onToggleCamera,
+  onReportPartner,
+  onEndCall,
+}: {
+  micOn: boolean;
+  cameraOn: boolean;
+  isEndingCall?: boolean;
+  onToggleMic: () => void;
+  onToggleCamera: () => void;
+  onReportPartner: () => void;
+  onEndCall?: () => Promise<void> | void;
+}) {
+  const room = useRoomContext();
+
+  const handleImmediateEndCall = async () => {
+    try {
+      await room.localParticipant.setCameraEnabled(false).catch(() => {});
+      await room.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+      room.localParticipant.trackPublications.forEach((pub) => {
+        try {
+          pub.track?.stop();
+        } catch (e) {}
+      });
+      await room.disconnect(true);
+    } catch (e) {}
+    if (onEndCall) {
+      await onEndCall();
+    }
+  };
+
+  return (
+    <div className="mt-3 p-3 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggleMic}
+          className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            micOn
+              ? 'bg-slate-800 hover:bg-slate-700 text-white'
+              : 'bg-rose-600 hover:bg-rose-700 text-white'
+          }`}
+        >
+          {micOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+          <span>{micOn ? 'Mute Mic' : 'Unmute Mic'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onToggleCamera}
+          className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            cameraOn
+              ? 'bg-slate-800 hover:bg-slate-700 text-white'
+              : 'bg-rose-600 hover:bg-rose-700 text-white'
+          }`}
+        >
+          {cameraOn ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
+          <span>{cameraOn ? 'Camera Off' : 'Camera On'}</span>
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onReportPartner}
+          className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/50 text-amber-200 font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+        >
+          <ShieldAlert className="w-4 h-4 text-amber-300" />
+          <span>Report Participant</span>
+        </button>
+
+        {onEndCall && (
+          <button
+            type="button"
+            disabled={isEndingCall}
+            onClick={handleImmediateEndCall}
+            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1.5 shadow-md transition-colors cursor-pointer disabled:opacity-60"
+          >
+            <PhoneOff className="w-4 h-4" />
+            <span>{isEndingCall ? 'Disconnecting...' : 'End Call'}</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export const LiveKitVideoStage: React.FC<LiveKitVideoStageProps> = ({
   token,
   serverUrl,
@@ -235,6 +363,9 @@ export const LiveKitVideoStage: React.FC<LiveKitVideoStageProps> = ({
   onToggleMic,
   onToggleCamera,
   onReportPartner,
+  onEndCall,
+  onRegisterDisconnect,
+  isEndingCall,
   onSimulateDrop,
   appMode,
 }) => {
@@ -274,6 +405,8 @@ export const LiveKitVideoStage: React.FC<LiveKitVideoStageProps> = ({
       }}
       className="relative w-full"
     >
+      <RoomLifecycleController onRegisterDisconnect={onRegisterDisconnect} />
+
       {/* In-room connection status overlay for transient signaling hiccups */}
       <ConnectionStatusOverlay onReconnectRequest={onReconnectRequest} />
 
@@ -378,6 +511,16 @@ export const LiveKitVideoStage: React.FC<LiveKitVideoStageProps> = ({
           </div>
         </div>
       </div>
+
+      <LiveCallSafetyControls
+        micOn={micOn}
+        cameraOn={cameraOn}
+        isEndingCall={isEndingCall}
+        onToggleMic={onToggleMic}
+        onToggleCamera={onToggleCamera}
+        onReportPartner={onReportPartner}
+        onEndCall={onEndCall}
+      />
     </LiveKitRoom>
   );
 };

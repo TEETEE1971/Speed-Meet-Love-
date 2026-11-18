@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import crypto from 'crypto';
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import webpush from 'web-push';
 import { initializeApp as initFirebaseApp } from 'firebase/app';
 import {
@@ -333,6 +333,75 @@ const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
 
 const isLiveKitConfigured = () => Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET);
 
+function getLiveKitRoomService(): RoomServiceClient | null {
+  if (!isLiveKitConfigured()) return null;
+  try {
+    const httpUrl = LIVEKIT_URL.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://');
+    return new RoomServiceClient(httpUrl, LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+  } catch (err) {
+    console.warn('[LiveKit] Failed to initialize RoomServiceClient:', err);
+    return null;
+  }
+}
+
+async function forceDisconnectLiveKitParticipants(
+  roomName: string,
+  targetUserIds: string[],
+  deleteWholeRoom = false
+): Promise<{
+  configured: boolean;
+  attempted: boolean;
+  removedFromSfu: string[];
+  roomDeleted: boolean;
+  note?: string;
+}> {
+  if (!isLiveKitConfigured() || !roomName) {
+    return {
+      configured: false,
+      attempted: false,
+      removedFromSfu: [],
+      roomDeleted: false,
+      note: 'LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET not set on server; session disconnected at application & token layer.',
+    };
+  }
+  const client = getLiveKitRoomService();
+  if (!client) {
+    return {
+      configured: false,
+      attempted: false,
+      removedFromSfu: [],
+      roomDeleted: false,
+      note: 'Unable to construct LiveKit RoomServiceClient.',
+    };
+  }
+  const removedFromSfu: string[] = [];
+  let roomDeleted = false;
+  for (const uid of targetUserIds) {
+    if (!uid) continue;
+    try {
+      await client.removeParticipant(roomName, uid);
+      removedFromSfu.push(uid);
+    } catch (err: any) {
+      // Participant may not be currently connected to the SFU room
+      console.log(`[LiveKit] removeParticipant notice for ${uid} in ${roomName}:`, err?.message || err);
+    }
+  }
+  if (deleteWholeRoom) {
+    try {
+      await client.deleteRoom(roomName);
+      roomDeleted = true;
+    } catch (err: any) {
+      console.log(`[LiveKit] deleteRoom notice for ${roomName}:`, err?.message || err);
+    }
+  }
+  return {
+    configured: true,
+    attempted: true,
+    removedFromSfu,
+    roomDeleted,
+  };
+}
+
 // Server-side persistent session store for active speed dating events
 export interface ServerLiveSession {
   userId: string;
@@ -442,6 +511,18 @@ export interface ServerSharedRound {
   lastUpdated: number;
   earlyExitedParticipants?: string[]; // userIds who explicitly tapped End Round early
   earlyEndTimestamps?: Record<string, number>;
+  terminatedByUserId?: string;
+  terminatedReason?: string;
+  terminatedAt?: number;
+  removedParticipants?: Record<
+    string,
+    {
+      removedBy: string;
+      removedAt: number;
+      reason: string;
+      reportId?: string;
+    }
+  >;
 }
 
 const DATA_DIR = process.env.DATA_DIR_OVERRIDE
@@ -967,6 +1048,12 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
   }
 
   const isParticipantEarlyExited = userId ? Boolean(round.earlyExitedParticipants?.includes(userId)) : false;
+  const userRemovalRecord = userId
+    ? getRoundRemovalRecord(eventId, roundIndex, userId) || round.removedParticipants?.[userId] || null
+    : null;
+  const userRemovedByModerator = Boolean(userRemovalRecord);
+  const callTerminated = Boolean(round.terminatedAt || (round.status !== 'call' && isParticipantEarlyExited));
+
   let userBreakStartedAt: number | null = null;
   let userBreakExpiresAt: number | null = null;
   let remainingBreakSeconds = round.breakDurationSeconds;
@@ -986,11 +1073,16 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
     remainingBreakSeconds = round.breakDurationSeconds;
   }
 
-  const remainingSeconds = (round.status === 'call' && !isParticipantEarlyExited)
-    ? Math.max(0, Math.floor((round.roundExpiresAt - now) / 1000))
-    : 0;
+  const remainingSeconds =
+    round.status === 'call' && !isParticipantEarlyExited && !userRemovedByModerator && !round.terminatedAt
+      ? Math.max(0, Math.floor((round.roundExpiresAt - now) / 1000))
+      : 0;
 
-  const userStage = isParticipantEarlyExited ? 'break' : round.status;
+  const userStage = userRemovedByModerator
+    ? 'removed'
+    : isParticipantEarlyExited || round.terminatedAt
+    ? 'break'
+    : round.status;
 
   return res.json({
     success: true,
@@ -1002,6 +1094,14 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
       status: round.status,
       userStage,
       userEndedEarly: isParticipantEarlyExited,
+      userRemovedByModerator,
+      removalReason: userRemovalRecord?.reason || null,
+      removedBy: userRemovalRecord?.removedBy || null,
+      removedAt: userRemovalRecord?.removedAt || null,
+      callTerminated,
+      terminatedAt: round.terminatedAt || null,
+      terminatedByUserId: round.terminatedByUserId || null,
+      terminatedReason: round.terminatedReason || null,
       roundStartedAt: round.roundStartedAt,
       roundExpiresAt: round.roundExpiresAt,
       roundDurationSeconds: round.roundDurationSeconds,
@@ -1011,21 +1111,21 @@ app.get('/api/events/:eventId/rounds/:roundIndex/timer', (req, res) => {
       remainingSeconds,
       remainingBreakSeconds,
       serverTime: now,
-      isExpired: now >= round.roundExpiresAt,
+      isExpired: now >= round.roundExpiresAt || Boolean(round.terminatedAt),
     },
   });
 });
 
-// API: Immediately end round early for an individual participant without terminating partner's 5-minute round
-app.post('/api/events/:eventId/rounds/:roundIndex/end-early', (req, res) => {
-  const { eventId, roundIndex: roundIndexParam } = req.params;
-  const roundIndex = Number(roundIndexParam) || 0;
-  const { userId, partnerId } = req.body;
-
-  if (!userId) {
-    return res.status(400).json({ success: false, error: 'userId is required' });
-  }
-
+// Shared server handler for disconnecting / ending an active call session
+async function executeEndRoundCall(params: {
+  eventId: string;
+  roundIndex: number;
+  userId: string;
+  partnerId?: string;
+  reason?: string;
+  endForBoth?: boolean;
+}) {
+  const { eventId, roundIndex, userId, partnerId = '', reason = 'user_ended_call', endForBoth = false } = params;
   const now = Date.now();
   let round = getSharedRound(eventId, roundIndex, userId, partnerId, true);
   if (!round) {
@@ -1043,41 +1143,135 @@ app.post('/api/events/:eventId/rounds/:roundIndex/end-early', (req, res) => {
     round.earlyExitedParticipants.push(userId);
   }
   round.earlyEndTimestamps[userId] = now;
+
+  if (endForBoth && partnerId) {
+    if (!round.earlyExitedParticipants.includes(partnerId)) {
+      round.earlyExitedParticipants.push(partnerId);
+    }
+    round.earlyEndTimestamps[partnerId] = now;
+  }
+
   round.lastUpdated = now;
 
-  // If ALL active participants have exited early, move the shared round into break
-  const allEnded = round.participants.length > 0 && round.participants.every(p => round!.earlyExitedParticipants?.includes(p));
+  // Clear active matchmaking / consent locks for the disconnected call so re-entry never auto-relaunches
+  for (const [mId, match] of liveActiveMatches.entries()) {
+    if (
+      match.eventId === eventId &&
+      match.roundIndex === roundIndex &&
+      (match.userA.userId === userId || match.userB.userId === userId)
+    ) {
+      liveActiveMatches.delete(mId);
+    }
+  }
+  const roomKey = `${eventId}_r${roundIndex}`;
+  const consentMap = roundConsentStore.get(roomKey);
+  if (consentMap) {
+    consentMap.delete(userId);
+    if (endForBoth && partnerId) {
+      consentMap.delete(partnerId);
+    }
+    saveConsentToDisk();
+  }
+
+  // Move shared round into break if both participants disconnected or safety end triggered
+  const allEnded =
+    endForBoth ||
+    (round.participants.length > 0 && round.participants.every(p => round!.earlyExitedParticipants?.includes(p)));
   if (allEnded && round.status === 'call') {
     round.status = 'break';
+    round.roundExpiresAt = now;
     round.breakStartedAt = now;
     round.breakExpiresAt = now + round.breakDurationSeconds * 1000;
+    round.terminatedAt = now;
+    round.terminatedByUserId = userId;
+    round.terminatedReason = reason;
   }
 
   saveSharedRoundsToDisk();
 
-  // Synchronize session store for this user
-  for (const mode of ['demonstration', 'production']) {
-    const key = getSessionKey(mode, userId);
-    const existingSession = sessions.get(key);
-    if (existingSession && existingSession.eventId === eventId) {
-      existingSession.roundIndex = roundIndex;
-      existingSession.stage = 'break';
-      existingSession.breakStartedAt = now;
-      existingSession.lastActive = now;
-      sessions.set(key, existingSession);
+  // Synchronize session store for user (and partner if terminated for both)
+  const usersToSync = endForBoth && partnerId ? [userId, partnerId] : [userId];
+  for (const uid of usersToSync) {
+    for (const mode of ['demonstration', 'production']) {
+      const key = getSessionKey(mode, uid);
+      const existingSession = sessions.get(key);
+      if (existingSession && existingSession.eventId === eventId) {
+        existingSession.roundIndex = roundIndex;
+        existingSession.stage = 'break';
+        existingSession.breakStartedAt = now;
+        existingSession.lastActive = now;
+        sessions.set(key, existingSession);
+      }
     }
   }
 
-  return res.json({
+  // Compute deterministic LiveKit room name and disconnect at SFU layer when configured
+  const sortedDaterIds = [userId, partnerId].filter(Boolean).sort().join('_');
+  const roomName = sortedDaterIds ? `sml_${eventId}_r${roundIndex}_${sortedDaterIds}` : '';
+  const sfuResult = roomName
+    ? await forceDisconnectLiveKitParticipants(
+        roomName,
+        endForBoth ? [userId, partnerId].filter(Boolean) : [userId],
+        Boolean(endForBoth)
+      )
+    : { configured: isLiveKitConfigured(), attempted: false, removedFromSfu: [], roomDeleted: false };
+
+  return {
     success: true,
+    callDisconnected: true,
     userEndedEarly: true,
     userStage: 'break',
+    roundId: round.roundId,
+    roomName: roomName || null,
     roundStatus: round.status,
     roundExpiresAt: round.roundExpiresAt,
     userBreakExpiresAt: now + round.breakDurationSeconds * 1000,
     remainingBreakSeconds: round.breakDurationSeconds,
+    sfuResult,
     serverTime: now,
+  };
+}
+
+// API: Immediately disconnect an active video call session (terminates server session + LiveKit SFU participant)
+app.post('/api/events/:eventId/rounds/:roundIndex/end-call', async (req, res) => {
+  const { eventId, roundIndex: roundIndexParam } = req.params;
+  const roundIndex = Number(roundIndexParam) || 0;
+  const { userId, partnerId, reason = 'user_ended_call', endForBoth = false } = req.body || {};
+
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  const result = await executeEndRoundCall({
+    eventId,
+    roundIndex,
+    userId,
+    partnerId,
+    reason,
+    endForBoth: Boolean(endForBoth),
   });
+  return res.json(result);
+});
+
+// API: Immediately end round early for an individual participant without terminating partner's 5-minute round
+app.post('/api/events/:eventId/rounds/:roundIndex/end-early', async (req, res) => {
+  const { eventId, roundIndex: roundIndexParam } = req.params;
+  const roundIndex = Number(roundIndexParam) || 0;
+  const { userId, partnerId, reason = 'user_ended_early', endForBoth = false } = req.body || {};
+
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  const result = await executeEndRoundCall({
+    eventId,
+    roundIndex,
+    userId,
+    partnerId,
+    reason,
+    endForBoth: Boolean(endForBoth),
+  });
+  return res.json(result);
 });
 
 // API: Initialize or synchronize round timer (Idempotent: Never resets active timer)
@@ -2050,15 +2244,26 @@ app.get('/api/second-date/status', (req, res) => {
 });
 
 // API: End second chance date and return to match details
-app.post('/api/second-date/:sessionId/end', (req, res) => {
+app.post('/api/second-date/:sessionId/end', async (req, res) => {
   const { sessionId } = req.params;
   const session = secondDateSessions.get(sessionId);
+  let sfuResult = null;
   if (session) {
     session.status = 'completed';
     session.lastUpdated = Date.now();
     saveSecondDateSessionsToDisk();
+    sfuResult = await forceDisconnectLiveKitParticipants(
+      `sml_second_${session.sessionId}`,
+      [session.userA, session.userB],
+      true
+    );
   }
-  res.json({ success: true, message: 'Second chance date ended. Match saved!' });
+  res.json({
+    success: true,
+    callDisconnected: true,
+    sfuResult,
+    message: 'Second chance date disconnected and match saved.',
+  });
 });
 
 // ============================================================================
@@ -2252,6 +2457,13 @@ function saveLaunchOfferConfigToDisk() {
   }
 }
 
+export interface ReportParticipantRecord {
+  userId: string;
+  name?: string;
+  email?: string;
+  role?: 'reporter' | 'reported' | 'participant';
+}
+
 export interface ServerReportRecord {
   id: string;
   reporterId: string;
@@ -2265,13 +2477,54 @@ export interface ServerReportRecord {
   timestamp: string;
   createdAt: number;
   status: 'pending' | 'banned' | 'dismissed' | 'reviewed';
+  source?: string;
+  eventId?: string;
+  eventName?: string;
+  roundIndex?: number;
+  roundNumber?: number;
+  roundId?: string;
+  participants?: ReportParticipantRecord[];
+  callEndedOnReport?: boolean;
+  urgent?: boolean;
+  urgencyLevel?: 'urgent' | 'standard';
+  urgencyReasons?: string[];
+  urgentAcknowledgedAt?: number;
+  urgentAcknowledgedBy?: string;
+  notificationDispatch?: {
+    emailAttempted: boolean;
+    emailSent: boolean;
+    emailProvider?: string;
+    pushAttempted: boolean;
+    pushDelivered: number;
+    pushSubscriptionsCount: number;
+    inAppFlagged: boolean;
+    note?: string;
+  };
   actionTaken?: string;
   actionAt?: number;
   actionBy?: string;
 }
 
+export interface ActiveRoundRemovalRecord {
+  removalId: string;
+  eventId: string;
+  roundIndex: number;
+  roundNumber: number;
+  roundId?: string;
+  userId: string;
+  userName?: string;
+  removedBy: string;
+  removedAt: number;
+  reason: string;
+  reportId?: string;
+  sfuRemoved?: boolean;
+}
+
 const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
 const serverReports = new Map<string, ServerReportRecord>();
+
+const ROUND_REMOVALS_FILE = path.join(DATA_DIR, 'round_removals.json');
+const moderatorRoundRemovals = new Map<string, ActiveRoundRemovalRecord>();
 
 const BANNED_USERS_FILE = path.join(DATA_DIR, 'banned_users.json');
 const bannedUsers = new Set<string>();
@@ -2615,9 +2868,50 @@ function saveReportsToDisk() {
   try {
     ensureStorageDirectory();
     const array = Array.from(serverReports.values());
-    fs.writeFileSync(REPORTS_FILE, JSON.stringify(array, null, 2), 'utf-8');
+    writeJsonAtomicSync(REPORTS_FILE, array);
   } catch (err) {
     console.warn('Failed to save reports to disk:', err);
+  }
+}
+
+function getRoundRemovalKey(eventId: string, roundIndex: number, userId: string): string {
+  return `${eventId}_r${roundIndex}_${userId}`;
+}
+
+function getRoundRemovalRecord(
+  eventId: string,
+  roundIndex: number,
+  userId: string
+): ActiveRoundRemovalRecord | undefined {
+  return moderatorRoundRemovals.get(getRoundRemovalKey(eventId, roundIndex, userId));
+}
+
+function loadRoundRemovalsFromDisk() {
+  try {
+    ensureStorageDirectory();
+    if (fs.existsSync(ROUND_REMOVALS_FILE)) {
+      const data = fs.readFileSync(ROUND_REMOVALS_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (item && item.eventId && typeof item.roundIndex === 'number' && item.userId) {
+            moderatorRoundRemovals.set(getRoundRemovalKey(item.eventId, item.roundIndex, item.userId), item);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load round removals from disk:', err);
+  }
+}
+
+function saveRoundRemovalsToDisk() {
+  try {
+    ensureStorageDirectory();
+    const array = Array.from(moderatorRoundRemovals.values());
+    writeJsonAtomicSync(ROUND_REMOVALS_FILE, array);
+  } catch (err) {
+    console.warn('Failed to save round removals to disk:', err);
   }
 }
 
@@ -2776,6 +3070,7 @@ function seedDefaultUsersIfEmpty() {
 
 loadUsersFromDisk();
 loadReportsFromDisk();
+loadRoundRemovalsFromDisk();
 loadBannedUsersFromDisk();
 loadGrantedTestersFromDisk();
 seedDesignatedTesterRecordsIfMissing();
@@ -2959,8 +3254,22 @@ async function syncDurableDatabaseOnStartup() {
       });
     }
 
+    // 2f. Sync reports from durable storage
+    const reportsCol = firestoreCollection(firestoreDb, 'reports');
+    const reportsSnap = await firestoreGetDocs(reportsCol).catch(() => null);
+    if (reportsSnap && !reportsSnap.empty) {
+      reportsSnap.forEach(d => {
+        const item = d.data() as ServerReportRecord;
+        if (item && item.id && !serverReports.has(item.id)) {
+          serverReports.set(item.id, item);
+        }
+      });
+    }
+
     // 3. Keep local backup files in sync
     saveUsersToDisk();
+    saveReportsToDisk();
+    saveRoundRemovalsToDisk();
     saveBannedUsersToDisk();
     saveGrantedTestersToDisk();
     saveWaitlistToDisk();
@@ -3481,33 +3790,32 @@ function resolveVerificationBaseUrl(reqOrigin?: string): string {
   return (process.env.APP_URL || APP_URL).replace(/\/$/, '');
 }
 
-async function dispatchVerificationEmail(
-  email: string,
-  firstName: string,
-  verifyUrl: string
-): Promise<{ sent: boolean; provider: 'resend' | 'sendgrid' | 'smtp' | 'none' }> {
+function getConfiguredEmailProvider(): {
+  configured: boolean;
+  provider: 'resend' | 'sendgrid' | 'smtp' | 'none';
+  fromAddress: string;
+} {
   const { apiKey: resendKey, fromAddress } = getResendEmailConfig();
-  const subject = 'Verify your email for Speed Meet Love';
-  const safeFirstName = escapeEmailHtml(firstName || 'Member');
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; color: #111827;">
-      <h2 style="color: #be185d;">Welcome to Speed Meet Love, ${safeFirstName}!</h2>
-      <p>Please verify your email address by clicking the link below to activate full member verification and discover if you’ve claimed one of our first 50 eligible spots for one month of free Premium.</p>
-      <p style="margin: 24px 0;">
-        <a href="${verifyUrl}" style="background: #dc2626; color: #ffffff; padding: 12px 22px; border-radius: 9999px; text-decoration: none; font-weight: bold;">Verify Email Address</a>
-      </p>
-      <p style="font-size: 13px; color: #374151; word-break: break-all;">Or copy and open this link in your browser:<br /><a href="${verifyUrl}" style="color: #be185d;">${verifyUrl}</a></p>
-      <p style="font-size: 12px; color: #6b7280;">This verification link expires in 24 hours.</p>
-    </div>
-  `;
-  const text = [
-    `Welcome to Speed Meet Love, ${firstName || 'Member'}!`,
-    '',
-    'Verify your email address by clicking this link:',
-    verifyUrl,
-    '',
-    'This verification link expires in 24 hours.',
-  ].join('\n');
+  if (resendKey) {
+    return { configured: true, provider: 'resend', fromAddress };
+  }
+  if (process.env.SENDGRID_API_KEY?.trim()) {
+    return { configured: true, provider: 'sendgrid', fromAddress };
+  }
+  if (process.env.SMTP_HOST?.trim()) {
+    return { configured: true, provider: 'smtp', fromAddress };
+  }
+  return { configured: false, provider: 'none', fromAddress };
+}
+
+async function dispatchTransactionalEmail(params: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}): Promise<{ sent: boolean; provider: 'resend' | 'sendgrid' | 'smtp' | 'none' }> {
+  const { to, subject, text, html } = params;
+  const { apiKey: resendKey, fromAddress } = getResendEmailConfig();
 
   if (resendKey) {
     try {
@@ -3519,7 +3827,7 @@ async function dispatchVerificationEmail(
         },
         body: JSON.stringify({
           from: fromAddress,
-          to: [email],
+          to: [to],
           subject,
           text,
           html,
@@ -3534,7 +3842,7 @@ async function dispatchVerificationEmail(
       console.warn('[EMAIL] Resend error:', err);
     }
   } else {
-    console.warn('[EMAIL] Verification email not sent: RESEND_API_KEY is not configured in environment variables.');
+    console.warn('[EMAIL] Email not sent: RESEND_API_KEY is not configured in environment variables.');
   }
 
   const sendgridKey = process.env.SENDGRID_API_KEY?.trim();
@@ -3547,7 +3855,7 @@ async function dispatchVerificationEmail(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          personalizations: [{ to: [{ email }] }],
+          personalizations: [{ to: [{ email: to }] }],
           from: { email: fromAddress.includes('<') ? fromAddress.split('<')[1].replace('>', '').trim() : fromAddress },
           subject,
           content: [
@@ -3581,7 +3889,7 @@ async function dispatchVerificationEmail(
       });
       await transporter.sendMail({
         from: fromAddress,
-        to: email,
+        to,
         subject,
         text,
         html,
@@ -3593,6 +3901,36 @@ async function dispatchVerificationEmail(
   }
 
   return { sent: false, provider: 'none' };
+}
+
+async function dispatchVerificationEmail(
+  email: string,
+  firstName: string,
+  verifyUrl: string
+): Promise<{ sent: boolean; provider: 'resend' | 'sendgrid' | 'smtp' | 'none' }> {
+  const subject = 'Verify your email for Speed Meet Love';
+  const safeFirstName = escapeEmailHtml(firstName || 'Member');
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; color: #111827;">
+      <h2 style="color: #be185d;">Welcome to Speed Meet Love, ${safeFirstName}!</h2>
+      <p>Please verify your email address by clicking the link below to activate full member verification and discover if you’ve claimed one of our first 50 eligible spots for one month of free Premium.</p>
+      <p style="margin: 24px 0;">
+        <a href="${verifyUrl}" style="background: #dc2626; color: #ffffff; padding: 12px 22px; border-radius: 9999px; text-decoration: none; font-weight: bold;">Verify Email Address</a>
+      </p>
+      <p style="font-size: 13px; color: #374151; word-break: break-all;">Or copy and open this link in your browser:<br /><a href="${verifyUrl}" style="color: #be185d;">${verifyUrl}</a></p>
+      <p style="font-size: 12px; color: #6b7280;">This verification link expires in 24 hours.</p>
+    </div>
+  `;
+  const text = [
+    `Welcome to Speed Meet Love, ${firstName || 'Member'}!`,
+    '',
+    'Verify your email address by clicking this link:',
+    verifyUrl,
+    '',
+    'This verification link expires in 24 hours.',
+  ].join('\n');
+
+  return dispatchTransactionalEmail({ to: email, subject, text, html });
 }
 
 async function issueEmailVerificationForUser(
@@ -4760,9 +5098,160 @@ app.post('/api/account/delete', async (req, res) => {
   });
 });
 
-// API: Submit In-App Member Safety Report (persists on server)
-app.post('/api/reports', (req, res) => {
-  const { reportedUserId, reason, notes, reporterId } = req.body;
+function getOwnerNotificationTargets(): { ownerUserIds: string[]; ownerEmails: string[] } {
+  const ownerIds = new Set<string>(OWNER_USER_IDS);
+  const ownerEmails = new Set<string>(OWNER_EMAILS);
+  for (const u of serverUsers.values()) {
+    const emailNorm = (u.email || '').toLowerCase().trim();
+    if (OWNER_EMAILS.has(emailNorm) || OWNER_USER_IDS.has(u.userId)) {
+      ownerIds.add(u.userId);
+      if (emailNorm) ownerEmails.add(emailNorm);
+    }
+  }
+  return {
+    ownerUserIds: Array.from(ownerIds),
+    ownerEmails: Array.from(ownerEmails),
+  };
+}
+
+async function saveReportToDurableDatabase(report: ServerReportRecord): Promise<void> {
+  serverReports.set(report.id, report);
+  saveReportsToDisk();
+  if (firestoreDb) {
+    try {
+      await firestoreSetDoc(firestoreDoc(firestoreDb, 'reports', report.id), cleanFirestoreObject(report));
+    } catch (err) {
+      logFirestoreError(err, FirestoreOperationType.WRITE, `reports/${report.id}`);
+    }
+  }
+}
+
+async function notifyOwnerOfUrgentReport(report: ServerReportRecord): Promise<{
+  emailAttempted: boolean;
+  emailSent: boolean;
+  emailProvider?: string;
+  pushAttempted: boolean;
+  pushDelivered: number;
+  pushSubscriptionsCount: number;
+  inAppFlagged: boolean;
+  note: string;
+}> {
+  const { ownerUserIds } = getOwnerNotificationTargets();
+  const pushTargetIds = Array.from(new Set([...ownerUserIds, ...OWNER_EMAILS]));
+
+  let totalSubs = 0;
+  let totalDelivered = 0;
+  for (const targetId of pushTargetIds) {
+    const subs = userPushSubscriptions.get(targetId) || [];
+    totalSubs += subs.length;
+    if (subs.length > 0) {
+      const pushRes = await sendPushNotificationToUser(targetId, {
+        title: `URGENT Safety Report · ${report.eventName || 'Speed Meet Love'}`,
+        body: `${report.reason} reported against ${report.reportedUserName || report.reportedUserId}${report.roundNumber ? ` (Round ${report.roundNumber})` : ''}.`,
+        icon: '/assets/kristy_exact.png',
+        tag: `urgent_report_${report.id}`,
+        data: { view: 'owner_reports', reportId: report.id },
+      });
+      totalDelivered += pushRes.delivered;
+    }
+  }
+
+  const emailStatus = getConfiguredEmailProvider();
+  let emailSent = false;
+  let emailProvider: string = emailStatus.provider;
+
+  if (emailStatus.configured) {
+    const recipient = Array.from(OWNER_EMAILS)[0] || 'kristylten@gmail.com';
+    const safeReason = escapeEmailHtml(report.reason);
+    const safeEvent = escapeEmailHtml(report.eventName || report.eventId || 'Platform / Outside Live Round');
+    const safeRound = report.roundNumber ? `Round ${report.roundNumber}` : 'N/A';
+    const safeParticipants = escapeEmailHtml(
+      (report.participants || []).map(p => `${p.name || p.userId} (${p.role || 'participant'}: ${p.userId})`).join(', ') ||
+        `${report.reporterName || report.reporterId}, ${report.reportedUserName || report.reportedUserId}`
+    );
+    const safeNotes = escapeEmailHtml(report.notes || 'No additional notes provided.');
+    const emailRes = await dispatchTransactionalEmail({
+      to: recipient,
+      subject: `[URGENT SAFETY REPORT] ${report.reason} — Speed Meet Love`,
+      text: [
+        'URGENT SAFETY REPORT SUBMITTED ON SPEED MEET LOVE',
+        `Report ID: ${report.id}`,
+        `Submitted At: ${report.timestamp}`,
+        `Source: ${report.source || 'app'}`,
+        `Event: ${report.eventName || report.eventId || 'N/A'}`,
+        `Round: ${safeRound}`,
+        `Participants: ${(report.participants || []).map(p => `${p.name || p.userId} (${p.userId})`).join(', ')}`,
+        `Reported Member: ${report.reportedUserName || 'Member'} (${report.reportedUserId})`,
+        `Reporter: ${report.reporterName || 'Member'} (${report.reporterId})`,
+        `Reason: ${report.reason}`,
+        `Urgency Reasons: ${(report.urgencyReasons || []).join('; ')}`,
+        `Details: ${report.notes || 'None'}`,
+        '',
+        'Review this report in the Owner Safety Reports dashboard.',
+      ].join('\n'),
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; color: #111827;">
+          <div style="background: #991b1b; color: #ffffff; padding: 16px 20px; border-radius: 12px 12px 0 0;">
+            <strong style="font-size: 16px;">URGENT SAFETY REPORT — OWNER REVIEW REQUIRED</strong>
+          </div>
+          <div style="border: 1px solid #fecdd3; border-top: none; padding: 18px 20px; border-radius: 0 0 12px 12px;">
+            <p><strong>Report ID:</strong> ${escapeEmailHtml(report.id)}</p>
+            <p><strong>Reason:</strong> ${safeReason}</p>
+            <p><strong>Event:</strong> ${safeEvent} | <strong>Round:</strong> ${escapeEmailHtml(safeRound)}</p>
+            <p><strong>Participants:</strong> ${safeParticipants}</p>
+            <p><strong>Timestamp:</strong> ${escapeEmailHtml(report.timestamp)}</p>
+            <p><strong>Details:</strong><br/>${safeNotes}</p>
+          </div>
+        </div>
+      `,
+    });
+    emailSent = emailRes.sent;
+    emailProvider = emailRes.provider;
+  }
+
+  const notesParts: string[] = ['Flagged URGENT in Owner Safety Dashboard'];
+  if (emailSent) {
+    notesParts.push(`Alert email sent via ${emailProvider}`);
+  } else if (!emailStatus.configured) {
+    notesParts.push('Email alert skipped (RESEND_API_KEY not configured on server)');
+  } else {
+    notesParts.push('Email alert failed to send');
+  }
+  if (totalDelivered > 0) {
+    notesParts.push(`Browser push delivered to ${totalDelivered} device(s)`);
+  } else if (totalSubs === 0) {
+    notesParts.push('No owner browser push subscription registered');
+  }
+
+  return {
+    emailAttempted: emailStatus.configured,
+    emailSent,
+    emailProvider,
+    pushAttempted: totalSubs > 0,
+    pushDelivered: totalDelivered,
+    pushSubscriptionsCount: totalSubs,
+    inAppFlagged: true,
+    note: notesParts.join(' · '),
+  };
+}
+
+// API: Submit In-App Member Safety Report (persists on server with full event/round/participant context & urgent flagging)
+app.post('/api/reports', async (req, res) => {
+  const {
+    reportedUserId,
+    reason,
+    notes,
+    reporterId,
+    source = 'other',
+    eventId,
+    eventName,
+    roundIndex,
+    roundNumber,
+    roundId,
+    participants: rawParticipants,
+    callEndedOnReport = false,
+  } = req.body || {};
+
   if (!reportedUserId || typeof reportedUserId !== 'string') {
     return res.status(400).json({ success: false, error: 'reportedUserId is required' });
   }
@@ -4772,7 +5261,7 @@ app.post('/api/reports', (req, res) => {
 
   // Identify reporter
   const authUser = verifyAuthenticatedUser(req);
-  const actualReporterId = authUser ? authUser.userId : (typeof reporterId === 'string' && reporterId.trim() ? reporterId.trim() : 'guest');
+  const actualReporterId = authUser ? authUser.userId : typeof reporterId === 'string' && reporterId.trim() ? reporterId.trim() : 'guest';
   const actualReporterEmail = authUser ? authUser.email : undefined;
 
   let reporterName = 'Anonymous Member';
@@ -4789,6 +5278,84 @@ app.post('/api/reports', (req, res) => {
     reportedUserEmail = targetUser.email;
   }
 
+  // Normalize event, round, and participants metadata
+  const cleanEventId = typeof eventId === 'string' && eventId.trim() ? eventId.trim() : undefined;
+  const launchEvt = cleanEventId ? serverLaunchEvents.get(cleanEventId) : undefined;
+  const cleanEventName =
+    typeof eventName === 'string' && eventName.trim()
+      ? eventName.trim()
+      : launchEvt?.EventName || undefined;
+  const parsedRoundIndex =
+    typeof roundIndex === 'number' && !Number.isNaN(roundIndex)
+      ? Math.max(0, Math.floor(roundIndex))
+      : typeof roundNumber === 'number' && !Number.isNaN(roundNumber) && roundNumber >= 1
+      ? Math.floor(roundNumber) - 1
+      : undefined;
+  const parsedRoundNumber =
+    typeof roundNumber === 'number' && !Number.isNaN(roundNumber)
+      ? Math.max(1, Math.floor(roundNumber))
+      : parsedRoundIndex !== undefined
+      ? parsedRoundIndex + 1
+      : undefined;
+
+  const matchedRound =
+    cleanEventId && parsedRoundIndex !== undefined
+      ? getSharedRound(cleanEventId, parsedRoundIndex, actualReporterId, reportedUserId, true)
+      : undefined;
+  const cleanRoundId =
+    typeof roundId === 'string' && roundId.trim()
+      ? roundId.trim()
+      : matchedRound?.roundId || (cleanEventId && parsedRoundIndex !== undefined ? `${cleanEventId}_r${parsedRoundIndex}` : undefined);
+
+  // Merge participants cleanly without duplicates
+  const participantMap = new Map<string, ReportParticipantRecord>();
+  const addParticipant = (p: ReportParticipantRecord) => {
+    if (!p.userId) return;
+    const u = serverUsers.get(p.userId);
+    const resolvedName = p.name || (u ? `${u.firstName} ${u.lastName}`.trim() : undefined);
+    const existing = participantMap.get(p.userId);
+    participantMap.set(p.userId, {
+      userId: p.userId,
+      name: resolvedName || existing?.name || p.userId,
+      ...(p.email || u?.email ? { email: p.email || u?.email } : {}),
+      role: p.role || existing?.role || 'participant',
+    });
+  };
+
+  addParticipant({ userId: actualReporterId, name: reporterName, email: actualReporterEmail, role: 'reporter' });
+  addParticipant({ userId: reportedUserId, name: reportedUserName, email: reportedUserEmail, role: 'reported' });
+  if (matchedRound?.participants) {
+    for (const pid of matchedRound.participants) {
+      addParticipant({ userId: pid, role: pid === actualReporterId ? 'reporter' : pid === reportedUserId ? 'reported' : 'participant' });
+    }
+  }
+  if (Array.isArray(rawParticipants)) {
+    for (const item of rawParticipants.slice(0, 10)) {
+      if (item && typeof item.userId === 'string') {
+        addParticipant({
+          userId: item.userId,
+          name: typeof item.name === 'string' ? item.name : undefined,
+          role: item.role,
+        });
+      }
+    }
+  }
+
+  // Determine urgency for Owner review
+  const cleanSource = typeof source === 'string' && source.trim() ? source.trim() : 'other';
+  const cleanReason = reason.trim();
+  const isLiveRoundReport =
+    cleanSource === 'live_video_round' ||
+    cleanSource === 'second_chance_date' ||
+    Boolean(cleanEventId && parsedRoundNumber !== undefined);
+  const isHighRiskReason =
+    /child safety|underage|csae|csam|sexual|explicit|solicit|harass|threat|assault|non-consent/i.test(cleanReason);
+
+  const urgencyReasons: string[] = [];
+  if (isLiveRoundReport) urgencyReasons.push('Submitted during live video date');
+  if (isHighRiskReason) urgencyReasons.push(`High-severity policy category (${cleanReason})`);
+  const isUrgent = Boolean(req.body?.urgent) || urgencyReasons.length > 0;
+
   const reportId = `rep_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = Date.now();
   const newReport: ServerReportRecord = {
@@ -4799,22 +5366,55 @@ app.post('/api/reports', (req, res) => {
     reportedUserId,
     reportedUserName,
     reportedUserEmail,
-    reason: reason.trim(),
+    reason: cleanReason,
     notes: typeof notes === 'string' ? notes.trim() : '',
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(now).toISOString(),
     createdAt: now,
     status: 'pending',
+    source: cleanSource,
+    ...(cleanEventId ? { eventId: cleanEventId } : {}),
+    ...(cleanEventName ? { eventName: cleanEventName } : {}),
+    ...(parsedRoundIndex !== undefined ? { roundIndex: parsedRoundIndex } : {}),
+    ...(parsedRoundNumber !== undefined ? { roundNumber: parsedRoundNumber } : {}),
+    ...(cleanRoundId ? { roundId: cleanRoundId } : {}),
+    participants: Array.from(participantMap.values()),
+    callEndedOnReport: Boolean(callEndedOnReport),
+    urgent: isUrgent,
+    urgencyLevel: isUrgent ? 'urgent' : 'standard',
+    urgencyReasons,
   };
 
-  serverReports.set(reportId, newReport);
-  saveReportsToDisk();
+  if (isUrgent) {
+    newReport.notificationDispatch = await notifyOwnerOfUrgentReport(newReport);
+  } else {
+    newReport.notificationDispatch = {
+      emailAttempted: false,
+      emailSent: false,
+      pushAttempted: false,
+      pushDelivered: 0,
+      pushSubscriptionsCount: 0,
+      inAppFlagged: false,
+      note: 'Saved for standard owner review.',
+    };
+  }
 
-  console.log(`[Safety Report] Stored new report ${reportId} against user ${reportedUserId} for reason: "${reason}". Persisted to disk.`);
+  await saveReportToDurableDatabase(newReport);
+
+  console.log(
+    `[Safety Report] Stored ${isUrgent ? 'URGENT ' : ''}report ${reportId} against ${reportedUserId}` +
+      `${cleanEventId ? ` (event=${cleanEventId}, round=${parsedRoundNumber ?? parsedRoundIndex})` : ''} for "${cleanReason}".`
+  );
 
   return res.status(201).json({
     success: true,
     reportId,
-    message: 'Report submitted securely. The platform owner will review it promptly.',
+    urgent: isUrgent,
+    urgencyReasons,
+    notificationDispatch: newReport.notificationDispatch,
+    report: newReport,
+    message: isUrgent
+      ? 'Urgent report saved and flagged directly for moderator/owner review.'
+      : 'Report submitted securely for platform owner review.',
   });
 });
 
@@ -4828,23 +5428,334 @@ app.get('/api/owner/reports', (req, res) => {
     return res.status(403).json({ success: false, error: 'Access denied: Owner authorization required.' });
   }
 
-  const reportsList = Array.from(serverReports.values()).sort((a, b) => b.createdAt - a.createdAt);
+  const reportsList = Array.from(serverReports.values()).sort((a, b) => {
+    const aUrgentPending = a.status === 'pending' && Boolean(a.urgent) ? 1 : 0;
+    const bUrgentPending = b.status === 'pending' && Boolean(b.urgent) ? 1 : 0;
+    if (aUrgentPending !== bUrgentPending) return bUrgentPending - aUrgentPending;
+    return b.createdAt - a.createdAt;
+  });
+
+  const { ownerUserIds } = getOwnerNotificationTargets();
+  const ownerPushIds = Array.from(new Set([...ownerUserIds, ...OWNER_EMAILS]));
+  const ownerPushCount = ownerPushIds.reduce((sum, id) => sum + (userPushSubscriptions.get(id)?.length || 0), 0);
+  const emailCfg = getConfiguredEmailProvider();
+
   return res.json({
     success: true,
     ownerEmail: authUser.email,
     reports: reportsList,
     bannedUsers: Array.from(bannedUsers),
+    notificationCapabilities: {
+      inAppUrgentFlagging: true,
+      emailConfigured: emailCfg.configured,
+      emailProvider: emailCfg.provider,
+      pushConfigured: Boolean(vapidKeys.publicKey && vapidKeys.privateKey),
+      ownerPushSubscriptionsCount: ownerPushCount,
+      liveKitConfigured: isLiveKitConfigured(),
+    },
     summary: {
       total: reportsList.length,
       pending: reportsList.filter(r => r.status === 'pending').length,
+      urgentPending: reportsList.filter(r => r.status === 'pending' && Boolean(r.urgent)).length,
       banned: reportsList.filter(r => r.status === 'banned').length,
       dismissed: reportsList.filter(r => r.status === 'dismissed').length,
     },
   });
 });
 
+// API: Owner Urgent Alert Badge Summary (Owner-Only)
+app.get('/api/owner/reports/urgent-status', (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({ success: false, error: 'Access denied: Owner authorization required.' });
+  }
+
+  const allReports = Array.from(serverReports.values());
+  const urgentPending = allReports.filter(r => r.status === 'pending' && Boolean(r.urgent));
+  const pending = allReports.filter(r => r.status === 'pending');
+
+  return res.json({
+    success: true,
+    urgentPendingCount: urgentPending.length,
+    pendingCount: pending.length,
+    latestUrgentReport: urgentPending.sort((a, b) => b.createdAt - a.createdAt)[0] || null,
+  });
+});
+
+// API: Moderator-Only List Active Video Rounds & Recent Removals (Owner-Only)
+app.get('/api/owner/active-rounds', (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({ success: false, error: 'Access denied: Moderator/Owner authorization required.' });
+  }
+
+  syncSharedRoundsFromDisk();
+  const now = Date.now();
+  const MAX_AGE_MS = 30 * 60 * 1000;
+  const roundsMap = new Map<string, any>();
+
+  for (const round of sharedRounds.values()) {
+    if (round.roundStartedAt && now - round.roundStartedAt > MAX_AGE_MS) continue;
+    const launchEvt = serverLaunchEvents.get(round.eventId);
+    const participants = (round.participants || []).map(uid => {
+      const u = serverUsers.get(uid);
+      const removal = getRoundRemovalRecord(round.eventId, round.roundIndex, uid);
+      return {
+        userId: uid,
+        name: u ? `${u.firstName} ${u.lastName}`.trim() : uid,
+        email: u?.email,
+        removed: Boolean(removal || round.removedParticipants?.[uid]),
+        earlyExited: Boolean(round.earlyExitedParticipants?.includes(uid)),
+      };
+    });
+    const sortedPair = [...(round.participants || [])].sort().join('_');
+    const roomName = sortedPair ? `sml_${round.eventId}_r${round.roundIndex}_${sortedPair}` : round.roomKey;
+    const remainingSeconds =
+      round.status === 'call' && !round.terminatedAt
+        ? Math.max(0, Math.floor((round.roundExpiresAt - now) / 1000))
+        : 0;
+
+    roundsMap.set(round.roundId, {
+      roundId: round.roundId,
+      roomName,
+      eventId: round.eventId,
+      eventName: launchEvt?.EventName || round.eventId,
+      roundIndex: round.roundIndex,
+      roundNumber: round.roundIndex + 1,
+      status: round.status,
+      mode: round.mode,
+      roundStartedAt: round.roundStartedAt,
+      roundExpiresAt: round.roundExpiresAt,
+      remainingSeconds,
+      participants,
+      terminatedAt: round.terminatedAt,
+      terminatedByUserId: round.terminatedByUserId,
+      terminatedReason: round.terminatedReason,
+    });
+  }
+
+  // Also include live active matches not yet registered in sharedRounds
+  for (const match of liveActiveMatches.values()) {
+    if (now >= match.expiresAt) continue;
+    const pairIds = [match.userA.userId, match.userB.userId].sort().join('_');
+    const fallbackId = `${match.eventId}_r${match.roundIndex}_${pairIds}`;
+    if (!roundsMap.has(fallbackId)) {
+      const launchEvt = serverLaunchEvents.get(match.eventId);
+      roundsMap.set(fallbackId, {
+        roundId: fallbackId,
+        roomName: match.roomName,
+        eventId: match.eventId,
+        eventName: launchEvt?.EventName || match.eventId,
+        roundIndex: match.roundIndex,
+        roundNumber: match.roundIndex + 1,
+        status: 'call',
+        mode: 'production',
+        roundStartedAt: match.matchedAt,
+        roundExpiresAt: match.expiresAt,
+        remainingSeconds: Math.max(0, Math.floor((match.expiresAt - now) / 1000)),
+        participants: [match.userA, match.userB].map(p => ({
+          userId: p.userId,
+          name: p.userName || p.userId,
+          removed: Boolean(getRoundRemovalRecord(match.eventId, match.roundIndex, p.userId)),
+          earlyExited: false,
+        })),
+      });
+    }
+  }
+
+  const activeRounds = Array.from(roundsMap.values()).sort((a, b) => b.roundStartedAt - a.roundStartedAt);
+  const removals = Array.from(moderatorRoundRemovals.values()).sort((a, b) => b.removedAt - a.removedAt);
+
+  return res.json({
+    success: true,
+    activeRounds,
+    removals,
+    liveKitConfigured: isLiveKitConfigured(),
+    serverTime: now,
+  });
+});
+
+// API: Moderator-Only Remove a Member from an Active Round (Owner-Only)
+app.post('/api/owner/active-rounds/remove-member', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Access denied: Moderator/Owner authorization required.',
+    });
+  }
+
+  const {
+    userId,
+    eventId,
+    roundIndex = 0,
+    roundId,
+    reason = 'Removed from active round by moderator for safety review',
+    reportId,
+  } = req.body || {};
+
+  if (!userId || typeof userId !== 'string') {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  syncSharedRoundsFromDisk();
+  let targetRound: ServerSharedRound | undefined =
+    typeof roundId === 'string' && roundId ? sharedRounds.get(roundId) : undefined;
+  let resolvedEventId = typeof eventId === 'string' && eventId ? eventId : targetRound?.eventId;
+  let resolvedRoundIndex =
+    typeof roundIndex === 'number' && !Number.isNaN(roundIndex)
+      ? Math.max(0, Math.floor(roundIndex))
+      : targetRound?.roundIndex ?? 0;
+
+  if (!targetRound && resolvedEventId) {
+    targetRound = getSharedRound(resolvedEventId, resolvedRoundIndex, userId, undefined, true);
+  }
+
+  if (!resolvedEventId) {
+    return res.status(400).json({ success: false, error: 'eventId or roundId is required' });
+  }
+
+  const now = Date.now();
+  const targetUser = serverUsers.get(userId);
+  const targetName = targetUser ? `${targetUser.firstName} ${targetUser.lastName}`.trim() : userId;
+  const cleanReason = typeof reason === 'string' && reason.trim() ? reason.trim() : 'Removed from active round by moderator';
+
+  // 1. Find associated room name before clearing live matches
+  let roomName = '';
+  for (const match of liveActiveMatches.values()) {
+    if (
+      match.eventId === resolvedEventId &&
+      match.roundIndex === resolvedRoundIndex &&
+      (match.userA.userId === userId || match.userB.userId === userId)
+    ) {
+      roomName = match.roomName;
+      break;
+    }
+  }
+  if (!roomName && targetRound?.participants?.length) {
+    const sortedPair = [...targetRound.participants].sort().join('_');
+    roomName = `sml_${resolvedEventId}_r${resolvedRoundIndex}_${sortedPair}`;
+  }
+
+  // 2. Remove from LiveKit SFU room when configured
+  const sfuResult = roomName
+    ? await forceDisconnectLiveKitParticipants(roomName, [userId], false)
+    : { configured: isLiveKitConfigured(), attempted: false, removedFromSfu: [] as string[], roomDeleted: false };
+
+  // 3. Persist server-side moderator removal block for this event & round
+  const removalRecord: ActiveRoundRemovalRecord = {
+    removalId: `rem_${now}_${Math.random().toString(36).substring(2, 6)}`,
+    eventId: resolvedEventId,
+    roundIndex: resolvedRoundIndex,
+    roundNumber: resolvedRoundIndex + 1,
+    roundId: targetRound?.roundId || roundId,
+    userId,
+    userName: targetName,
+    removedBy: authUser.email,
+    removedAt: now,
+    reason: cleanReason,
+    ...(typeof reportId === 'string' && reportId ? { reportId } : {}),
+    sfuRemoved: sfuResult.removedFromSfu.includes(userId),
+  };
+  moderatorRoundRemovals.set(getRoundRemovalKey(resolvedEventId, resolvedRoundIndex, userId), removalRecord);
+  saveRoundRemovalsToDisk();
+
+  // 4. Mark active shared round terminated / participant removed
+  if (targetRound) {
+    if (!targetRound.removedParticipants) targetRound.removedParticipants = {};
+    targetRound.removedParticipants[userId] = {
+      removedBy: authUser.email,
+      removedAt: now,
+      reason: cleanReason,
+      ...(typeof reportId === 'string' && reportId ? { reportId } : {}),
+    };
+    if (!targetRound.earlyExitedParticipants) targetRound.earlyExitedParticipants = [];
+    if (!targetRound.earlyExitedParticipants.includes(userId)) {
+      targetRound.earlyExitedParticipants.push(userId);
+    }
+    targetRound.status = 'break';
+    targetRound.roundExpiresAt = now;
+    targetRound.breakStartedAt = now;
+    targetRound.breakExpiresAt = now + targetRound.breakDurationSeconds * 1000;
+    targetRound.terminatedAt = now;
+    targetRound.terminatedByUserId = authUser.email;
+    targetRound.terminatedReason = cleanReason;
+    targetRound.lastUpdated = now;
+    saveSharedRoundsToDisk();
+  }
+
+  // 5. Purge from queues, live matches, consent store, and active round sessions
+  const q = liveEventQueues.get(resolvedEventId);
+  const queueCleared = Boolean(q?.delete(userId));
+  let matchTerminated = false;
+  for (const [mId, match] of liveActiveMatches.entries()) {
+    if (
+      match.eventId === resolvedEventId &&
+      match.roundIndex === resolvedRoundIndex &&
+      (match.userA.userId === userId || match.userB.userId === userId)
+    ) {
+      liveActiveMatches.delete(mId);
+      matchTerminated = true;
+    }
+  }
+  const consentMap = roundConsentStore.get(`${resolvedEventId}_r${resolvedRoundIndex}`);
+  if (consentMap) {
+    consentMap.delete(userId);
+    saveConsentToDisk();
+  }
+  let sessionCleared = false;
+  for (const [sKey, sVal] of sessions.entries()) {
+    if (sVal.userId === userId && sVal.eventId === resolvedEventId) {
+      sessions.delete(sKey);
+      sessionCleared = true;
+    }
+  }
+
+  // 6. Annotate linked report if provided
+  if (typeof reportId === 'string' && reportId) {
+    const linkedReport = serverReports.get(reportId);
+    if (linkedReport) {
+      linkedReport.actionTaken = `Member ${targetName} (${userId}) removed from Round ${resolvedRoundIndex + 1} by moderator (${authUser.email}): ${cleanReason}`;
+      linkedReport.actionAt = now;
+      linkedReport.actionBy = authUser.email;
+      await saveReportToDurableDatabase(linkedReport);
+    }
+  }
+
+  console.log(
+    `[Moderator Removal] ${authUser.email} removed user ${userId} from event=${resolvedEventId} round=${resolvedRoundIndex + 1}. ` +
+      `queueCleared=${queueCleared}, matchTerminated=${matchTerminated}, sfuConfigured=${sfuResult.configured}, sfuRemoved=${sfuResult.removedFromSfu.length > 0}`
+  );
+
+  return res.json({
+    success: true,
+    removal: removalRecord,
+    serverActions: {
+      queueCleared,
+      matchTerminated,
+      sessionCleared,
+      tokenAccessBlocked: true,
+      sfuConfigured: sfuResult.configured,
+      sfuRemoved: sfuResult.removedFromSfu.includes(userId),
+      sfuNote: sfuResult.note || null,
+    },
+    message: sfuResult.removedFromSfu.includes(userId)
+      ? `${targetName} was disconnected from LiveKit video and removed from Round ${resolvedRoundIndex + 1}.`
+      : `${targetName} was removed from Round ${resolvedRoundIndex + 1} on the server (active session terminated and round tokens blocked).`,
+  });
+});
+
 // API: Owner Review - Take Action on Report (Owner-Only)
-app.post('/api/owner/reports/:reportId/action', (req, res) => {
+app.post('/api/owner/reports/:reportId/action', async (req, res) => {
   const authUser = verifyAuthenticatedUser(req);
   if (!authUser) {
     return res.status(401).json({ success: false, error: 'Authentication required' });
@@ -4890,21 +5801,39 @@ app.post('/api/owner/reports/:reportId/action', (req, res) => {
       }
     }
 
-    // 4. Remove from live matchmaking queues and active matches
+    // 4. Remove from live matchmaking queues, active matches, and active shared rounds
     for (const queue of liveEventQueues.values()) {
       queue.delete(report.reportedUserId);
     }
     for (const [mId, match] of liveActiveMatches.entries()) {
       if (match.userA.userId === report.reportedUserId || match.userB.userId === report.reportedUserId) {
         liveActiveMatches.delete(mId);
+        await forceDisconnectLiveKitParticipants(match.roomName, [report.reportedUserId], false);
       }
+    }
+    if (report.eventId && typeof report.roundIndex === 'number') {
+      const nowBan = Date.now();
+      moderatorRoundRemovals.set(getRoundRemovalKey(report.eventId, report.roundIndex, report.reportedUserId), {
+        removalId: `rem_${nowBan}_ban`,
+        eventId: report.eventId,
+        roundIndex: report.roundIndex,
+        roundNumber: report.roundIndex + 1,
+        roundId: report.roundId,
+        userId: report.reportedUserId,
+        userName: report.reportedUserName,
+        removedBy: authUser.email,
+        removedAt: nowBan,
+        reason: `Account banned: ${report.reason}`,
+        reportId: report.id,
+      });
+      saveRoundRemovalsToDisk();
     }
 
     report.status = 'banned';
     report.actionTaken = ownerNotes ? `User banned: ${ownerNotes}` : 'User account banned and active sessions revoked by owner';
     report.actionAt = Date.now();
     report.actionBy = authUser.email;
-    saveReportsToDisk();
+    await saveReportToDurableDatabase(report);
 
     console.log(`[Owner Action] User ${report.reportedUserId} banned by owner (${authUser.email}). Revoked ${revokedTokensCount} session tokens.`);
 
@@ -4918,7 +5847,7 @@ app.post('/api/owner/reports/:reportId/action', (req, res) => {
     report.actionTaken = ownerNotes ? `Dismissed: ${ownerNotes}` : 'Report dismissed by owner';
     report.actionAt = Date.now();
     report.actionBy = authUser.email;
-    saveReportsToDisk();
+    await saveReportToDurableDatabase(report);
 
     return res.json({
       success: true,
@@ -4930,7 +5859,7 @@ app.post('/api/owner/reports/:reportId/action', (req, res) => {
     report.actionTaken = ownerNotes || 'Reviewed by owner';
     report.actionAt = Date.now();
     report.actionBy = authUser.email;
-    saveReportsToDisk();
+    await saveReportToDurableDatabase(report);
 
     return res.json({
       success: true,
@@ -6811,6 +7740,16 @@ const handleMatchQueue = (req: express.Request, res: express.Response) => {
     });
   }
 
+  // 1b. Moderator Round Removal Enforcement
+  const moderatorRemoval = getRoundRemovalRecord(eventId, roundIndex, userId);
+  if (moderatorRemoval) {
+    return res.status(403).json({
+      success: false,
+      code: 'MODERATOR_REMOVED',
+      error: `You have been removed from Round ${roundIndex + 1} by a moderator (${moderatorRemoval.reason}).`,
+    });
+  }
+
   // 2. Event Registration Verification: Must be registered (No bypass)
   if (!isRegistered) {
     return res.status(403).json({
@@ -7154,6 +8093,27 @@ app.post('/api/livekit/token', async (req, res) => {
       secondDateSessionId,
     } = req.body;
 
+    // 0. Enforce 18+ adult verification & active-round moderator removal immediately
+    if (typeof userAge !== 'number' || userAge < 18) {
+      return res.status(403).json({
+        success: false,
+        code: 'ADULT_VERIFICATION_FAILED',
+        error: 'Access denied: Speed Meet Love strictly requires all participants to be verified adults aged 18 and older.',
+      });
+    }
+
+    if (eventId && userId) {
+      const earlyRemoval = getRoundRemovalRecord(eventId, Number(roundIndex) || 0, userId);
+      if (earlyRemoval) {
+        return res.status(403).json({
+          success: false,
+          code: 'MODERATOR_REMOVED',
+          error: `Access denied: You have been removed from this active round by a moderator (${earlyRemoval.reason}).`,
+          status: 'removed',
+        });
+      }
+    }
+
     // 1. Verify LiveKit server environment configuration
     if (!isLiveKitConfigured()) {
       return res.status(503).json({
@@ -7442,18 +8402,35 @@ app.post('/api/livekit/token', async (req, res) => {
       }
     }
 
-    // 9. Security Check: Server-Authoritative 5-Minute Round Expiration Check
+    // 9. Security Check: Moderator Removal & Server-Authoritative 5-Minute Round Expiration Check
+    const moderatorRemovalForUser = getRoundRemovalRecord(eventId, roundIndex, userId);
+    if (moderatorRemovalForUser) {
+      return res.status(403).json({
+        success: false,
+        code: 'MODERATOR_REMOVED',
+        error: `Access denied: You have been removed from this active round by a moderator (${moderatorRemovalForUser.reason}).`,
+      });
+    }
+
     const existingSharedRound = getSharedRound(eventId, roundIndex, userId, partnerId);
     if (existingSharedRound) {
+      if (existingSharedRound.removedParticipants?.[userId]) {
+        return res.status(403).json({
+          success: false,
+          code: 'MODERATOR_REMOVED',
+          error: 'Access denied: You have been removed from this active round by a moderator.',
+          status: 'removed',
+        });
+      }
       if (existingSharedRound.earlyExitedParticipants?.includes(userId)) {
         return res.status(403).json({
           success: false,
           code: 'USER_ENDED_EARLY',
-          error: 'You have ended this speed dating round early. Please cast your vote on the confidential voting screen.',
+          error: 'You have ended this speed dating call. Video access for this round is closed.',
           status: 'break',
         });
       }
-      if (existingSharedRound.status === 'break' || existingSharedRound.status === 'completed' || now >= existingSharedRound.roundExpiresAt) {
+      if (existingSharedRound.status === 'break' || existingSharedRound.status === 'completed' || existingSharedRound.terminatedAt || now >= existingSharedRound.roundExpiresAt) {
         existingSharedRound.status = 'break';
         existingSharedRound.breakStartedAt = existingSharedRound.breakStartedAt || existingSharedRound.roundExpiresAt;
         existingSharedRound.breakExpiresAt = existingSharedRound.breakExpiresAt || (existingSharedRound.roundExpiresAt + existingSharedRound.breakDurationSeconds * 1000);
@@ -7463,7 +8440,7 @@ app.post('/api/livekit/token', async (req, res) => {
         return res.status(403).json({
           success: false,
           code: 'ROUND_EXPIRED',
-          error: 'This 5-minute speed dating round has concluded. Video rooms are closed for this round. Please cast your vote on the confidential voting screen.',
+          error: 'This 5-minute speed dating round has concluded or been disconnected. Video rooms are closed for this round.',
           roundExpiresAt: existingSharedRound.roundExpiresAt,
           status: 'break',
         });

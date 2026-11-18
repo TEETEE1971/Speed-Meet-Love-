@@ -142,7 +142,7 @@ export const TermsPage: React.FC = () => {
               <strong>Sexual Exploitation &amp; Non-Consensual Sexual Content:</strong> Any sexual exploitation, coercion, sextortion, prostitution or escort solicitation, or non-consensual intimate imagery across profiles, messages, or live video.
             </li>
             <li>
-              <strong>Private Messages &amp; Live Video Conduct:</strong> Speed Meet Love is for dating and connection, not sexual entertainment. Sexually explicit content and sexual solicitations are prohibited in private messages and live video, even when both participants consent.
+              <strong>No Sexually Explicit Content or Sexual Solicitation:</strong> Speed Meet Love is for dating and connection, not sexual entertainment. Sexually explicit content and sexual solicitation are prohibited across Speed Meet Love, including in profiles, private messages, and live video dates, even when everyone involved consents.
             </li>
             <li>
               <strong>Aiding, Encouraging, or Facilitating Abuse:</strong> Assisting, encouraging, coordinating, instructing, or enabling physical, sexual, emotional, or financial abuse or exploitation of any person.
@@ -222,7 +222,7 @@ export const TermsPage: React.FC = () => {
             .
           </p>
           <p>
-            In-app reports are saved on the server and reviewed by the platform owner (TeeTees Creations). Speed Meet Love does not claim automated content scanning or 24/7 real-time monitoring of private messages or live video. Violations may lead to content removal, suspension, or account termination—including permanent banning, revocation of active session tokens, and removal from matchmaking queues and active matches—as well as mandatory legal reporting (including NCMEC CyberTipline reports under 18 U.S.C. § 2258A) or responses to valid law-enforcement requests where applicable.
+            In-app reports are saved on the server, flagged for urgent review when submitted from live video dates or high-severity categories, and reviewed by the platform owner (TeeTees Creations). Speed Meet Love does not continuously monitor live video or automatically scan it, and does not perform automated scanning or 24/7 real-time monitoring of private messages. Violations may lead to content removal, suspension, or account termination—including removal from active video rounds, permanent banning, revocation of active session tokens, and removal from matchmaking queues and active matches—as well as mandatory legal reporting (including NCMEC CyberTipline reports under 18 U.S.C. § 2258A) or responses to valid law-enforcement requests where applicable.
           </p>
           <p>
             You may permanently delete your account at any time from your Profile Settings or view deletion instructions on{' '}

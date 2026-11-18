@@ -162,7 +162,7 @@ export const MatchResults: React.FC = () => {
                             <Ban className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => setReportModalTarget(partner)}
+                            onClick={() => setReportModalTarget(partner, { source: 'match_results', eventId: match.EventID })}
                             className="p-1 rounded text-[#111827] hover:text-[#BE123C] transition-colors"
                             title="Report member"
                           >

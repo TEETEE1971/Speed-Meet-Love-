@@ -7,7 +7,10 @@ import {
   TesterGrantRecord,
   OwnerWaitlistMember,
   OwnerWaitlistSummary,
+  ActiveRoundSummary,
+  ActiveRoundRemovalRecord,
 } from '../types';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -38,6 +41,9 @@ import {
   Crown,
   Award,
   Heart,
+  Bell,
+  PhoneOff,
+  Video,
 } from 'lucide-react';
 
 interface OwnerReportsViewProps {
@@ -45,7 +51,8 @@ interface OwnerReportsViewProps {
 }
 
 export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab = 'reports' }) => {
-  const { isOwner, setCurrentView, authToken, showNotification } = useApp();
+  const { isOwner, currentUser, setCurrentView, authToken, showNotification } = useApp();
+  const push = usePushNotifications(currentUser?.UserID || 'usr_kristy');
 
   const [activeDashboardTab, setActiveDashboardTab] = useState<'reports' | 'users' | 'waitlist'>(defaultTab);
 
@@ -60,6 +67,21 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
     action: 'ban_user' | 'dismiss';
   } | null>(null);
   const [ownerNote, setOwnerNote] = useState<string>('');
+  const [urgentPendingCount, setUrgentPendingCount] = useState<number>(0);
+  const [notificationCapabilities, setNotificationCapabilities] = useState<{
+    inAppUrgentFlagging: boolean;
+    emailConfigured: boolean;
+    emailProvider?: string;
+    pushConfigured: boolean;
+    ownerPushSubscriptionsCount: number;
+    liveKitConfigured: boolean;
+  } | null>(null);
+
+  // Moderator Active Rounds state
+  const [activeRounds, setActiveRounds] = useState<ActiveRoundSummary[]>([]);
+  const [recentRemovals, setRecentRemovals] = useState<ActiveRoundRemovalRecord[]>([]);
+  const [loadingActiveRounds, setLoadingActiveRounds] = useState<boolean>(false);
+  const [removingUserKey, setRemovingUserKey] = useState<string | null>(null);
 
   // Registered Users state
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUserSummary[]>([]);
@@ -130,6 +152,16 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
           if (Array.isArray(data.bannedUsers)) {
             setBannedUsers(data.bannedUsers);
           }
+          if (data.notificationCapabilities) {
+            setNotificationCapabilities(data.notificationCapabilities);
+          }
+          if (typeof data.summary?.urgentPending === 'number') {
+            setUrgentPendingCount(data.summary.urgentPending);
+          } else {
+            setUrgentPendingCount(
+              data.reports.filter((r: OwnerReportItem) => r.status === 'pending' && Boolean(r.urgent)).length
+            );
+          }
         }
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -142,6 +174,72 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
       setLoadingReports(false);
     }
   }, [authToken, showNotification]);
+
+  // Fetch Moderator Active Video Rounds
+  const fetchActiveRounds = useCallback(async () => {
+    setLoadingActiveRounds(true);
+    try {
+      const token = authToken || localStorage.getItem('sml_brand_v6_authToken');
+      const res = await fetch('/api/owner/active-rounds', {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setActiveRounds(Array.isArray(data.activeRounds) ? data.activeRounds : []);
+          setRecentRemovals(Array.isArray(data.removals) ? data.removals : []);
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching active rounds:', e);
+    } finally {
+      setLoadingActiveRounds(false);
+    }
+  }, [authToken]);
+
+  const handleRemoveFromActiveRound = async (params: {
+    userId: string;
+    userName?: string;
+    eventId: string;
+    roundIndex: number;
+    roundId?: string;
+    reportId?: string;
+    reason?: string;
+  }) => {
+    const opKey = `${params.eventId}_${params.roundIndex}_${params.userId}`;
+    setRemovingUserKey(opKey);
+    try {
+      const token = authToken || localStorage.getItem('sml_brand_v6_authToken');
+      const res = await fetch('/api/owner/active-rounds/remove-member', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          userId: params.userId,
+          eventId: params.eventId,
+          roundIndex: params.roundIndex,
+          roundId: params.roundId,
+          reportId: params.reportId,
+          reason: params.reason || 'Removed from active round by moderator for safety review',
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showNotification(data.message || `${params.userName || params.userId} removed from active round.`, 'success');
+        await Promise.all([fetchActiveRounds(), fetchReports()]);
+      } else {
+        showNotification(data.error || 'Failed to remove member from active round.', 'pink');
+      }
+    } catch (e) {
+      showNotification('Network error while removing member from active round.', 'pink');
+    } finally {
+      setRemovingUserKey(null);
+    }
+  };
 
   // Fetch Registered Users - retains current list during background refreshes to eliminate page jump
   const fetchRegisteredUsers = useCallback(async (isBackgroundRefresh: boolean = false) => {
@@ -247,11 +345,12 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
   useEffect(() => {
     if (isOwner) {
       fetchReports();
+      fetchActiveRounds();
       fetchRegisteredUsers();
       fetchGrantedTesters();
       fetchWaitlistMembers();
     }
-  }, [isOwner, fetchReports, fetchRegisteredUsers, fetchGrantedTesters, fetchWaitlistMembers]);
+  }, [isOwner, fetchReports, fetchActiveRounds, fetchRegisteredUsers, fetchGrantedTesters, fetchWaitlistMembers]);
 
   // Grant or Revoke Free Premium Plus Tester Access
   const handleToggleTesterAccess = async (email: string, action: 'grant' | 'remove', notes?: string) => {
@@ -495,6 +594,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
             onClick={() => {
               if (activeDashboardTab === 'reports') {
                 fetchReports();
+                fetchActiveRounds();
               } else if (activeDashboardTab === 'users') {
                 fetchRegisteredUsers(true);
               } else {
@@ -623,8 +723,13 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                   <span className="text-2xl font-black text-white font-heading">{reports.length}</span>
                 </div>
                 <div className="p-3 rounded-2xl bg-amber-500/20 backdrop-blur-xs border border-amber-400/30">
-                  <span className="text-[11px] font-bold text-amber-200 uppercase block">Pending Review</span>
-                  <span className="text-2xl font-black text-amber-300 font-heading">{pendingCount}</span>
+                  <span className="text-[11px] font-bold text-amber-200 uppercase block">Pending / Urgent</span>
+                  <span className="text-2xl font-black text-amber-300 font-heading">
+                    {pendingCount}{' '}
+                    {urgentPendingCount > 0 && (
+                      <span className="text-xs font-bold text-red-300">({urgentPendingCount} urgent)</span>
+                    )}
+                  </span>
                 </div>
                 <div className="p-3 rounded-2xl bg-red-500/20 backdrop-blur-xs border border-red-400/30">
                   <span className="text-[11px] font-bold text-red-200 uppercase block">Banned Accounts</span>
@@ -632,10 +737,278 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                 </div>
                 <div className="p-3 rounded-2xl bg-emerald-500/20 backdrop-blur-xs border border-emerald-400/30">
                   <span className="text-[11px] font-bold text-emerald-200 uppercase block">Owner Contact</span>
-                  <span className="text-xs font-extrabold text-white truncate block">speedmeetlove@gmail.com</span>
+                  <span className="text-xs font-extrabold text-white truncate block">kristylten@gmail.com</span>
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Urgent Review Flag Banner */}
+          {urgentPendingCount > 0 && (
+            <div className="p-4 sm:p-5 rounded-3xl bg-red-50 border-2 border-red-500 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-700 text-white flex items-center justify-center shrink-0">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-black uppercase tracking-wider text-[#991B1B]">
+                    Urgent Safety Review Flagged ({urgentPendingCount} Pending)
+                  </div>
+                  <p className="text-xs text-[#7F1D1D] font-medium mt-0.5 leading-relaxed">
+                    Live-video or high-severity reports have been persisted to the server and prioritized below for your immediate founder review.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReportsFilter('pending')}
+                className="px-4 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-bold shrink-0 cursor-pointer"
+              >
+                Filter Urgent Pending
+              </button>
+            </div>
+          )}
+
+          {/* Urgent Notification Channels Status (Honest Server Readiness) */}
+          <div className="p-5 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-[#111827] font-bold font-heading text-sm">
+                <Bell className="w-4 h-4 text-[#B91C1C]" />
+                <span>Urgent Report Notification Channels</span>
+              </div>
+              <span className="text-[11px] text-[#4B5563] font-medium">
+                No automated scanning or continuous video monitoring is active; alerts trigger only when a user submits a report.
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 space-y-1">
+                <div className="font-bold text-[#065F46] flex items-center justify-between">
+                  <span>In-App Urgent Flagging</span>
+                  <span className="px-2 py-0.5 rounded-full bg-white text-[#047857] border border-emerald-300 text-[10px]">
+                    ACTIVE
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#064E3B] font-medium">
+                  Urgent reports sort to the top of this Owner queue immediately upon submission.
+                </p>
+              </div>
+
+              <div
+                className={`p-3.5 rounded-2xl border space-y-2 ${
+                  notificationCapabilities?.pushConfigured &&
+                  (push.isSubscribed || (notificationCapabilities?.ownerPushSubscriptionsCount || 0) > 0)
+                    ? 'bg-emerald-50 border-emerald-300'
+                    : 'bg-amber-50 border-amber-300'
+                }`}
+              >
+                <div className="font-bold text-[#111827] flex items-center justify-between">
+                  <span>Browser Push Alerts</span>
+                  <span className="px-2 py-0.5 rounded-full bg-white border border-slate-300 text-[10px]">
+                    {notificationCapabilities?.ownerPushSubscriptionsCount || 0} device(s)
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#111827] font-medium">
+                  {push.isSubscribed
+                    ? 'Subscribed on this browser for urgent safety push notifications.'
+                    : 'Click below on your browser/phone to register this device for urgent safety push alerts.'}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    disabled={!push.isSupported || push.isSubscribing}
+                    onClick={async () => {
+                      const res = await push.subscribe();
+                      if (res.success) {
+                        showNotification('Owner browser push alerts enabled for urgent safety reports.', 'success');
+                        fetchReports();
+                      } else {
+                        showNotification(res.error || 'Could not enable browser push alerts.', 'pink');
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    {push.isSubscribing ? 'Enabling...' : push.isSubscribed ? 'Re-Sync Push' : 'Enable Browser Push Alerts'}
+                  </button>
+                  {push.isSubscribed && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await push.testPush();
+                        showNotification(
+                          res.success ? `Test push sent (${res.delivered || 0}/${res.total || 0}).` : res.error || 'Push test failed.',
+                          res.success ? 'success' : 'pink'
+                        );
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-[#111827] text-[11px] font-bold cursor-pointer"
+                    >
+                      Test Push
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={`p-3.5 rounded-2xl border space-y-1 ${
+                  notificationCapabilities?.emailConfigured
+                    ? 'bg-emerald-50 border-emerald-300'
+                    : 'bg-amber-50 border-amber-300'
+                }`}
+              >
+                <div className="font-bold text-[#111827] flex items-center justify-between">
+                  <span>Owner Urgent Email</span>
+                  <span className="px-2 py-0.5 rounded-full bg-white border border-slate-300 text-[10px]">
+                    {notificationCapabilities?.emailConfigured
+                      ? `READY (${notificationCapabilities.emailProvider || 'Email'})`
+                      : 'NEEDS RESEND_API_KEY'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#111827] font-medium">
+                  {notificationCapabilities?.emailConfigured
+                    ? 'Urgent reports trigger immediate email notifications to kristylten@gmail.com.'
+                    : 'Outbound urgent email requires RESEND_API_KEY in server environment variables; reports still save and flag in-app.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Moderator Control: Active Video Rounds */}
+          <div className="p-5 sm:p-6 rounded-3xl bg-white border-2 border-rose-300 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-rose-100 pb-3">
+              <div>
+                <div className="flex items-center gap-2 text-[#111827] font-bold font-heading text-base">
+                  <Video className="w-4 h-4 text-[#B91C1C]" />
+                  <span>Moderator Control: Active Video Rounds</span>
+                </div>
+                <p className="text-xs text-[#4B5563] font-medium mt-0.5">
+                  Moderator-only live intervention. Removing a member ends their active round on the server, disconnects LiveKit SFU video when configured, and blocks their tokens for that round.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                    notificationCapabilities?.liveKitConfigured
+                      ? 'bg-emerald-50 text-[#065F46] border-emerald-300'
+                      : 'bg-amber-50 text-[#78350F] border-amber-300'
+                  }`}
+                >
+                  {notificationCapabilities?.liveKitConfigured
+                    ? 'LiveKit SFU Server Kick: Connected'
+                    : 'LiveKit SFU: Server Session Kick Active (Needs LIVEKIT keys for SFU)'}
+                </span>
+                <button
+                  type="button"
+                  onClick={fetchActiveRounds}
+                  disabled={loadingActiveRounds}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-[#111827] flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingActiveRounds ? 'animate-spin' : ''}`} />
+                  <span>Refresh Rounds</span>
+                </button>
+              </div>
+            </div>
+
+            {activeRounds.length === 0 ? (
+              <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-[#4B5563] font-medium">
+                No active video rounds running right now. Active event rounds appear here as soon as members enter a round.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activeRounds.map(round => (
+                  <div
+                    key={round.roundId}
+                    className="p-4 rounded-2xl bg-slate-50 border border-slate-300 space-y-3 text-xs"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-[#111827] text-sm">
+                          {round.eventName} · Round {round.roundNumber}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            round.status === 'call'
+                              ? 'bg-emerald-100 text-[#065F46]'
+                              : 'bg-slate-200 text-[#111827]'
+                          }`}
+                        >
+                          {round.status}
+                        </span>
+                        <span className="font-mono text-[11px] text-[#4B5563]">{round.roomName}</span>
+                      </div>
+                      <span className="font-mono font-bold text-[#B91C1C]">
+                        {round.status === 'call' ? `${round.remainingSeconds}s remaining` : round.terminatedReason || 'Ended'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {round.participants.map(p => {
+                        const opKey = `${round.eventId}_${round.roundIndex}_${p.userId}`;
+                        const isRemoving = removingUserKey === opKey;
+                        return (
+                          <div
+                            key={p.userId}
+                            className="p-3 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="font-bold text-[#111827] truncate">{p.name}</div>
+                              <div className="font-mono text-[11px] text-[#4B5563] truncate">
+                                {p.userId}
+                                {p.email ? ` · ${p.email}` : ''}
+                              </div>
+                            </div>
+                            {p.removed ? (
+                              <span className="px-2.5 py-1 rounded-lg bg-red-100 text-[#991B1B] font-bold text-[11px] shrink-0">
+                                Removed from Round
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={isRemoving}
+                                onClick={() =>
+                                  handleRemoveFromActiveRound({
+                                    userId: p.userId,
+                                    userName: p.name,
+                                    eventId: round.eventId,
+                                    roundIndex: round.roundIndex,
+                                    roundId: round.roundId,
+                                  })
+                                }
+                                className="px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white font-bold text-[11px] flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
+                              >
+                                <PhoneOff className="w-3 h-3" />
+                                <span>{isRemoving ? 'Removing...' : 'Remove from Active Round'}</span>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {recentRemovals.length > 0 && (
+              <div className="pt-2 border-t border-slate-200 space-y-1.5">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[#4B5563]">
+                  Recent Moderator Active-Round Removals ({recentRemovals.length})
+                </div>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {recentRemovals.slice(0, 6).map(rem => (
+                    <div
+                      key={rem.removalId}
+                      className="px-3 py-2 rounded-xl bg-red-50/70 border border-red-200 flex flex-wrap items-center justify-between gap-2 text-[11px]"
+                    >
+                      <span>
+                        <strong>{rem.userName || rem.userId}</strong> removed from <strong>{rem.eventId}</strong> (Round{' '}
+                        {rem.roundNumber}) — {rem.reason}
+                      </span>
+                      <span className="font-mono text-[#7F1D1D]">{formatEasternDate(rem.removedAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Mandatory Child Safety (CSAE/CSAM) Escalation Protocol Guide */}
@@ -753,7 +1126,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                   >
                     {/* Header row */}
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs font-mono font-bold text-[#111827]">{report.id}</span>
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
@@ -766,9 +1139,19 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                         >
                           {report.status}
                         </span>
+                        {report.urgent && (
+                          <span className="px-2.5 py-0.5 rounded-full bg-red-700 text-white text-[10px] font-extrabold uppercase tracking-wider">
+                            URGENT REVIEW
+                          </span>
+                        )}
                         {report.reason === 'Child safety / Underage / CSAE' && (
-                          <span className="px-2 py-0.5 rounded-full bg-red-700 text-white text-[10px] font-bold animate-pulse">
+                          <span className="px-2 py-0.5 rounded-full bg-red-900 text-white text-[10px] font-bold">
                             CSAE / CHILD SAFETY PRIORITY
+                          </span>
+                        )}
+                        {report.callEndedOnReport && (
+                          <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white text-[10px] font-bold">
+                            Call Disconnected
                           </span>
                         )}
                       </div>
@@ -778,6 +1161,54 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                         <span>{report.timestamp}</span>
                       </div>
                     </div>
+
+                    {/* Event, Round & All Session Participants */}
+                    {(report.eventName || report.eventId || report.roundNumber || (report.participants && report.participants.length > 0) || report.source) && (
+                      <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[#111827]">
+                          <span>
+                            <strong>Source:</strong> {report.source || 'in_app'}
+                          </span>
+                          {(report.eventName || report.eventId) && (
+                            <span>
+                              <strong>Event:</strong> {report.eventName || report.eventId}
+                            </span>
+                          )}
+                          {(report.roundNumber !== undefined || report.roundIndex !== undefined) && (
+                            <span>
+                              <strong>Round:</strong> Round {report.roundNumber ?? (report.roundIndex ?? 0) + 1}
+                            </span>
+                          )}
+                          {report.urgencyReasons && report.urgencyReasons.length > 0 && (
+                            <span className="text-[#991B1B] font-bold">
+                              Flagged: {report.urgencyReasons.join(', ')}
+                            </span>
+                          )}
+                        </div>
+                        {report.participants && report.participants.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-[#111827]">Session Participants:</span>
+                            {report.participants.map((p, idx) => (
+                              <span
+                                key={`${p.userId}_${idx}`}
+                                className="px-2 py-0.5 rounded-full bg-white border border-amber-300 text-[11px] font-semibold text-[#111827]"
+                              >
+                                {p.name || p.userId} ({p.role || 'participant'})
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {report.notificationDispatch && (
+                          <div className="text-[11px] text-[#4B5563] font-medium">
+                            <strong>Urgent Notification Log:</strong> In-App Flagged · Push Delivered:{' '}
+                            {report.notificationDispatch.pushDelivered}/{report.notificationDispatch.pushSubscriptionsCount} ·{' '}
+                            {report.notificationDispatch.emailSent
+                              ? `Email Sent (${report.notificationDispatch.emailProvider})`
+                              : report.notificationDispatch.note || 'Email not configured'}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Reported & Reporter info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -862,6 +1293,32 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
 
                     {/* Action Buttons */}
                     <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2 border-t border-slate-200">
+                      {report.eventId && report.roundIndex !== undefined && report.status === 'pending' && (
+                        <button
+                          type="button"
+                          disabled={removingUserKey === `${report.eventId}_${report.roundIndex}_${report.reportedUserId}`}
+                          onClick={() =>
+                            handleRemoveFromActiveRound({
+                              userId: report.reportedUserId,
+                              userName: report.reportedUserName,
+                              eventId: report.eventId!,
+                              roundIndex: report.roundIndex!,
+                              roundId: report.roundId,
+                              reportId: report.id,
+                              reason: `Removed during review of report ${report.id}: ${report.reason}`,
+                            })
+                          }
+                          className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          <PhoneOff className="w-3.5 h-3.5" />
+                          <span>
+                            {removingUserKey === `${report.eventId}_${report.roundIndex}_${report.reportedUserId}`
+                              ? 'Removing...'
+                              : `Remove from Round ${report.roundNumber ?? report.roundIndex + 1}`}
+                          </span>
+                        </button>
+                      )}
+
                       {isUserBanned ? (
                         <button
                           type="button"

@@ -147,16 +147,40 @@ service cloud.firestore {
         data.keys().hasOnly([
           'id', 'reporterId', 'reporterEmail', 'reporterName', 'reportedUserId',
           'reportedUserName', 'reportedUserEmail', 'reason', 'notes', 'timestamp',
-          'createdAt', 'status', 'actionTaken', 'actionAt', 'actionBy'
+          'createdAt', 'status', 'source', 'eventId', 'eventName', 'roundIndex',
+          'roundNumber', 'roundId', 'participants', 'callEndedOnReport', 'urgent',
+          'urgencyLevel', 'urgencyReasons', 'urgentAcknowledgedAt', 'urgentAcknowledgedBy',
+          'notificationDispatch', 'actionTaken', 'actionAt', 'actionBy'
         ]) &&
         isValidId(data.id) &&
         data.reporterId is string && data.reporterId.size() >= 1 && data.reporterId.size() <= 128 &&
+        isOptionalString(data, 'reporterEmail', 254) &&
+        isOptionalString(data, 'reporterName', 120) &&
         data.reportedUserId is string && data.reportedUserId.size() >= 1 && data.reportedUserId.size() <= 128 &&
+        isOptionalString(data, 'reportedUserName', 120) &&
+        isOptionalString(data, 'reportedUserEmail', 254) &&
         data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 120 &&
         isOptionalString(data, 'notes', 2000) &&
         isOptionalString(data, 'timestamp', 64) &&
         data.createdAt is number && data.createdAt > 0 &&
-        data.status in ['pending', 'banned', 'dismissed', 'reviewed'];
+        data.status in ['pending', 'banned', 'dismissed', 'reviewed'] &&
+        isOptionalString(data, 'source', 64) &&
+        isOptionalString(data, 'eventId', 128) &&
+        isOptionalString(data, 'eventName', 160) &&
+        isOptionalNumber(data, 'roundIndex', 0, 50) &&
+        isOptionalNumber(data, 'roundNumber', 1, 51) &&
+        isOptionalString(data, 'roundId', 160) &&
+        (!('participants' in data) || (data.participants is list && data.participants.size() <= 10 && (data.participants.size() == 0 || data.participants[0] is map))) &&
+        isOptionalBool(data, 'callEndedOnReport') &&
+        isOptionalBool(data, 'urgent') &&
+        (!('urgencyLevel' in data) || data.urgencyLevel in ['urgent', 'standard']) &&
+        (!('urgencyReasons' in data) || (data.urgencyReasons is list && data.urgencyReasons.size() <= 10 && (data.urgencyReasons.size() == 0 || (data.urgencyReasons[0] is string && data.urgencyReasons[0].size() <= 120)))) &&
+        isOptionalNumber(data, 'urgentAcknowledgedAt', 0, 9999999999999) &&
+        isOptionalString(data, 'urgentAcknowledgedBy', 254) &&
+        (!('notificationDispatch' in data) || data.notificationDispatch == null || data.notificationDispatch is map) &&
+        isOptionalString(data, 'actionTaken', 1000) &&
+        isOptionalNumber(data, 'actionAt', 0, 9999999999999) &&
+        isOptionalString(data, 'actionBy', 254);
     }
 
     function isValidGrantedTester(data) {

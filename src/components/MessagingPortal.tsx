@@ -238,7 +238,7 @@ export const MessagingPortal: React.FC = () => {
                   <Ban className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => setReportModalTarget(partner)}
+                  onClick={() => setReportModalTarget(partner, { source: 'messages', eventId: activeMatch?.EventID })}
                   className="p-2 rounded-xl hover:bg-rose-50 text-[#111827] hover:text-[#BE123C] transition-colors"
                   title="Report member"
                 >

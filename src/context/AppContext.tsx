@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { User, SpeedEvent, Round, Match, Message, SubscriptionTier, EventType, UserReport, AppView, LiveSessionState, AppMode, UserPreferences, SecondDateSession, WaitlistEntrySummary } from '../types';
+import { User, SpeedEvent, Round, Match, Message, SubscriptionTier, EventType, UserReport, AppView, LiveSessionState, AppMode, UserPreferences, SecondDateSession, WaitlistEntrySummary, ReportContextPayload, ReportNotificationDispatch } from '../types';
 import { INITIAL_USERS, INITIAL_EVENTS, INITIAL_ROUNDS, INITIAL_MATCHES, INITIAL_MESSAGES } from '../data/initialData';
 
 export type { AppView, LiveSessionState, AppMode, SecondDateSession };
@@ -113,7 +113,8 @@ interface AppContextType {
   getTimeUntilEventStartMs: (event: SpeedEvent) => number;
   notification: { message: string; type: 'success' | 'info' | 'pink' } | null;
   reportModalTarget: User | null;
-  setReportModalTarget: (user: User | null) => void;
+  reportModalContext: ReportContextPayload | null;
+  setReportModalTarget: (user: User | null, context?: ReportContextPayload | null) => void;
   setCurrentView: (view: AppView) => void;
   setSelectedEventId: (id: string) => void;
   setSelectedMatchId: (id: string | null) => void;
@@ -131,8 +132,19 @@ interface AppContextType {
     targetUserId: string,
     reason: UserReport['Reason'],
     notes: string,
-    alsoBlock: boolean
-  ) => void;
+    alsoBlock: boolean,
+    options?: {
+      context?: ReportContextPayload | null;
+      endActiveCall?: boolean;
+    }
+  ) => Promise<{
+    success: boolean;
+    reportId?: string;
+    urgent?: boolean;
+    urgencyReasons?: string[];
+    notificationDispatch?: ReportNotificationDispatch;
+    error?: string;
+  }>;
   addEvent: (
     event: Omit<SpeedEvent, 'EventID' | 'ParticipantsList' | 'RoundsGenerated' | 'EventStatus'>
   ) => SpeedEvent;
@@ -543,7 +555,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'pink' } | null>(null);
-  const [reportModalTarget, setReportModalTarget] = useState<User | null>(null);
+  const [reportModalTarget, setReportModalTargetState] = useState<User | null>(null);
+  const [reportModalContext, setReportModalContext] = useState<ReportContextPayload | null>(null);
+  const setReportModalTarget = useCallback((user: User | null, context?: ReportContextPayload | null) => {
+    setReportModalTargetState(user);
+    setReportModalContext(user ? (context ?? null) : null);
+  }, []);
   const [activeSecondDateSession, setActiveSecondDateSession] = useState<SecondDateSession | null>(null);
   const [secondDateSessions, setSecondDateSessions] = useState<SecondDateSession[]>([]);
   const [waitlistJoined, setWaitlistJoined] = useState<boolean>(false);
@@ -1347,32 +1364,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showNotification('Member unblocked.', 'success');
   };
 
-  // Safety: Report User
-  const reportUser = (
+  // Safety: Report User (strictly awaits server persistence before confirming)
+  const reportUser = async (
     targetUserId: string,
     reason: UserReport['Reason'],
     notes: string,
-    alsoBlock: boolean
-  ) => {
+    alsoBlock: boolean,
+    options?: {
+      context?: ReportContextPayload | null;
+      endActiveCall?: boolean;
+    }
+  ): Promise<{
+    success: boolean;
+    reportId?: string;
+    urgent?: boolean;
+    urgencyReasons?: string[];
+    notificationDispatch?: ReportNotificationDispatch;
+    error?: string;
+  }> => {
     if (!currentUser) {
       openAuthModal('signin');
-      return;
+      return { success: false, error: 'Please sign in to submit a safety report.' };
     }
-    const newReport: UserReport = {
-      ReportID: `rep_${Date.now()}`,
-      ReportedUserID: targetUserId,
-      ReporterID: currentUser.UserID,
-      Reason: reason,
-      Notes: notes,
-      Timestamp: new Date().toISOString(),
-    };
 
-    setReports(prev => [newReport, ...prev]);
+    const ctx = options?.context ?? reportModalContext;
+    const endActiveCall = Boolean(options?.endActiveCall);
 
-    // Securely persist report to server for owner review
     try {
       const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
-      fetch('/api/reports', {
+      const res = await fetch('/api/reports', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1384,23 +1404,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           notes,
           alsoBlock,
           reporterId: currentUser.UserID,
+          source: ctx?.source || 'other',
+          eventId: ctx?.eventId,
+          eventName: ctx?.eventName,
+          roundIndex: ctx?.roundIndex,
+          roundNumber: ctx?.roundNumber,
+          roundId: ctx?.roundId,
+          participants: ctx?.participants,
+          callEndedOnReport: endActiveCall,
         }),
-      }).catch(err => {
-        console.warn('Failed to transmit report to server:', err);
       });
-    } catch (e) {
-      console.warn('Report submission error:', e);
-    }
 
-    if (alsoBlock) {
-      blockUser(targetUserId);
-    }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        const errMsg = data.error || `Failed to save report (HTTP ${res.status}). Please retry.`;
+        showNotification(errMsg, 'pink');
+        return { success: false, error: errMsg };
+      }
 
-    showNotification(
-      'Thank you for reporting. Your report has been submitted directly to the platform owner for review.',
-      'success'
-    );
-    setReportModalTarget(null);
+      const newReport: UserReport = {
+        ReportID: data.reportId || `rep_${Date.now()}`,
+        ReportedUserID: targetUserId,
+        ReporterID: currentUser.UserID,
+        Reason: reason,
+        Notes: notes,
+        Timestamp: data.report?.timestamp || new Date().toISOString(),
+        EventID: ctx?.eventId,
+        EventName: ctx?.eventName,
+        RoundNumber: ctx?.roundNumber,
+        Urgent: Boolean(data.urgent),
+      };
+
+      setReports(prev => [newReport, ...prev]);
+
+      if (alsoBlock) {
+        blockUser(targetUserId);
+      }
+
+      if (endActiveCall && ctx?.onAfterSubmitEndCall) {
+        await ctx.onAfterSubmitEndCall();
+      }
+
+      showNotification(
+        data.urgent
+          ? 'Report saved and flagged as urgent for founder/moderator review.'
+          : data.message || 'Report saved securely for platform owner review.',
+        'success'
+      );
+      setReportModalTarget(null);
+
+      return {
+        success: true,
+        reportId: data.reportId,
+        urgent: Boolean(data.urgent),
+        urgencyReasons: Array.isArray(data.urgencyReasons) ? data.urgencyReasons : [],
+        notificationDispatch: data.notificationDispatch,
+      };
+    } catch (err: any) {
+      const errMsg = err?.message || 'Network error while submitting report. Please try again.';
+      showNotification(errMsg, 'pink');
+      return { success: false, error: errMsg };
+    }
   };
 
   const addEvent = (
@@ -3593,6 +3657,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getTimeUntilEventStartMs,
         notification,
         reportModalTarget,
+        reportModalContext,
         setReportModalTarget,
         setCurrentView,
         setSelectedEventId,

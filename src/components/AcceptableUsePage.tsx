@@ -94,7 +94,7 @@ export const AcceptableUsePage: React.FC = () => {
           </div>
           <ul className="space-y-2.5 list-disc pl-5">
             <li>
-              <strong>Private Messages &amp; Live Video Conduct:</strong> Speed Meet Love is for dating and connection, not sexual entertainment. Sexually explicit content and sexual solicitations are prohibited in private messages and live video, even when both participants consent.
+              <strong>No Sexually Explicit Content or Sexual Solicitation:</strong> Speed Meet Love is for dating and connection, not sexual entertainment. Sexually explicit content and sexual solicitation are prohibited across Speed Meet Love, including in profiles, private messages, and live video dates, even when everyone involved consents.
             </li>
             <li>
               <strong>Harassment &amp; Threats:</strong> Harassment, unwanted repeated contact after being blocked or unmatched, stalking, bullying, threats of violence, hate speech, or publishing private personal information (doxxing).
@@ -134,12 +134,12 @@ export const AcceptableUsePage: React.FC = () => {
                 <span>Owner Review &amp; Enforcement</span>
               </div>
               <p className="text-xs text-[#111827] font-medium">
-                In-app reports are saved on the server and reviewed by the platform owner (TeeTees Creations). Violations may lead to content removal, suspension, or account termination, including revoking active sessions and removing accounts from event queues and active matches.
+                In-app reports are saved on the server, prioritized when urgent (such as live video date or high-severity reports), and reviewed by the platform owner (TeeTees Creations). An authorized moderator can remove a member from an active round, and violations may lead to content removal, suspension, or account termination, including revoking active sessions and removing accounts from event queues and active matches.
               </p>
             </div>
           </div>
           <p className="text-xs text-[#111827] font-medium">
-            Note: Speed Meet Love relies on server-side 18+ age validation at signup, member reports, and manual owner review; it does not claim automated content scanning, 24/7 real-time monitoring of private messages or live video, or government ID verification.
+            Note: Speed Meet Love relies on server-side 18+ age validation at signup, member reports, and manual owner review. Speed Meet Love does not continuously monitor live video or automatically scan it, and does not perform automated scanning of private messages, 24/7 real-time monitoring, or government ID verification.
           </p>
         </section>
 

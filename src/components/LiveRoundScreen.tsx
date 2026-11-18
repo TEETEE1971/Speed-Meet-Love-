@@ -31,11 +31,13 @@ import {
   UserCheck,
   Smile,
   Pause,
-  Play
+  Play,
+  PhoneOff
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { LiveKitVideoStage } from './LiveKitVideoStage';
 import { AuthGate } from './AuthGate';
+import { DisconnectReason } from 'livekit-client';
 import confetti from 'canvas-confetti';
 
 type RoundStage = 'call' | 'break' | 'waiting_room';
@@ -159,21 +161,30 @@ export const LiveRoundScreen: React.FC = () => {
     }
   };
 
-  // Duplicate progression guards
+  // Duplicate progression guards & safety disconnect refs
   const isAdvancingRef = useRef<boolean>(false);
   const hasAutoAdvancedRoundRef = useRef<number | null>(null);
+  const intentionalDisconnectRef = useRef<boolean>(false);
+  const disconnectLiveKitRoomRef = useRef<(() => Promise<void>) | null>(null);
+  const [moderatorRemovalNotice, setModeratorRemovalNotice] = useState<{
+    reason: string;
+    removedBy?: string;
+    removedAt?: number | null;
+  } | null>(null);
 
-  // Reset in-memory early exit and ballot flags when round index changes
+  // Reset in-memory early exit, disconnect guard, and ballot flags when round index changes
   useEffect(() => {
     hasEndedEarlyRef.current = false;
     isAdvancingRef.current = false;
     hasAutoAdvancedRoundRef.current = null;
+    intentionalDisconnectRef.current = false;
+    setModeratorRemovalNotice(null);
     setVoteSaved(false);
     setSelectedDecision(null);
     setPrivateNotes('');
     setEndRoundError(null);
     setVoteError(null);
-  }, [activeRoundIndex]);
+  }, [activeRoundIndex, activeEvent.EventID]);
 
   // Initialize stage from active persistent live session or default to 'call'
   const [stage, setStage] = useState<RoundStage>(() => {
@@ -346,7 +357,15 @@ export const LiveRoundScreen: React.FC = () => {
 
   // In Production Mode, acquire secure LiveKit room token when entering call stage with a compatible partner
   const fetchLiveKitRoomToken = useCallback(async () => {
-    if (appMode !== 'production' || stage !== 'call' || !liveKitStatus?.configured || !hasEligiblePartner) {
+    if (
+      appMode !== 'production' ||
+      stage !== 'call' ||
+      !liveKitStatus?.configured ||
+      !hasEligiblePartner ||
+      intentionalDisconnectRef.current ||
+      Boolean(moderatorRemovalNotice) ||
+      hasEndedEarlyRef.current
+    ) {
       return;
     }
 
@@ -385,10 +404,28 @@ export const LiveRoundScreen: React.FC = () => {
 
       const data = await res.json();
       if (data.success && data.token) {
-        setLiveKitToken(data.token);
-        setLiveKitServerUrl(data.liveKitUrl);
-        setLiveKitError(null);
+        if (!intentionalDisconnectRef.current && stageRef.current === 'call') {
+          setLiveKitToken(data.token);
+          setLiveKitServerUrl(data.liveKitUrl);
+          setLiveKitError(null);
+        }
       } else {
+        if (data.code === 'MODERATOR_REMOVED') {
+          intentionalDisconnectRef.current = true;
+          setLiveKitToken(null);
+          setLiveKitServerUrl(null);
+          setModeratorRemovalNotice({
+            reason: data.error || 'A moderator removed you from this active round for safety review.',
+          });
+          return;
+        }
+        if (data.code === 'CALL_TERMINATED') {
+          intentionalDisconnectRef.current = true;
+          setLiveKitToken(null);
+          setLiveKitServerUrl(null);
+          setStage('break');
+          return;
+        }
         // Do NOT automatically exit the video call room on token acquisition delay or reconnection
         setLiveKitError(data.error || 'Waiting for mutual consent from partner...');
       }
@@ -402,6 +439,7 @@ export const LiveRoundScreen: React.FC = () => {
     stage,
     liveKitStatus?.configured,
     hasEligiblePartner,
+    moderatorRemovalNotice,
     activeEvent.EventID,
     currentUser.UserID,
     partner.UserID,
@@ -414,27 +452,55 @@ export const LiveRoundScreen: React.FC = () => {
 
   const handleLiveKitDisconnect = useCallback((reason?: any) => {
     console.warn('LiveKit room disconnected in LiveRoundScreen, reason:', reason);
-    if (stage !== 'call' || timeLeft <= 0) {
-      setLiveKitToken(null);
+    setLiveKitToken(null);
+    if (
+      intentionalDisconnectRef.current ||
+      Boolean(moderatorRemovalNotice) ||
+      hasEndedEarlyRef.current ||
+      stageRef.current !== 'call' ||
+      timeLeft <= 0 ||
+      reason === DisconnectReason.CLIENT_INITIATED ||
+      reason === DisconnectReason.PARTICIPANT_REMOVED ||
+      reason === DisconnectReason.ROOM_DELETED
+    ) {
+      if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
+        setModeratorRemovalNotice({
+          reason: 'A moderator removed you from this active video round.',
+        });
+      }
       return;
     }
-    // If the 5-minute round is still actively running, reconnect automatically
+    // Only auto-reconnect on transient network drop during an active unbroken round
     showNotification('Video signal reconnecting...', 'pink');
     setTimeout(() => {
-      if (stage === 'call' && timeLeft > 0) {
+      if (
+        !intentionalDisconnectRef.current &&
+        !hasEndedEarlyRef.current &&
+        stageRef.current === 'call' &&
+        timeLeft > 0
+      ) {
         fetchLiveKitRoomToken();
       }
     }, 1500);
-  }, [stage, timeLeft, fetchLiveKitRoomToken, showNotification]);
+  }, [timeLeft, moderatorRemovalNotice, fetchLiveKitRoomToken, showNotification]);
 
   const handleLiveKitError = useCallback((err: Error) => {
     console.warn('LiveKit signal stream error caught in LiveRoundScreen:', err);
-    if (stage === 'call' && timeLeft > 0) {
-      setTimeout(() => {
-        fetchLiveKitRoomToken();
-      }, 2000);
+    if (
+      intentionalDisconnectRef.current ||
+      Boolean(moderatorRemovalNotice) ||
+      hasEndedEarlyRef.current ||
+      stageRef.current !== 'call' ||
+      timeLeft <= 0
+    ) {
+      return;
     }
-  }, [stage, timeLeft, fetchLiveKitRoomToken]);
+    setTimeout(() => {
+      if (!intentionalDisconnectRef.current && stageRef.current === 'call' && timeLeft > 0) {
+        fetchLiveKitRoomToken();
+      }
+    }, 2000);
+  }, [timeLeft, moderatorRemovalNotice, fetchLiveKitRoomToken]);
 
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
@@ -534,15 +600,44 @@ export const LiveRoundScreen: React.FC = () => {
           const round = data.round;
           const now = Date.now();
 
+          // CRITICAL: If current member was removed from this active round by a moderator, immediately disconnect & block re-entry
+          if (round.userRemovedByModerator) {
+            intentionalDisconnectRef.current = true;
+            if (disconnectLiveKitRoomRef.current) {
+              disconnectLiveKitRoomRef.current().catch(() => {});
+            }
+            setLiveKitToken(null);
+            setLiveKitServerUrl(null);
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach(t => {
+                try {
+                  t.stop();
+                } catch (e) {}
+              });
+              streamRef.current = null;
+            }
+            clearLiveSession();
+            setModeratorRemovalNotice({
+              reason: round.removalReason || 'A moderator removed you from this active round for safety review.',
+              removedBy: round.removedBy,
+              removedAt: round.removedAt,
+            });
+            return round;
+          }
+
           // CRITICAL: If client is currently in waiting room, NEVER hijack stage back to 'break' or 'call'!
           if ((stageRef.current as string) === 'waiting_room') {
             return round;
           }
 
-          const userEndedEarly = Boolean(round.userEndedEarly || isLocallyEndedEarly() || hasEndedEarlyRef.current);
+          const userEndedEarly = Boolean(round.userEndedEarly || round.callTerminated || isLocallyEndedEarly() || hasEndedEarlyRef.current);
 
-          // If current user ended early or is in break, keep them in break stage strictly (never bounce back to call)
+          // If current user ended early or call terminated or is in break, keep them in break stage strictly (never bounce back to call)
           if (userEndedEarly || round.userStage === 'break' || stageRef.current === 'break') {
+            intentionalDisconnectRef.current = true;
+            if (disconnectLiveKitRoomRef.current) {
+              disconnectLiveKitRoomRef.current().catch(() => {});
+            }
             serverRoundRef.current = {
               roundId: round.roundId,
               roundStartedAt: round.roundStartedAt,
@@ -555,6 +650,7 @@ export const LiveRoundScreen: React.FC = () => {
             setStage('break');
             setTimeLeft(0);
             setLiveKitToken(null);
+            setLiveKitServerUrl(null);
             if (streamRef.current) {
               streamRef.current.getTracks().forEach(t => t.stop());
               streamRef.current = null;
@@ -650,7 +746,7 @@ export const LiveRoundScreen: React.FC = () => {
       setIsTimerSyncing(false);
     }
     return null;
-  }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession]);
+  }, [activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession, clearLiveSession]);
 
   // Initial synchronization upon entering round or changing index
   useEffect(() => {
@@ -742,16 +838,16 @@ export const LiveRoundScreen: React.FC = () => {
     return () => clearInterval(timer);
   }, [stage, isPaused, breakPaused, isTimerSyncing, liveSession, isEligible, activeEvent.EventID, activeRoundIndex, currentUser.UserID, partner?.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession, showNotification, serverTimeOffset]);
 
-  // Periodic server timer resync every 3 seconds to guarantee zero client drift across iOS & Android
+  // Periodic server timer resync every 2.5 seconds during active calls to enforce timer & moderator/safety disconnects
   useEffect(() => {
-    if (!isEligible || stage === 'waiting_room') return;
+    if (!isEligible || stage === 'waiting_room' || Boolean(moderatorRemovalNotice)) return;
 
     const syncInterval = setInterval(() => {
       syncServerRoundTimer(false);
-    }, 3000);
+    }, stage === 'call' ? 2500 : 3500);
 
     return () => clearInterval(syncInterval);
-  }, [isEligible, stage, syncServerRoundTimer]);
+  }, [isEligible, stage, moderatorRemovalNotice, syncServerRoundTimer]);
 
   // Tab switching, browser backgrounding, and phone sleep recovery listener
   useEffect(() => {
@@ -970,17 +1066,30 @@ export const LiveRoundScreen: React.FC = () => {
     return () => clearTimeout(timer);
   }, [waitingCountdown, activeRoundIndex, eventRounds, activeEvent.EventID, currentUser.UserID, defaultDuration, defaultBreak, appMode, saveLiveSession, setActiveRoundIndex]);
 
-  // Immediately and cleanly end round early for this user and show confidential voting screen
-  const handleEndRoundAndVote = async () => {
+  // Immediately & genuinely disconnect active video call (hardware tracks + LiveKit SFU room + server session)
+  const performRealCallDisconnect = useCallback(async (opts?: {
+    reason?: string;
+    endForBoth?: boolean;
+  }) => {
     if (isEndingRound) return;
     setIsEndingRound(true);
     setEndRoundError(null);
 
     const now = Date.now();
+    intentionalDisconnectRef.current = true;
     hasEndedEarlyRef.current = true;
     stageRef.current = 'break';
 
-    // 1. Immediately terminate audio and video hardware streams
+    // 1. Disconnect LiveKit WebRTC room first if active
+    try {
+      if (disconnectLiveKitRoomRef.current) {
+        await disconnectLiveKitRoomRef.current();
+      }
+    } catch (e) {
+      console.warn('Error disconnecting LiveKit room:', e);
+    }
+
+    // 2. Immediately terminate local camera/mic hardware tracks
     try {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => {
@@ -997,13 +1106,13 @@ export const LiveRoundScreen: React.FC = () => {
       console.warn('Error stopping local media tracks:', e);
     }
     setLiveKitToken(null);
+    setLiveKitServerUrl(null);
 
-    // 2. Immediately transition local stage to 'break' and reset round timer
+    // 3. Immediately move client to break screen and lock re-entry for this round
     setStage('break');
     setTimeLeft(0);
     setBreakTimeLeft(defaultBreak);
 
-    // Persist early exit state locally to prevent any reload / network race conditions
     const endedEarlyKey = `sml_ended_early_${activeEvent.EventID}_${activeRoundIndex}_${currentUser.UserID}`;
     try {
       if (typeof window !== 'undefined' && window.sessionStorage) {
@@ -1027,16 +1136,18 @@ export const LiveRoundScreen: React.FC = () => {
       partnerId: partner.UserID,
     });
 
-    showNotification(`Video date with ${partner.FirstName} ended. Please cast your confidential Like or Pass vote below.`, 'pink');
+    showNotification(`Video call with ${partner.FirstName} disconnected.`, 'pink');
 
-    // 3. Notify server endpoint /api/events/:eventId/rounds/:roundIndex/end-early
+    // 4. Disconnect server-side session & LiveKit SFU participant via /end-call
     try {
-      const res = await fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/end-early`, {
+      const res = await fetch(`/api/events/${activeEvent.EventID}/rounds/${activeRoundIndex}/end-call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: currentUser.UserID,
           partnerId: partner?.UserID || '',
+          reason: opts?.reason || 'user_ended_call',
+          endForBoth: Boolean(opts?.endForBoth),
         }),
       });
 
@@ -1050,16 +1161,69 @@ export const LiveRoundScreen: React.FC = () => {
         setBreakTimeLeft(data.remainingBreakSeconds);
       }
     } catch (err: any) {
-      console.warn('Server early end sync failed:', err);
-      setEndRoundError(err.message || 'Server sync error. Your voting ballot is safely active.');
+      console.warn('Server end-call disconnect failed:', err);
+      setEndRoundError(err.message || 'Local call disconnected, but server sync encountered an error. Tap Retry Sync below.');
     } finally {
       setIsEndingRound(false);
     }
+  }, [
+    isEndingRound,
+    defaultBreak,
+    activeEvent.EventID,
+    activeRoundIndex,
+    currentUser.UserID,
+    partner?.UserID,
+    partner?.FirstName,
+    appMode,
+    saveLiveSession,
+    showNotification,
+  ]);
+
+  const handleEndRoundAndVote = async () => {
+    await performRealCallDisconnect({ reason: 'user_ended_early', endForBoth: false });
   };
 
   const enterBreakStage = () => {
     handleEndRoundAndVote();
   };
+
+  const openLiveRoundReportModal = useCallback(() => {
+    if (!partner) return;
+    setReportModalTarget(partner, {
+      source: 'live_video_round',
+      eventId: activeEvent.EventID,
+      eventName: activeEvent.EventName,
+      roundIndex: activeRoundIndex,
+      roundNumber: activeRoundIndex + 1,
+      roundId: serverRoundRef.current?.roundId || currentRound?.RoundID,
+      participants: [
+        {
+          userId: currentUser.UserID,
+          name: `${currentUser.FirstName} ${currentUser.LastName}`.trim(),
+          role: 'reporter',
+        },
+        {
+          userId: partner.UserID,
+          name: `${partner.FirstName} ${partner.LastName}`.trim(),
+          role: 'reported',
+        },
+      ],
+      onAfterSubmitEndCall: async () => {
+        await performRealCallDisconnect({ reason: 'safety_report', endForBoth: false });
+      },
+    });
+  }, [
+    partner,
+    setReportModalTarget,
+    activeEvent.EventID,
+    activeEvent.EventName,
+    activeRoundIndex,
+    currentRound?.RoundID,
+    currentUser.UserID,
+    currentUser.FirstName,
+    currentUser.LastName,
+    performRealCallDisconnect,
+  ]);
 
   const handleDecision = async (decision: 'like' | 'pass') => {
     if (isSubmittingVote || isAdvancing) return;
@@ -1367,6 +1531,40 @@ export const LiveRoundScreen: React.FC = () => {
     );
   }
 
+  // Moderator removal block screen
+  if (moderatorRemovalNotice) {
+    return (
+      <div className="max-w-xl mx-auto p-8 sm:p-10 rounded-3xl bg-white border-2 border-red-300 shadow-xl text-center space-y-5 my-8">
+        <div className="w-16 h-16 rounded-2xl bg-red-50 border border-red-300 mx-auto flex items-center justify-center text-[#B91C1C] shadow-sm">
+          <Ban className="w-8 h-8" />
+        </div>
+        <div className="space-y-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[#991B1B] font-heading">
+            Active Round Disconnected · Moderator Action
+          </span>
+          <h2 className="text-2xl font-bold text-[#111827] font-heading">
+            Removed from Active Video Round
+          </h2>
+          <p className="text-xs sm:text-sm text-[#111827] font-medium max-w-md mx-auto leading-relaxed">
+            {moderatorRemovalNotice.reason}
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+          <button
+            type="button"
+            onClick={() => {
+              setModeratorRemovalNotice(null);
+              leaveEvent(activeEvent.EventID);
+            }}
+            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-bold cursor-pointer"
+          >
+            Leave Event &amp; Return
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
       {/* Top Banner Notice */}
@@ -1497,23 +1695,35 @@ export const LiveRoundScreen: React.FC = () => {
                 <span className="hidden sm:inline">Send Heart</span>
               </button>
 
-              {/* End Round & Vote Button with loading spinner and clear active click feedback */}
+              {/* Quick Live Safety & End Call Actions in Header */}
+              <button
+                type="button"
+                onClick={openLiveRoundReportModal}
+                disabled={!hasEligiblePartner}
+                className="px-3 sm:px-3.5 py-2 min-h-[42px] rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-[#92400E] transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                title="Report inappropriate behavior during this round"
+              >
+                <ShieldAlert className="w-4 h-4 text-[#B45309]" />
+                <span>Report</span>
+              </button>
+
+              {/* End Call & Disconnect Button */}
               <button
                 type="button"
                 onClick={handleEndRoundAndVote}
                 disabled={isEndingRound}
-                className="px-3.5 sm:px-4 py-2 min-h-[42px] rounded-2xl bg-white hover:bg-pink-50 active:bg-pink-100 border-2 border-pink-400 text-xs font-bold text-[#BE185D] transition-all shadow-sm hover:shadow active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
-                title="Immediately end your video session and cast your confidential vote"
+                className="px-3.5 sm:px-4 py-2 min-h-[42px] rounded-2xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-xs font-bold text-white transition-all shadow-sm hover:shadow active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+                title="Disconnect video call and leave this round immediately"
               >
                 {isEndingRound ? (
                   <>
-                    <span className="w-3.5 h-3.5 border-2 border-[#BE185D] border-t-transparent rounded-full animate-spin" />
-                    <span>Ending...</span>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Disconnecting...</span>
                   </>
                 ) : (
                   <>
-                    <FastForward className="w-3.5 h-3.5 fill-current" />
-                    <span>End Round & Vote</span>
+                    <PhoneOff className="w-3.5 h-3.5" />
+                    <span>End Call</span>
                   </>
                 )}
               </button>
@@ -1590,10 +1800,16 @@ export const LiveRoundScreen: React.FC = () => {
                   onReconnectRequest={fetchLiveKitRoomToken}
                   onToggleMic={() => setMicOn(prev => !prev)}
                   onToggleCamera={() => setCameraOn(prev => !prev)}
-                  onReportPartner={() => setReportModalTarget(partner)}
+                  onReportPartner={openLiveRoundReportModal}
+                  onEndCall={() => performRealCallDisconnect({ reason: 'user_ended_call', endForBoth: false })}
+                  onRegisterDisconnect={(fn) => {
+                    disconnectLiveKitRoomRef.current = fn;
+                  }}
+                  isEndingCall={isEndingRound}
                   appMode={appMode}
                 />
               ) : (
+                <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Partner Screen (Simulated WebRTC or Connection Standby) */}
                   <div className="relative aspect-4/3 rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-lg flex flex-col justify-between p-4 group">
@@ -1625,8 +1841,9 @@ export const LiveRoundScreen: React.FC = () => {
                           </button>
                         )}
                         <button
-                          onClick={() => setReportModalTarget(partner)}
-                          className="p-1.5 rounded-full bg-slate-900/80 hover:bg-rose-900/60 text-slate-300 hover:text-rose-300 transition-colors"
+                          type="button"
+                          onClick={openLiveRoundReportModal}
+                          className="p-1.5 rounded-full bg-slate-900/80 hover:bg-rose-900/60 text-slate-300 hover:text-rose-300 transition-colors cursor-pointer"
                           title="Report partner"
                         >
                           <ShieldAlert className="w-3.5 h-3.5" />
@@ -1813,7 +2030,62 @@ export const LiveRoundScreen: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Explicit In-Call Safety & Disconnect Bar for Sandbox / Token Standby Mode */}
+                <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMicOn(prev => !prev)}
+                      className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                        micOn ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-rose-600 hover:bg-rose-700 text-white'
+                      }`}
+                    >
+                      {micOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+                      <span>{micOn ? 'Mute Mic' : 'Unmute Mic'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCameraOn(prev => !prev)}
+                      className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                        cameraOn ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-rose-600 hover:bg-rose-700 text-white'
+                      }`}
+                    >
+                      {cameraOn ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
+                      <span>{cameraOn ? 'Camera Off' : 'Camera On'}</span>
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={openLiveRoundReportModal}
+                      className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/50 text-amber-200 font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <ShieldAlert className="w-4 h-4 text-amber-300" />
+                      <span>Report Participant</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isEndingRound}
+                      onClick={() => performRealCallDisconnect({ reason: 'user_ended_call', endForBoth: false })}
+                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1.5 shadow-md transition-colors cursor-pointer disabled:opacity-60"
+                    >
+                      <PhoneOff className="w-4 h-4" />
+                      <span>{isEndingRound ? 'Disconnecting...' : 'End Call'}</span>
+                    </button>
+                  </div>
+                </div>
+                </>
               )}
+
+              {/* Honest Live-Round Safety Notice */}
+              <div className="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-[11px] text-[#111827] font-medium flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-[#047857] shrink-0" />
+                <span>
+                  Calls are private and are not continuously monitored or automatically scanned. Tap <strong>Report Participant</strong> or <strong>End Call</strong> anytime to immediately disconnect this session.
+                </span>
+              </div>
 
               {/* In-Call Chemistry Spark / Icebreaker prompt */}
               <div className="p-4 rounded-3xl bg-white border border-pink-200 shadow-xs flex items-center justify-between gap-4">
@@ -1933,7 +2205,7 @@ export const LiveRoundScreen: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setReportModalTarget(partner)}
+                    onClick={openLiveRoundReportModal}
                     className="text-[#BE123C] hover:text-[#9F1239] flex items-center gap-1 font-bold cursor-pointer"
                   >
                     <ShieldAlert className="w-3.5 h-3.5" />

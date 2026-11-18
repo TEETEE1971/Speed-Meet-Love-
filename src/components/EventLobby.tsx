@@ -19,7 +19,8 @@ import {
   Globe,
   Lock,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  XCircle,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { AuthGate } from './AuthGate';
@@ -54,7 +55,11 @@ export const EventLobby: React.FC = () => {
   }
 
   const isEligible = canAccessLiveSpeedDating(currentUser);
+  const memberAge = Number(currentUser.Age || 0);
+  const passesAdultAgeCheck = memberAge >= 18;
   const activeEvent = events.find(e => e.EventID === selectedEventId) || events[0];
+  const requires30Plus = activeEvent.EventType === '30 & Older';
+  const passesEventAgeRequirement = passesAdultAgeCheck && (!requires30Plus || memberAge >= 30);
   const isRegistered = activeEvent.ParticipantsList.includes(currentUser.UserID);
   const isStagingEvent = activeEvent.EventID === 'evt_staging_dev' || activeEvent.EventID.startsWith('evt_staging_');
   const isAuthorizedStagingUser = ['usr_kristy', 'usr_me', 'usr_01', 'usr_02', 'usr_03'].includes(currentUser.UserID);
@@ -197,6 +202,14 @@ export const EventLobby: React.FC = () => {
       });
 
   const handleStartRounds = () => {
+    if (!passesAdultAgeCheck) {
+      showNotification('18+ Age Check Failed — Access Blocked. You must be at least 18 years old.', 'pink');
+      return;
+    }
+    if (!passesEventAgeRequirement) {
+      showNotification('Age Check Failed — Access Blocked. This event requires members aged 30 and older.', 'pink');
+      return;
+    }
     if (!isEligible) {
       setCurrentView('pricing');
       return;
@@ -290,7 +303,27 @@ export const EventLobby: React.FC = () => {
 
           {/* Action / Matchmaking Entry Area */}
           <div className="shrink-0 flex flex-col items-end gap-2">
-            {!isEligible ? (
+            {!passesAdultAgeCheck ? (
+              <div className="px-4 py-3 rounded-2xl bg-red-50 border-2 border-red-400 text-right">
+                <span className="text-xs font-extrabold text-[#991B1B] flex items-center gap-1.5 justify-end">
+                  <XCircle className="w-4 h-4 text-[#B91C1C]" />
+                  18+ Age Check Failed — Access Blocked
+                </span>
+                <p className="text-[11px] text-[#7F1D1D] font-medium mt-0.5">
+                  Members under 18 cannot enter live video events.
+                </p>
+              </div>
+            ) : !passesEventAgeRequirement ? (
+              <div className="px-4 py-3 rounded-2xl bg-red-50 border-2 border-red-400 text-right">
+                <span className="text-xs font-extrabold text-[#991B1B] flex items-center gap-1.5 justify-end">
+                  <XCircle className="w-4 h-4 text-[#B91C1C]" />
+                  30+ Age Check Failed — Access Blocked
+                </span>
+                <p className="text-[11px] text-[#7F1D1D] font-medium mt-0.5">
+                  This event is restricted to verified members aged 30 and older.
+                </p>
+              </div>
+            ) : !isEligible ? (
               <button
                 onClick={() => setCurrentView('pricing')}
                 className="px-6 py-3 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-[#78350F] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shrink-0 shadow-xs cursor-pointer"
@@ -367,6 +400,40 @@ export const EventLobby: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+
+        {/* 18+ Adult Age Verification Status Banner */}
+        <div
+          data-testid={passesEventAgeRequirement ? 'lobby-age-check-pass' : 'lobby-age-check-fail'}
+          className={`p-3.5 rounded-2xl border-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
+            passesEventAgeRequirement
+              ? 'bg-emerald-50 border-emerald-300 text-[#064E3B]'
+              : 'bg-red-50 border-red-400 text-[#7F1D1D]'
+          }`}
+        >
+          <div className="flex items-center gap-2 font-bold">
+            {passesEventAgeRequirement ? (
+              <CheckCircle className="w-4 h-4 text-[#047857] shrink-0" />
+            ) : (
+              <XCircle className="w-4 h-4 text-[#B91C1C] shrink-0" />
+            )}
+            <span>
+              {passesAdultAgeCheck
+                ? passesEventAgeRequirement
+                  ? `18+ Adult Age Check: Passed (Member Age ${memberAge} Verified)`
+                  : `Event Age Check Failed — Access Blocked (Member Age ${memberAge}, 30+ Required)`
+                : `18+ Adult Age Check Failed — Access Blocked (Member Age ${memberAge})`}
+            </span>
+          </div>
+          <span
+            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border self-start sm:self-auto ${
+              passesEventAgeRequirement
+                ? 'bg-white text-[#047857] border-emerald-300'
+                : 'bg-red-700 text-white border-red-800'
+            }`}
+          >
+            {passesEventAgeRequirement ? 'AGE VERIFIED' : 'ACCESS BLOCKED'}
+          </span>
         </div>
 
         {/* Real-Time Countdown to 7:00 PM Eastern Time Widget */}

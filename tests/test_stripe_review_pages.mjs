@@ -75,13 +75,15 @@ function testPolicyContentAndNoStaleContradictions() {
     /scams?/i,
     /impersonat/i,
     /illegal content/i,
+    /Sexually explicit content and sexual solicitation are prohibited across Speed Meet Love, including in profiles, private messages, and live video dates, even when everyone involved consents\./,
+    /does not continuously monitor live video or automatically scan it/i,
   ];
 
   for (const regex of requiredTopics) {
     assert.ok(regex.test(terms), `TermsPage.tsx missing required rule matching ${regex}`);
     assert.ok(regex.test(aup), `AcceptableUsePage.tsx missing required rule matching ${regex}`);
   }
-  console.log('  ✓ Terms & Acceptable Use Policy include all required prohibitions');
+  console.log('  ✓ Terms & Acceptable Use Policy include all required prohibitions verbatim');
 
   const filesToCheck = [
     'src/components/PrivacyPolicy.tsx',

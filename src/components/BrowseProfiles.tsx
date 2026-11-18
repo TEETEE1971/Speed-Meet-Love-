@@ -180,7 +180,7 @@ export const BrowseProfiles: React.FC = () => {
   };
 
   const handleReport = (targetUser: User) => {
-    setReportModalTarget(targetUser);
+    setReportModalTarget(targetUser, { source: 'browse' });
   };
 
   const handleApplyPreferences = (newPrefs: UserPreferences) => {

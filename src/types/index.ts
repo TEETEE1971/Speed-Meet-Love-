@@ -247,13 +247,56 @@ export interface IcebreakerQuestion {
   question: string;
 }
 
+export type ReportReasonOption =
+  | 'Sexually explicit content or solicitation'
+  | 'Inappropriate behavior'
+  | 'Child safety / Underage / CSAE'
+  | 'Harassment'
+  | 'Fake profile'
+  | 'Spam or advertising'
+  | 'Other';
+
+export interface ReportParticipantInfo {
+  userId: string;
+  name?: string;
+  email?: string;
+  role?: 'reporter' | 'reported' | 'participant';
+}
+
+export interface ReportContextPayload {
+  source?: 'live_video_round' | 'second_chance_date' | 'browse' | 'messages' | 'match_results' | 'profile' | 'other';
+  eventId?: string;
+  eventName?: string;
+  roundIndex?: number;
+  roundNumber?: number;
+  roundId?: string;
+  participants?: ReportParticipantInfo[];
+  callEndedOnReport?: boolean;
+  onAfterSubmitEndCall?: () => Promise<void> | void;
+}
+
+export interface ReportNotificationDispatch {
+  emailAttempted: boolean;
+  emailSent: boolean;
+  emailProvider?: string;
+  pushAttempted: boolean;
+  pushDelivered: number;
+  pushSubscriptionsCount: number;
+  inAppFlagged: boolean;
+  note?: string;
+}
+
 export interface UserReport {
   ReportID: string;
   ReportedUserID: string;
   ReporterID: string;
-  Reason: 'Inappropriate behavior' | 'Fake profile' | 'Spam or advertising' | 'Harassment' | 'Child safety / Underage / CSAE' | 'Other';
+  Reason: ReportReasonOption;
   Notes: string;
   Timestamp: string;
+  EventID?: string;
+  EventName?: string;
+  RoundNumber?: number;
+  Urgent?: boolean;
 }
 
 export interface OwnerReportItem {
@@ -269,9 +312,62 @@ export interface OwnerReportItem {
   timestamp: string;
   createdAt: number;
   status: 'pending' | 'banned' | 'dismissed' | 'reviewed';
+  source?: string;
+  eventId?: string;
+  eventName?: string;
+  roundIndex?: number;
+  roundNumber?: number;
+  roundId?: string;
+  participants?: ReportParticipantInfo[];
+  callEndedOnReport?: boolean;
+  urgent?: boolean;
+  urgencyLevel?: 'urgent' | 'standard';
+  urgencyReasons?: string[];
+  notificationDispatch?: ReportNotificationDispatch;
   actionTaken?: string;
   actionAt?: number;
   actionBy?: string;
+}
+
+export interface ActiveRoundParticipantDetail {
+  userId: string;
+  name: string;
+  email?: string;
+  removed?: boolean;
+  earlyExited?: boolean;
+}
+
+export interface ActiveRoundSummary {
+  roundId: string;
+  roomName: string;
+  eventId: string;
+  eventName: string;
+  roundIndex: number;
+  roundNumber: number;
+  status: 'call' | 'break' | 'completed';
+  mode: string;
+  roundStartedAt: number;
+  roundExpiresAt: number;
+  remainingSeconds: number;
+  participants: ActiveRoundParticipantDetail[];
+  terminatedAt?: number;
+  terminatedByUserId?: string;
+  terminatedReason?: string;
+}
+
+export interface ActiveRoundRemovalRecord {
+  removalId: string;
+  eventId: string;
+  roundIndex: number;
+  roundNumber: number;
+  roundId?: string;
+  userId: string;
+  userName?: string;
+  removedBy: string;
+  removedAt: number;
+  reason: string;
+  reportId?: string;
+  sfuRemoved?: boolean;
 }
 
 export interface RegisteredUserSummary {
