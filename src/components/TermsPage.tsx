@@ -139,7 +139,10 @@ export const TermsPage: React.FC = () => {
               <strong>Human Trafficking &amp; Forced Labor:</strong> Any involvement in, recruitment for, promotion of, or facilitation of human trafficking, forced labor, or commercial sex trafficking.
             </li>
             <li>
-              <strong>Sexual Exploitation &amp; Non-Consensual Sexual Content:</strong> Any sexual exploitation, coercion, sextortion, prostitution or escort solicitation, non-consensual intimate imagery, or sexually explicit broadcasts on public profiles or non-consenting interactions.
+              <strong>Sexual Exploitation &amp; Non-Consensual Sexual Content:</strong> Any sexual exploitation, coercion, sextortion, prostitution or escort solicitation, or non-consensual intimate imagery across profiles, messages, or live video.
+            </li>
+            <li>
+              <strong>Private Messages &amp; Live Video Conduct:</strong> Speed Meet Love is for dating and connection, not sexual entertainment. Sexually explicit content and sexual solicitations are prohibited in private messages and live video, even when both participants consent.
             </li>
             <li>
               <strong>Aiding, Encouraging, or Facilitating Abuse:</strong> Assisting, encouraging, coordinating, instructing, or enabling physical, sexual, emotional, or financial abuse or exploitation of any person.
@@ -161,7 +164,7 @@ export const TermsPage: React.FC = () => {
             </li>
           </ul>
           <p className="text-xs text-[#7F1D1D] font-bold pt-1">
-            Review the complete rules on our{' '}
+            Violations may lead to content removal, suspension, or account termination. Review the complete rules on our{' '}
             <a href="/acceptable-use" onClick={(e) => handleNav(e, 'acceptable_use')} className="underline font-bold">
               Acceptable Use Policy (/acceptable-use)
             </a>
@@ -219,7 +222,7 @@ export const TermsPage: React.FC = () => {
             .
           </p>
           <p>
-            Reports are reviewed directly by the platform owner (TeeTees Creations). Speed Meet Love does not claim automated AI content scanning or 24/7 real-time human monitoring of every interaction. Upon determining a violation of these Terms or the Acceptable Use Policy, TeeTees Creations may immediately suspend or permanently ban the account, revoke active session tokens, remove the user from matchmaking queues and active matches, and escalate illegal conduct (including mandatory NCMEC CyberTipline reports under 18 U.S.C. § 2258A) or respond to valid law-enforcement requests.
+            In-app reports are saved on the server and reviewed by the platform owner (TeeTees Creations). Speed Meet Love does not claim automated content scanning or 24/7 real-time monitoring of private messages or live video. Violations may lead to content removal, suspension, or account termination—including permanent banning, revocation of active session tokens, and removal from matchmaking queues and active matches—as well as mandatory legal reporting (including NCMEC CyberTipline reports under 18 U.S.C. § 2258A) or responses to valid law-enforcement requests where applicable.
           </p>
           <p>
             You may permanently delete your account at any time from your Profile Settings or view deletion instructions on{' '}

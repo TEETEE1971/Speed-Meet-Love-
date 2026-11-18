@@ -645,6 +645,76 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
       </section>
 
       {/* =========================================================================
+          PUBLIC FOUNDER SECTION: MEET KRISTY — FOUNDER OF SPEED MEET LOVE
+          ========================================================================= */}
+      <section
+        aria-labelledby="meet-kristy-founder"
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#FFF1F5] via-[#FFE4EE] to-[#FDF2F8] border border-rose-200 p-6 sm:p-10 lg:p-12 shadow-lg"
+      >
+        {/* Subtle Hearts Accent Layer (soft, non-intrusive background texture) */}
+        <FloatingHearts count={6} colors={['pink', 'rose']} className="opacity-25" />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute top-5 right-6 text-rose-300/45 select-none hidden sm:block"
+        >
+          <Heart className="w-8 h-8 fill-rose-200/60" />
+        </div>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-5 right-10 text-pink-300/45 select-none"
+        >
+          <Heart className="w-6 h-6 fill-pink-200/60" />
+        </div>
+
+        <div className="relative z-10 max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-6 sm:gap-8 lg:gap-12">
+          {/* Founder Portrait (clean frame, no overlaid bio text) */}
+          <div className="w-56 sm:w-64 md:w-72 lg:w-80 shrink-0">
+            <div className="aspect-[4/5] w-full rounded-3xl overflow-hidden bg-white border-4 border-white shadow-xl ring-1 ring-rose-200">
+              <img
+                src="/assets/aistudio/Screenshot_20261109-051148_Facebook_4fd2d1a3.png"
+                alt="Kristy, Founder of Speed Meet Love"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover object-[center_25%]"
+              />
+            </div>
+          </div>
+
+          {/* Readable Founder Story Beside (Desktop) / Beneath (Mobile) */}
+          <div className="flex-1 space-y-4 text-left">
+            <div className="space-y-1.5">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#9D174D] font-heading flex items-center gap-1.5">
+                <Heart className="w-3.5 h-3.5 text-[#BE185D] fill-[#BE185D] shrink-0" aria-hidden="true" />
+                <span>Founder Story</span>
+              </p>
+              <h2
+                id="meet-kristy-founder"
+                className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#111827] font-heading tracking-tight leading-snug"
+              >
+                Meet Kristy — Founder of Speed Meet Love
+              </h2>
+            </div>
+
+            <div className="space-y-3.5 text-base sm:text-[17px] leading-relaxed text-[#111827] font-medium">
+              <p>
+                Kristy knows that one conversation can change your life. She met her husband through speed dating, and that experience stayed with her.
+              </p>
+              <p>
+                After COVID, she imagined bringing that same spark online: a way for people to meet face to face, share a laugh, and discover a connection from wherever they are.
+              </p>
+              <p>
+                That idea became Speed Meet Love, created to give others a chance to start a love story of their own.
+              </p>
+            </div>
+
+            <p className="pt-1 text-base sm:text-lg font-bold text-[#9D174D] font-heading flex items-center gap-2">
+              <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D] shrink-0" aria-hidden="true" />
+              <span>Your next connection starts here.</span>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* =========================================================================
           RED-AND-PINK "JOIN THE FUN!" PROMOTIONAL BANNER
           ========================================================================= */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-red-600 via-rose-500 to-[#FF2E93] text-white p-6 sm:p-10 lg:p-12 shadow-2xl border-2 border-rose-300">

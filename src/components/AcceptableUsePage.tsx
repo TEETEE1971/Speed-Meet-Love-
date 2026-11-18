@@ -68,7 +68,7 @@ export const AcceptableUsePage: React.FC = () => {
             <h2>1. Zero-Tolerance Exploitation, Trafficking &amp; Abuse Rules</h2>
           </div>
           <p className="font-bold text-[#7F1D1D]">
-            The following conduct is strictly prohibited on Speed Meet Love and results in immediate permanent banning upon verification and escalation to appropriate authorities where required:
+            The following conduct is strictly prohibited on Speed Meet Love. Violations may lead to content removal, suspension, or account termination, and will be escalated to appropriate authorities where required:
           </p>
           <ul className="space-y-2.5 list-disc pl-5 text-[#111827]">
             <li>
@@ -90,9 +90,12 @@ export const AcceptableUsePage: React.FC = () => {
         <section className="p-6 sm:p-8 rounded-3xl bg-white border border-rose-200 shadow-xs space-y-4">
           <div className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-[#111827] font-heading">
             <AlertTriangle className="w-5 h-5 text-[#B91C1C] shrink-0" />
-            <h2>2. Harassment, Scams, Impersonation &amp; Illegal Content</h2>
+            <h2>2. Private Messages, Live Video &amp; Member Conduct</h2>
           </div>
           <ul className="space-y-2.5 list-disc pl-5">
+            <li>
+              <strong>Private Messages &amp; Live Video Conduct:</strong> Speed Meet Love is for dating and connection, not sexual entertainment. Sexually explicit content and sexual solicitations are prohibited in private messages and live video, even when both participants consent.
+            </li>
             <li>
               <strong>Harassment &amp; Threats:</strong> Harassment, unwanted repeated contact after being blocked or unmatched, stalking, bullying, threats of violence, hate speech, or publishing private personal information (doxxing).
             </li>
@@ -131,12 +134,12 @@ export const AcceptableUsePage: React.FC = () => {
                 <span>Owner Review &amp; Enforcement</span>
               </div>
               <p className="text-xs text-[#111827] font-medium">
-                Reports are persisted on the server and reviewed directly by the platform owner (TeeTees Creations). Confirmed violators receive a permanent account ban, immediate revocation of active sessions, and removal from event queues and active rounds.
+                In-app reports are saved on the server and reviewed by the platform owner (TeeTees Creations). Violations may lead to content removal, suspension, or account termination, including revoking active sessions and removing accounts from event queues and active matches.
               </p>
             </div>
           </div>
           <p className="text-xs text-[#111827] font-medium">
-            Note: Speed Meet Love relies on server-side 18+ age validation at signup, member reports, and manual owner review; it does not use automated AI scanning or government ID verification.
+            Note: Speed Meet Love relies on server-side 18+ age validation at signup, member reports, and manual owner review; it does not claim automated content scanning, 24/7 real-time monitoring of private messages or live video, or government ID verification.
           </p>
         </section>
 
