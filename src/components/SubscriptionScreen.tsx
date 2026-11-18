@@ -453,7 +453,7 @@ export const SubscriptionScreen: React.FC = () => {
         )}
 
         {/* Customer Billing Portal Shortcut if already subscribed via Stripe */}
-        {(currentTier === 'Premium' || currentTier === 'Premium Plus') && !isAndroid && Boolean(currentUser?.StripeCustomerId || currentUser?.SubscriptionStatus === 'active') && (
+        {(currentTier === 'Premium' || currentTier === 'Premium Plus') && !isAndroid && Boolean(currentUser?.StripeCustomerId) && (
           <div className="pt-2">
             <button
               type="button"

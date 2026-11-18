@@ -2278,6 +2278,8 @@ const bannedUsers = new Set<string>();
 
 const GRANTED_TESTERS_FILE = path.join(DATA_DIR, 'granted_testers.json');
 
+export const DESIGNATED_TESTER_EMAILS = new Set(['speedmeetlovetester@gmail.com']);
+
 export interface GrantedTesterRecord {
   email: string;
   grantedAt: number;
@@ -2313,6 +2315,26 @@ function saveGrantedTestersToDisk() {
     fs.writeFileSync(GRANTED_TESTERS_FILE, JSON.stringify(array, null, 2), 'utf-8');
   } catch (err) {
     console.warn('Failed to save granted testers to disk:', err);
+  }
+}
+
+function seedDesignatedTesterRecordsIfMissing() {
+  let added = false;
+  const now = Date.now();
+  for (const email of DESIGNATED_TESTER_EMAILS) {
+    const normEmail = email.toLowerCase().trim();
+    if (!grantedTesterRecords.has(normEmail)) {
+      grantedTesterRecords.set(normEmail, {
+        email: normEmail,
+        grantedAt: now,
+        grantedBy: 'kristylten@gmail.com',
+        notes: 'Dedicated Stripe reviewer account (Premium & Premium Plus features without payment)',
+      });
+      added = true;
+    }
+  }
+  if (added) {
+    saveGrantedTestersToDisk();
   }
 }
 
@@ -2756,6 +2778,7 @@ loadUsersFromDisk();
 loadReportsFromDisk();
 loadBannedUsersFromDisk();
 loadGrantedTestersFromDisk();
+seedDesignatedTesterRecordsIfMissing();
 loadWaitlistFromDisk();
 loadLaunchEventsFromDisk();
 loadLaunchOfferStateFromDisk();
@@ -2860,6 +2883,7 @@ async function syncDurableDatabaseOnStartup() {
         await firestoreSetDoc(firestoreDoc(firestoreDb, 'granted_testers', docId), record).catch(() => null);
       }
     }
+    seedDesignatedTesterRecordsIfMissing();
 
     // 2c. Sync event waiting list from durable storage
     const waitlistCol = firestoreCollection(firestoreDb, 'event_waitlist');
@@ -7151,7 +7175,18 @@ app.post('/api/livekit/token', async (req, res) => {
       }
 
       const { tier } = req.body;
-      if (tier && tier !== 'Premium Plus') {
+      const authUser = verifyAuthenticatedUser(req);
+      const targetUser = authUser ? serverUsers.get(authUser.userId) : (serverUsers.get(userId) || null);
+      if (targetUser) {
+        const access = hasPaidOrTesterAccess(targetUser, 'Premium Plus');
+        if (!access.allowed) {
+          return res.status(403).json({
+            success: false,
+            code: 'PREMIUM_PLUS_REQUIRED',
+            error: 'Access denied: Second Chance live video dates require an active Premium Plus membership ($14.99/mo).',
+          });
+        }
+      } else if (tier && tier !== 'Premium Plus') {
         return res.status(403).json({
           success: false,
           code: 'PREMIUM_PLUS_REQUIRED',
