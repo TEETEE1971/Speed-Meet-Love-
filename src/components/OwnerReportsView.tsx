@@ -725,7 +725,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                 <span>Sole Operator Administration · TeeTees Creations</span>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-black font-heading tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-black font-heading tracking-tight text-white">
                 Owner Community Safety &amp; In-App Reports
               </h1>
 
@@ -1387,7 +1387,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                 <span>Production Server Database · Real Accounts Inspector</span>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-black font-heading tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-black font-heading tracking-tight text-white">
                 Registered Users &amp; Account Manifest
               </h1>
 
@@ -2011,7 +2011,7 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h1 className="text-2xl sm:text-3xl font-black font-heading tracking-tight">
+                <h1 className="text-2xl sm:text-3xl font-black font-heading tracking-tight text-white">
                   Launch Event Waiting List &amp; Compatibility Pool
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-200 max-w-2xl font-medium leading-relaxed mt-1">

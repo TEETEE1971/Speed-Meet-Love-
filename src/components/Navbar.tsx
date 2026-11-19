@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Heart,
@@ -28,71 +28,134 @@ import { Avatar } from './Avatar';
 import { SpeedMeetLoveLogo } from './SpeedMeetLoveLogo';
 import { SubscriptionTier, AppView } from '../types';
 
-interface NavHeartTileProps {
+interface NavRoundedButtonProps {
   label: string;
-  accentColor: string;
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   variant: 'desktop' | 'mobile';
 }
 
-const NavHeartTile: React.FC<NavHeartTileProps> = ({
+const TAP_HEART_PARTICLES = [
+  { id: 'p1', className: 'nav-heart-p1 text-[#FF2E93] text-[10px]' },
+  { id: 'p2', className: 'nav-heart-p2 text-[#FFF1F5] text-[9px]' },
+  { id: 'p3', className: 'nav-heart-p3 text-[#FDA4AF] text-[11px]' },
+  { id: 'p4', className: 'nav-heart-p4 text-[#F43F5E] text-[8.5px]' },
+  { id: 'p5', className: 'nav-heart-p5 text-white text-[8px]' },
+];
+
+const NavRoundedButton: React.FC<NavRoundedButtonProps> = ({
   label,
-  accentColor,
   active,
   onClick,
   icon,
   variant,
 }) => {
+  const [tapBurstId, setTapBurstId] = useState<number>(0);
+  const [isBouncing, setIsBouncing] = useState<boolean>(false);
+  const bounceTimerRef = useRef<number | null>(null);
+  const burstTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (bounceTimerRef.current !== null) window.clearTimeout(bounceTimerRef.current);
+      if (burstTimerRef.current !== null) window.clearTimeout(burstTimerRef.current);
+    };
+  }, []);
+
+  const handleTap = () => {
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!prefersReducedMotion) {
+      setIsBouncing(false);
+      window.requestAnimationFrame(() => {
+        setIsBouncing(true);
+      });
+      setTapBurstId(Date.now());
+
+      if (bounceTimerRef.current !== null) window.clearTimeout(bounceTimerRef.current);
+      if (burstTimerRef.current !== null) window.clearTimeout(burstTimerRef.current);
+
+      bounceTimerRef.current = window.setTimeout(() => {
+        setIsBouncing(false);
+      }, 380);
+      burstTimerRef.current = window.setTimeout(() => {
+        setTapBurstId(0);
+      }, 820);
+    }
+
+    onClick();
+  };
+
   const sizeClass =
     variant === 'desktop'
-      ? 'w-[62px] h-[54px] xl:w-[66px] xl:h-[58px]'
-      : 'w-full max-w-[58px] sm:max-w-[66px] h-[50px] min-[390px]:h-[54px] sm:h-[58px] mx-auto';
+      ? 'min-w-[62px] xl:min-w-[74px] h-[50px] xl:h-[52px] px-2 xl:px-3 rounded-2xl'
+      : 'w-full min-w-0 min-h-[48px] sm:min-h-[52px] px-0.5 sm:px-1.5 py-1.5 rounded-2xl';
 
   const labelSizeClass =
     variant === 'desktop'
-      ? 'text-[9.5px] xl:text-[10px] tracking-[-0.02em]'
-      : 'text-[7.5px] min-[375px]:text-[8.5px] min-[400px]:text-[9px] sm:text-[10px] tracking-[-0.04em]';
+      ? 'text-[10.5px] xl:text-[11px] tracking-[-0.01em]'
+      : 'text-[9.5px] min-[380px]:text-[10.5px] sm:text-xs tracking-[-0.02em]';
+
+  const stateClass = active
+    ? 'bg-gradient-to-b from-white via-[#FFF5F8] to-[#FFE4EE] text-[#BE123C] border border-white ring-2 ring-pink-200/90 shadow-[0_0_16px_rgba(255,192,224,0.9),0_0_26px_rgba(255,46,147,0.42),0_4px_12px_rgba(127,29,29,0.24)]'
+    : 'bg-white/15 hover:bg-white/24 text-white border border-white/28 shadow-[0_3px_10px_rgba(127,29,29,0.22)]';
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={handleTap}
       aria-current={active ? 'page' : undefined}
       aria-label={label}
-      className={`relative flex flex-col items-center justify-center shrink-0 cursor-pointer transition-transform duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/90 rounded-xl ${sizeClass} ${
-        active ? 'scale-[1.04]' : 'hover:scale-[1.03]'
+      className={`relative overflow-visible flex flex-col items-center justify-center gap-0.5 sm:gap-1 shrink-0 cursor-pointer transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/95 ${sizeClass} ${stateClass} ${
+        isBouncing ? 'animate-nav-tap-bounce' : active ? '-translate-y-[1px]' : 'hover:-translate-y-[1px]'
       }`}
     >
-      <svg
-        viewBox="0 0 68 58"
-        className="absolute inset-0 w-full h-full overflow-visible pointer-events-none"
-        style={{
-          filter: active
-            ? `drop-shadow(0 0 5px ${accentColor}77) drop-shadow(0 2px 4px rgba(0,0,0,0.22))`
-            : 'drop-shadow(0 2px 4px rgba(0,0,0,0.16))',
-        }}
-        aria-hidden="true"
-      >
-        <path
-          d="M34 55 C34 55 2.5 37 2.5 18.5 C2.5 8.8 10.6 2.2 19.8 2.2 C25.8 2.2 30.8 5.4 34 10.2 C37.2 5.4 42.2 2.2 48.2 2.2 C57.4 2.2 65.5 8.8 65.5 18.5 C65.5 37 34 55 34 55 Z"
-          fill="#FFFFFF"
-          stroke={accentColor}
-          strokeWidth={active ? '3.4' : '1.4'}
-          strokeLinejoin="round"
-        />
-      </svg>
+      {/* Floating Tiny Hearts Released on Tap */}
+      {tapBurstId > 0 && (
+        <span
+          key={tapBurstId}
+          aria-hidden="true"
+          className="pointer-events-none select-none absolute inset-0 overflow-visible z-30"
+        >
+          {TAP_HEART_PARTICLES.map(particle => (
+            <span
+              key={particle.id}
+              className={`nav-heart-particle drop-shadow-[0_1px_3px_rgba(136,19,55,0.45)] ${particle.className}`}
+            >
+              ♥
+            </span>
+          ))}
+        </span>
+      )}
 
-      <div
-        className="relative z-10 w-full h-full flex flex-col items-center justify-center gap-0.5 pt-[16%] pb-[23%] px-1"
-        style={{ color: accentColor }}
+      {/* Icon with Cohesive Pink/Red Accent */}
+      <span
+        className={`relative z-10 flex items-center justify-center transition-colors ${
+          active ? 'text-[#E11D48]' : 'text-pink-100'
+        }`}
       >
         {icon}
-        <span className={`font-extrabold text-black leading-none whitespace-nowrap select-none ${labelSizeClass}`}>
-          {label}
-        </span>
-      </div>
+      </span>
+
+      {/* Crisp Bold Single-Line Label */}
+      <span
+        className={`relative z-10 font-extrabold leading-none whitespace-nowrap select-none ${labelSizeClass} ${
+          active ? 'text-[#9F1239]' : 'text-white [text-shadow:0_1px_2px_rgba(127,29,29,0.3)]'
+        }`}
+      >
+        {label}
+      </span>
+
+      {/* Subtle Glowing Pink-Red Accent Bar on Active Tab */}
+      {active && (
+        <span
+          aria-hidden="true"
+          className="absolute bottom-1 left-1/2 -translate-x-1/2 w-5 h-[2.5px] rounded-full bg-gradient-to-r from-[#DC2626] via-[#E11D48] to-[#FF2E93] shadow-[0_0_6px_rgba(255,46,147,0.75)]"
+        />
+      )}
     </button>
   );
 };
@@ -149,9 +212,9 @@ export const Navbar: React.FC = () => {
 
   return (
     <header className="sticky top-0 z-40 bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 text-white shadow-xl border-b-2 border-red-700">
-      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-1.5 sm:gap-4">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 h-[72px] sm:h-20 flex items-center justify-between gap-1.5 sm:gap-4">
         
-        {/* Upper-Left Corner: Three-Line Menu Button + SPEED MEET Love Brand Logo (FIX 2 Requirement) */}
+        {/* Upper-Left Corner: Three-Line Menu Button + SPEED MEET Love Brand Logo */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <button
             onClick={() => setMenuDrawerOpen(true)}
@@ -171,48 +234,51 @@ export const Navbar: React.FC = () => {
           </button>
         </div>
 
-        {/* Desktop Navigation Bar: 6 White Heart Shapes with Colored Icons & Bold Black Labels */}
-        <nav className="hidden lg:flex items-center gap-1.5 xl:gap-2">
-          {/* 1. Home (Blue) */}
-          <NavHeartTile
+        {/* Desktop Navigation Bar: 6 Elegant Rounded Buttons with Pink/Red Accents & Glowing Active State */}
+        <nav className="hidden lg:flex items-center gap-1.5 xl:gap-2" aria-label="Primary navigation">
+          {/* 1. Home */}
+          <NavRoundedButton
             variant="desktop"
             label="Home"
-            accentColor="#2563EB"
             active={currentView === 'home'}
             onClick={() => setCurrentView('home')}
-            icon={<Home className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 stroke-[2.4]" />}
+            icon={<Home className="w-4 h-4 shrink-0 stroke-[2.35]" />}
           />
 
-          {/* 2. Browse (Pink) */}
-          <NavHeartTile
+          {/* 2. Browse */}
+          <NavRoundedButton
             variant="desktop"
             label="Browse"
-            accentColor="#DB2777"
             active={currentView === 'browse'}
             onClick={() => setCurrentView('browse')}
-            icon={<Compass className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 stroke-[2.4]" />}
+            icon={<Compass className="w-4 h-4 shrink-0 stroke-[2.35]" />}
           />
 
-          {/* 3. Matches (Red) */}
-          <NavHeartTile
+          {/* 3. Matches */}
+          <NavRoundedButton
             variant="desktop"
             label="Matches"
-            accentColor="#DC2626"
             active={currentView === 'matches' || currentView === 'results'}
             onClick={() => setCurrentView('matches')}
             icon={
               <div className="relative">
-                <Heart className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 fill-[#DC2626] text-[#DC2626]" />
+                <Heart
+                  className={`w-4 h-4 shrink-0 stroke-[2.35] ${
+                    currentView === 'matches' || currentView === 'results'
+                      ? 'fill-[#E11D48] text-[#E11D48]'
+                      : 'fill-pink-200/80 text-pink-100'
+                  }`}
+                />
                 {pendingSecondDateCount > 0 ? (
                   <span
                     title={`${pendingSecondDateCount} Second-Chance Date Invitation${pendingSecondDateCount > 1 ? 's' : ''}`}
-                    className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full text-[8px] font-mono font-black bg-amber-400 text-slate-950 animate-pulse flex items-center gap-0.5 shadow-xs border border-amber-300 leading-none"
+                    className="absolute -top-1.5 -right-2.5 px-1 py-0.2 rounded-full text-[8px] font-mono font-black bg-amber-400 text-slate-950 animate-pulse flex items-center gap-0.5 shadow-xs border border-amber-300 leading-none"
                   >
                     <Sparkles className="w-2 h-2 text-amber-900 fill-amber-900" />
                     <span>{pendingSecondDateCount}</span>
                   </span>
                 ) : mutualMatchCount > 0 ? (
-                  <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full text-[8px] font-mono font-black bg-[#DC2626] text-white shadow-xs leading-none">
+                  <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full text-[8px] font-mono font-black bg-[#FF2E93] text-white border border-white/80 shadow-xs leading-none">
                     {mutualMatchCount}
                   </span>
                 ) : null}
@@ -220,34 +286,31 @@ export const Navbar: React.FC = () => {
             }
           />
 
-          {/* 4. Messages (Turquoise) */}
-          <NavHeartTile
+          {/* 4. Messages */}
+          <NavRoundedButton
             variant="desktop"
             label="Messages"
-            accentColor="#0D9488"
             active={currentView === 'messages'}
             onClick={() => setCurrentView('messages')}
-            icon={<MessageCircle className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 stroke-[2.4]" />}
+            icon={<MessageCircle className="w-4 h-4 shrink-0 stroke-[2.35]" />}
           />
 
-          {/* 5. Events (Blue) */}
-          <NavHeartTile
+          {/* 5. Events */}
+          <NavRoundedButton
             variant="desktop"
             label="Events"
-            accentColor="#2563EB"
             active={currentView === 'friday' || currentView === 'lobby' || currentView === 'live'}
             onClick={() => setCurrentView('friday')}
-            icon={<Calendar className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 stroke-[2.4]" />}
+            icon={<Calendar className="w-4 h-4 shrink-0 stroke-[2.35]" />}
           />
 
-          {/* 6. Profile (Pink) */}
-          <NavHeartTile
+          {/* 6. Profile */}
+          <NavRoundedButton
             variant="desktop"
             label="Profile"
-            accentColor="#DB2777"
             active={currentView === 'profile'}
             onClick={() => setCurrentView('profile')}
-            icon={<UserIcon className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0 stroke-[2.4]" />}
+            icon={<UserIcon className="w-4 h-4 shrink-0 stroke-[2.35]" />}
           />
         </nav>
 
@@ -546,44 +609,50 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile / Android Navigation Bar: 6 White Heart Shapes with Colored Icons & Bold Black Labels */}
-      <div className="lg:hidden grid grid-cols-6 gap-0.5 sm:gap-1.5 items-center bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 border-t border-white/20 px-1 sm:px-2.5 py-1.5 shadow-md">
-        {/* 1. Home (Blue) */}
-        <NavHeartTile
+      {/* Mobile / Android Navigation Bar: 6 Elegant Rounded Buttons Built to Fit Without Squeezing */}
+      <nav
+        aria-label="Mobile primary navigation"
+        className="lg:hidden grid grid-cols-6 gap-1 min-[390px]:gap-1.5 sm:gap-2 items-center bg-gradient-to-r from-[#B91C1C] via-[#BE123C] to-[#DB2777] border-t border-white/20 px-1.5 min-[390px]:px-2 sm:px-3 py-1.5 sm:py-2 shadow-md"
+      >
+        {/* 1. Home */}
+        <NavRoundedButton
           variant="mobile"
           label="Home"
-          accentColor="#2563EB"
           active={currentView === 'home'}
           onClick={() => setCurrentView('home')}
-          icon={<Home className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 stroke-[2.4]" />}
+          icon={<Home className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0 stroke-[2.35]" />}
         />
 
-        {/* 2. Browse (Pink) */}
-        <NavHeartTile
+        {/* 2. Browse */}
+        <NavRoundedButton
           variant="mobile"
           label="Browse"
-          accentColor="#DB2777"
           active={currentView === 'browse'}
           onClick={() => setCurrentView('browse')}
-          icon={<Compass className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 stroke-[2.4]" />}
+          icon={<Compass className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0 stroke-[2.35]" />}
         />
 
-        {/* 3. Matches (Red) */}
-        <NavHeartTile
+        {/* 3. Matches */}
+        <NavRoundedButton
           variant="mobile"
           label="Matches"
-          accentColor="#DC2626"
           active={currentView === 'matches' || currentView === 'results'}
           onClick={() => setCurrentView('matches')}
           icon={
             <div className="relative">
-              <Heart className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 fill-[#DC2626] text-[#DC2626]" />
+              <Heart
+                className={`w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0 stroke-[2.35] ${
+                  currentView === 'matches' || currentView === 'results'
+                    ? 'fill-[#E11D48] text-[#E11D48]'
+                    : 'fill-pink-200/80 text-pink-100'
+                }`}
+              />
               {pendingSecondDateCount > 0 ? (
                 <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[8px] font-black leading-none border border-amber-300 animate-pulse flex items-center">
                   !
                 </span>
               ) : mutualMatchCount > 0 ? (
-                <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-[#DC2626] text-white text-[8px] font-black leading-none">
+                <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-[#FF2E93] text-white border border-white/80 text-[8px] font-black leading-none">
                   {mutualMatchCount}
                 </span>
               ) : null}
@@ -591,36 +660,33 @@ export const Navbar: React.FC = () => {
           }
         />
 
-        {/* 4. Messages (Turquoise) */}
-        <NavHeartTile
+        {/* 4. Messages */}
+        <NavRoundedButton
           variant="mobile"
           label="Messages"
-          accentColor="#0D9488"
           active={currentView === 'messages'}
           onClick={() => setCurrentView('messages')}
-          icon={<MessageCircle className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 stroke-[2.4]" />}
+          icon={<MessageCircle className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0 stroke-[2.35]" />}
         />
 
-        {/* 5. Events (Blue) */}
-        <NavHeartTile
+        {/* 5. Events */}
+        <NavRoundedButton
           variant="mobile"
           label="Events"
-          accentColor="#2563EB"
           active={currentView === 'friday' || currentView === 'lobby' || currentView === 'live'}
           onClick={() => setCurrentView('friday')}
-          icon={<Calendar className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 stroke-[2.4]" />}
+          icon={<Calendar className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0 stroke-[2.35]" />}
         />
 
-        {/* 6. Profile (Pink) */}
-        <NavHeartTile
+        {/* 6. Profile */}
+        <NavRoundedButton
           variant="mobile"
           label="Profile"
-          accentColor="#DB2777"
           active={currentView === 'profile'}
           onClick={() => setCurrentView('profile')}
-          icon={<UserIcon className="w-3 h-3 min-[390px]:w-3.5 min-[390px]:h-3.5 sm:w-4 sm:h-4 shrink-0 stroke-[2.4]" />}
+          icon={<UserIcon className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0 stroke-[2.35]" />}
         />
-      </div>
+      </nav>
 
       {/* Sliding Navigation Drawer (FIX 2 Requirement: Three-Line Menu Navigation) */}
       {menuDrawerOpen && (

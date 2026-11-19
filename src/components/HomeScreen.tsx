@@ -18,6 +18,7 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { FloatingHearts } from './FloatingHearts';
+import { HeroGoldAnalogClock } from './HeroGoldAnalogClock';
 import { RainbowHeart } from './RainbowHeart';
 import { SpeedMeetLoveLogo } from './SpeedMeetLoveLogo';
 import confetti from 'canvas-confetti';
@@ -138,13 +139,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
             <Sparkles className="w-4 h-4 text-[#B45309] fill-amber-400" />
           </div>
 
-          {/* Bold Descriptive H1 Headline */}
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-[#111827] font-heading tracking-tight leading-tight">
-            Meet Singles on Speed Meet Love{' '}
-            <span className="block mt-2 text-2xl sm:text-4xl lg:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-[#B91C1C] via-[#BE123C] to-[#BE185D]">
-              Real People. Real Connections. In Minutes.
-            </span>
-          </h1>
+          {/* Bold Descriptive H1 Headline with Centered Animated Gold Analog Clock Behind */}
+          <div className="relative">
+            <HeroGoldAnalogClock className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -z-10" />
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-[#111827] font-heading tracking-tight leading-tight">
+              Meet Singles on Speed Meet Love{' '}
+              <span className="block mt-2 text-2xl sm:text-4xl lg:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-[#B91C1C] via-[#BE123C] to-[#BE185D]">
+                Real People. Real Connections. In Minutes.
+              </span>
+            </h1>
+          </div>
 
           {/* Launch Waiting List Announcement */}
           <div className="max-w-3xl mx-auto p-4 sm:p-5 rounded-2xl bg-white/95 border-2 border-pink-300 shadow-md space-y-2.5">
