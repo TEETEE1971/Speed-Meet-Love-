@@ -139,6 +139,9 @@ export const TermsPage: React.FC = () => {
               <strong>Human Trafficking &amp; Forced Labor:</strong> Any involvement in, recruitment for, promotion of, or facilitation of human trafficking, forced labor, or commercial sex trafficking.
             </li>
             <li>
+              <strong>Sexual Violence &amp; Sexual Assault:</strong> Sexual violence, including sexual assault, is strictly prohibited.
+            </li>
+            <li>
               <strong>Sexual Exploitation &amp; Non-Consensual Sexual Content:</strong> Any sexual exploitation, coercion, sextortion, prostitution or escort solicitation, or non-consensual intimate imagery across profiles, messages, or live video.
             </li>
             <li>

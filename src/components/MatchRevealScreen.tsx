@@ -42,6 +42,8 @@ export const MatchRevealScreen: React.FC = () => {
     refreshSecondDateSessions,
     appMode,
     canAccessMessaging,
+    canAccessLiveSpeedDating,
+    isFreeDuringLaunch,
     showNotification,
   } = useApp();
 
@@ -237,7 +239,7 @@ export const MatchRevealScreen: React.FC = () => {
                 </p>
               </div>
 
-              {currentUser.SubscriptionTier !== 'Premium Plus' && (
+              {!isFreeDuringLaunch && !canAccessLiveSpeedDating(currentUser) && (
                 <button
                   onClick={() => setCurrentView('pricing')}
                   className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-[#78350F] border border-amber-300 text-xs font-bold hover:bg-amber-200 transition-colors cursor-pointer"

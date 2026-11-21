@@ -32,6 +32,7 @@ export const MessagingPortal: React.FC = () => {
     upgradeOtherUser,
     blockUser,
     setReportModalTarget,
+    isFreeDuringLaunch,
   } = useApp();
 
   if (!currentUser) {
@@ -84,7 +85,9 @@ export const MessagingPortal: React.FC = () => {
         </div>
         <h2 className="text-2xl font-bold text-[#111827] font-heading">No Mutual Matches Yet</h2>
         <p className="text-xs sm:text-sm text-[#111827] font-medium max-w-md mx-auto">
-          Private messaging unlocks once you and another member mutually like each other and both hold an eligible paid membership (Premium or Premium Plus).
+          {isFreeDuringLaunch
+            ? 'Private messaging unlocks automatically once you and another member mutually like each other—free during launch, no card required.'
+            : 'Private messaging unlocks once you and another member mutually like each other and both hold an eligible paid membership (Premium or Premium Plus).'}
         </p>
         <button
           onClick={() => setCurrentView('browse')}
@@ -112,7 +115,13 @@ export const MessagingPortal: React.FC = () => {
         </button>
 
         <span className="text-[11px] text-[#111827] font-medium font-mono">
-          Tier: <strong className="text-[#111827]">{currentUser.SubscriptionTier}</strong>
+          {isFreeDuringLaunch ? (
+            <strong className="text-[#BE185D]">💕 Free During Launch</strong>
+          ) : (
+            <>
+              Tier: <strong className="text-[#111827]">{currentUser.SubscriptionTier}</strong>
+            </>
+          )}
         </span>
       </div>
 
@@ -184,12 +193,12 @@ export const MessagingPortal: React.FC = () => {
           </div>
 
           <div className="p-3 border-t border-pink-100 bg-white text-[11px] text-[#111827] font-medium flex items-center justify-between">
-            <span>Eligible Paid Membership Rule</span>
+            <span>{isFreeDuringLaunch ? '💕 Free During Launch' : 'Eligible Paid Membership Rule'}</span>
             <button
               onClick={() => setCurrentView('pricing')}
               className="text-[#BE185D] hover:underline font-bold"
             >
-              Pricing
+              {isFreeDuringLaunch ? 'Launch Details' : 'Pricing'}
             </button>
           </div>
         </div>
@@ -221,7 +230,7 @@ export const MessagingPortal: React.FC = () => {
 
               {/* Safety & Demo Actions */}
               <div className="flex items-center gap-2">
-                {!isPartnerPaid && (
+                {!isFreeDuringLaunch && !isPartnerPaid && (
                   <button
                     onClick={() => upgradeOtherUser(partner.UserID, 'Premium')}
                     className="hidden sm:inline-flex px-2.5 py-1 rounded-lg bg-pink-50 hover:bg-pink-100 border border-pink-200 text-[10px] text-[#BE185D] font-bold"
@@ -302,10 +311,16 @@ export const MessagingPortal: React.FC = () => {
                   <div className="p-3.5 rounded-2xl bg-white border border-pink-200 text-center max-w-md mx-auto space-y-1 shadow-xs">
                     <div className="flex items-center justify-center gap-1 text-xs font-bold text-[#BE185D]">
                       <Heart className="w-3.5 h-3.5 fill-[#BE185D]" />
-                      <span>Eligible Paid Membership Verified</span>
+                      <span>
+                        {isFreeDuringLaunch
+                          ? 'Mutual Match Unlocked · Free During Launch'
+                          : 'Eligible Paid Membership Verified'}
+                      </span>
                     </div>
                     <p className="text-[11px] text-[#111827] font-medium">
-                      Both you and {partner.FirstName} hold active paid memberships. Private conversation is unlocked.
+                      {isFreeDuringLaunch
+                        ? `You and ${partner.FirstName} mutually matched! Private messaging is free during launch with no card required.`
+                        : `Both you and ${partner.FirstName} hold active paid memberships. Private conversation is unlocked.`}
                     </p>
                   </div>
 

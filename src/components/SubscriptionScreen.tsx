@@ -68,6 +68,7 @@ export const SubscriptionScreen: React.FC = () => {
     leaveWaitlist,
     setCurrentView,
     confirmedLaunchEvents,
+    isFreeDuringLaunch,
   } = useApp();
 
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
@@ -79,12 +80,17 @@ export const SubscriptionScreen: React.FC = () => {
 
   const currentTier = currentUser?.SubscriptionTier || 'Free';
   const isTester = Boolean(currentUser?.IsTester || isOwner);
-  const hasActiveLaunchGrant = Boolean(
+  const hasPreservedFirst50Grant = Boolean(
     isAuthenticated &&
       currentUser?.EmailVerified &&
       currentUser?.LaunchOfferGranted &&
-      currentUser?.LaunchOfferActive &&
       currentUser?.LaunchOfferGrantNumber
+  );
+  const hasDeferredFirst50Grant = Boolean(
+    hasPreservedFirst50Grant && currentUser?.LaunchOfferDeferred
+  );
+  const hasActiveLaunchGrant = Boolean(
+    hasPreservedFirst50Grant && !hasDeferredFirst50Grant && currentUser?.LaunchOfferActive
   );
   const launchGrantExpiresLabel = currentUser?.LaunchOfferExpiresAt
     ? new Date(currentUser.LaunchOfferExpiresAt).toLocaleDateString('en-US', {
@@ -162,7 +168,24 @@ export const SubscriptionScreen: React.FC = () => {
       : 'sandbox'
     : 'unconfigured';
 
+  const handleJoinFreeDuringLaunch = (destination: 'browse' | 'messages' | 'friday' = 'browse') => {
+    if (!isAuthenticated || !currentUser) {
+      openAuthModal('signup');
+      return;
+    }
+    showNotification(
+      '💕 You already have full free access during launch! Browse, match, message, and join events with no card required.',
+      'success'
+    );
+    setCurrentView(destination);
+  };
+
   const handleSelectPlan = async (tier: SubscriptionTier) => {
+    if (isFreeDuringLaunch) {
+      handleJoinFreeDuringLaunch(tier === 'Premium Plus' ? 'friday' : tier === 'Premium' ? 'messages' : 'browse');
+      return;
+    }
+
     if (!currentUser) {
       openAuthModal('signin');
       return;
@@ -174,12 +197,6 @@ export const SubscriptionScreen: React.FC = () => {
       // Free downgrades / browsing
       setSubscriptionTier('Free');
       showNotification('Plan switched to Free ($0/mo). Browsing and mutual match viewing active.', 'pink');
-      return;
-    }
-
-    // Pause new paid Premium Plus purchases during launch waiting list
-    if (tier === 'Premium Plus') {
-      showNotification('Event membership coming soon.', 'pink');
       return;
     }
 
@@ -304,17 +321,29 @@ export const SubscriptionScreen: React.FC = () => {
     },
     {
       feature: 'Private Messaging After Mutual Match',
-      free: { text: 'Locked (Browsing only)', tone: 'neutral' },
-      premium: { text: 'Unlocked (with paid matches)', tone: 'pink' },
-      premiumPlus: { text: 'Unlocked (with paid matches)', tone: 'pink' },
+      free: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'Locked (Browsing only)', tone: 'neutral' },
+      premium: isFreeDuringLaunch
+        ? { text: 'Free during launch (reg. $9.99/mo)', tone: 'pink' }
+        : { text: 'Unlocked (with paid matches)', tone: 'pink' },
+      premiumPlus: isFreeDuringLaunch
+        ? { text: 'Free during launch (reg. $14.99/mo)', tone: 'pink' }
+        : { text: 'Unlocked (with paid matches)', tone: 'pink' },
     },
     {
       feature: isWaitlistModeActive
         ? 'Live Speed Dating Schedule'
         : 'Speed Dating Schedule (3 Nights Weekly)',
-      free: { text: 'No', tone: 'neutral' },
-      premium: { text: 'No', tone: 'neutral' },
-      premiumPlus: isWaitlistModeActive
+      free: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'No', tone: 'neutral' },
+      premium: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'No', tone: 'neutral' },
+      premiumPlus: isFreeDuringLaunch
+        ? { text: 'Free during launch (all members)', tone: 'amber' }
+        : isWaitlistModeActive
         ? { text: 'First event date coming soon', tone: 'amber' }
         : { text: 'Fri, Sat & Sun at 7:00 PM EST', tone: 'amber' },
     },
@@ -322,33 +351,57 @@ export const SubscriptionScreen: React.FC = () => {
       feature: isWaitlistModeActive
         ? 'Event Registration & Night Selection'
         : 'Choose Nights & Multi-Night Registration',
-      free: { text: 'No', tone: 'neutral' },
-      premium: { text: 'No', tone: 'neutral' },
-      premiumPlus: isWaitlistModeActive
+      free: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'No', tone: 'neutral' },
+      premium: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'No', tone: 'neutral' },
+      premiumPlus: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'amber' }
+        : isWaitlistModeActive
         ? { text: 'First event date coming soon', tone: 'amber' }
         : { text: 'Included (Attend 1, 2, or all 3)', tone: 'amber' },
     },
     {
       feature: '5-Minute Video Rounds & Up to 2-Min Break',
-      free: { text: 'No', tone: 'neutral' },
-      premium: { text: 'No', tone: 'neutral' },
-      premiumPlus: isWaitlistModeActive
+      free: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'No', tone: 'neutral' },
+      premium: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'No', tone: 'neutral' },
+      premiumPlus: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'amber' }
+        : isWaitlistModeActive
         ? { text: 'First event date coming soon', tone: 'amber' }
         : { text: 'Active', tone: 'amber' },
     },
     {
       feature: 'Consent-Based Next Date & Waiting Room',
-      free: { text: 'No', tone: 'neutral' },
-      premium: { text: 'No', tone: 'neutral' },
-      premiumPlus: isWaitlistModeActive
+      free: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'No', tone: 'neutral' },
+      premium: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'No', tone: 'neutral' },
+      premiumPlus: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'amber' }
+        : isWaitlistModeActive
         ? { text: 'First event date coming soon', tone: 'amber' }
         : { text: 'Included (No auto-start)', tone: 'amber' },
     },
     {
       feature: 'Round Skip & Replay Perks',
-      free: { text: 'No', tone: 'neutral' },
-      premium: { text: 'No', tone: 'neutral' },
-      premiumPlus: isWaitlistModeActive
+      free: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'No', tone: 'neutral' },
+      premium: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'emerald' }
+        : { text: 'No', tone: 'neutral' },
+      premiumPlus: isFreeDuringLaunch
+        ? { text: 'Free during launch', tone: 'amber' }
+        : isWaitlistModeActive
         ? { text: 'First event date coming soon', tone: 'amber' }
         : { text: 'Included', tone: 'amber' },
     },
@@ -400,6 +453,30 @@ export const SubscriptionScreen: React.FC = () => {
         </div>
       )}
 
+      {/* Prominent Free During Launch Banner */}
+      {isFreeDuringLaunch && (
+        <div className="rounded-3xl bg-gradient-to-r from-[#DC2626] via-[#E11D48] to-[#FF2E93] text-white p-6 sm:p-8 shadow-xl border-2 border-rose-200 text-center space-y-3">
+          <h2 className="text-2xl sm:text-3xl font-black text-white font-heading tracking-tight">
+            💕 Free During Launch!
+          </h2>
+          <p className="text-sm sm:text-base font-bold text-rose-50 max-w-2xl mx-auto leading-relaxed">
+            Browse singles, connect with mutual matches, and join our speed-dating events—all free while our community grows. No card required.
+          </p>
+          <div className="pt-1 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => handleJoinFreeDuringLaunch('browse')}
+              className="px-7 py-3 rounded-full bg-white hover:bg-rose-50 text-[#BE123C] font-black text-sm shadow-lg cursor-pointer transition-transform active:scale-95"
+            >
+              Join Free
+            </button>
+            <span className="text-xs font-bold text-white/95 bg-black/20 px-3.5 py-2 rounded-full border border-white/25">
+              Regular future prices ($9.99 / $14.99) saved below · $0 today
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="text-center space-y-3">
         <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-pink-50 border border-pink-300 text-xs font-bold text-[#BE185D] uppercase tracking-widest font-heading">
@@ -408,14 +485,27 @@ export const SubscriptionScreen: React.FC = () => {
         </div>
 
         <h1 className="text-3xl sm:text-5xl font-bold text-[#111827] tracking-tight font-heading">
-          Transparent Pricing for{' '}
-          <span className="bg-gradient-to-r from-[#BE185D] via-[#E11D48] to-[#B91C1C] bg-clip-text text-transparent">
-            Real Chemistry
-          </span>
+          {isFreeDuringLaunch ? (
+            <>
+              Free During Launch —{' '}
+              <span className="bg-gradient-to-r from-[#BE185D] via-[#E11D48] to-[#B91C1C] bg-clip-text text-transparent">
+                Future Plans Saved
+              </span>
+            </>
+          ) : (
+            <>
+              Transparent Pricing for{' '}
+              <span className="bg-gradient-to-r from-[#BE185D] via-[#E11D48] to-[#B91C1C] bg-clip-text text-transparent">
+                Real Chemistry
+              </span>
+            </>
+          )}
         </h1>
 
         <p className="text-sm sm:text-base text-[#111827] font-medium max-w-2xl mx-auto">
-          Free allows browsing and joining the free event waiting list. Upgrade to Premium ($9.99/mo) for private messaging after mutual matches. New Premium Plus event memberships are paused while we welcome our first members.
+          {isFreeDuringLaunch
+            ? 'Every new and existing member currently receives free access to browsing, mutual-match messaging, and live speed-dating events—with no credit card required. Our standard future rates ($9.99/mo Premium and $14.99/mo Premium Plus) are saved below for when paid memberships return.'
+            : 'Free allows browsing and seeing mutual matches. Upgrade to Premium ($9.99/mo) for private messaging after mutual matches, or Premium Plus ($14.99/mo) for live speed-dating events.'}
         </p>
 
         {(!isAuthenticated || (currentUser?.EmailVerified !== true && !isOwner && !currentUser?.IsTester)) && (
@@ -423,7 +513,7 @@ export const SubscriptionScreen: React.FC = () => {
             <div className="flex items-start gap-2.5 text-xs sm:text-sm font-bold text-[#111827]">
               <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D] shrink-0 mt-0.5" />
               <span>
-                Our first 50 eligible members receive one month of Premium FREE! Sign up and verify your email to discover if you’ve claimed a spot.
+                Our first 50 eligible members earn one free month of Premium+ — safely reserved until our speed-dating events officially launch. No card required and never automatically charged! Verify your email to reserve your member number.
               </span>
             </div>
             <button
@@ -431,8 +521,22 @@ export const SubscriptionScreen: React.FC = () => {
               onClick={() => (isAuthenticated ? setIsEmailVerificationModalOpen(true) : openAuthModal('signup'))}
               className="px-4 py-2 rounded-full bg-[#BE185D] hover:bg-rose-700 text-white font-bold text-xs shrink-0 cursor-pointer shadow-xs transition-colors"
             >
-              {isAuthenticated ? 'Verify Email' : 'Sign Up Now'}
+              {isAuthenticated ? 'Verify Email' : 'Join Free'}
             </button>
+          </div>
+        )}
+
+        {hasDeferredFirst50Grant && currentUser?.LaunchOfferGrantNumber && (
+          <div className="max-w-3xl mx-auto p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-pink-50 to-teal-50 border-2 border-amber-400 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#111827] text-left">
+            <div className="flex items-start sm:items-center gap-2 font-bold">
+              <Crown className="w-4 h-4 text-[#B45309] shrink-0 mt-0.5 sm:mt-0" />
+              <span>
+                Member <strong>#{currentUser.LaunchOfferGrantNumber}</strong> of our first 50 — Your earned <strong>one free month of Premium+</strong> is safely reserved! Your month will begin when our speed-dating events officially launch. No card required; never auto-charged.
+              </span>
+            </div>
+            <span className="px-2.5 py-1 rounded-full bg-amber-100 text-[#78350F] border border-amber-300 font-bold text-[11px] shrink-0">
+              Reserved · Starts at Launch
+            </span>
           </div>
         )}
 
@@ -441,7 +545,7 @@ export const SubscriptionScreen: React.FC = () => {
             <div className="flex items-center gap-2 font-bold">
               <Sparkles className="w-4 h-4 text-[#BE185D] shrink-0" />
               <span>
-                Launch Offer Active: Recipient <strong>#{currentUser.LaunchOfferGrantNumber}</strong> — 30 Days of Premium FREE!
+                Member <strong>#{currentUser.LaunchOfferGrantNumber}</strong> of our first 50 — One Free Month of Premium+ Active! No card required; will not auto-charge when it ends.
               </span>
             </div>
             {launchGrantExpiresLabel && (
@@ -519,29 +623,54 @@ export const SubscriptionScreen: React.FC = () => {
                 <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
                 <span><strong>See mutual matches</strong> when feelings align</span>
               </div>
-              <div className="flex items-start gap-2.5 text-[#111827] font-medium pt-1">
-                <X className="w-4 h-4 text-[#111827] shrink-0 mt-0.5" />
-                <span>No private messaging (Browsing only)</span>
-              </div>
-              <div className="flex items-start gap-2.5 text-[#111827] font-medium">
-                <X className="w-4 h-4 text-[#111827] shrink-0 mt-0.5" />
-                <span>No live video speed dating</span>
-              </div>
+              {isFreeDuringLaunch ? (
+                <>
+                  <div className="flex items-start gap-2.5">
+                    <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
+                    <span><strong>Private messaging unlocked</strong> after mutual matches during launch</span>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
+                    <span><strong>Live speed-dating events</strong> free during launch</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start gap-2.5 text-[#111827] font-medium pt-1">
+                    <X className="w-4 h-4 text-[#111827] shrink-0 mt-0.5" />
+                    <span>No private messaging (Browsing only)</span>
+                  </div>
+                  <div className="flex items-start gap-2.5 text-[#111827] font-medium">
+                    <X className="w-4 h-4 text-[#111827] shrink-0 mt-0.5" />
+                    <span>No live video speed dating</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
           <div className="pt-6">
-            <button
-              disabled={currentTier === 'Free'}
-              onClick={() => handleSelectPlan('Free')}
-              className={`w-full py-3 rounded-2xl font-bold text-xs transition-colors ${
-                currentTier === 'Free'
-                  ? 'bg-slate-100 text-[#111827] border border-slate-300 cursor-default'
-                  : 'bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 cursor-pointer'
-              }`}
-            >
-              {currentTier === 'Free' ? 'Current Plan' : 'Select Free ($0)'}
-            </button>
+            {isFreeDuringLaunch ? (
+              <button
+                type="button"
+                onClick={() => handleJoinFreeDuringLaunch('browse')}
+                className="w-full py-3 rounded-2xl btn-pink-gradient font-bold text-xs shadow-sm transition-all cursor-pointer"
+              >
+                Join Free
+              </button>
+            ) : (
+              <button
+                disabled={currentTier === 'Free'}
+                onClick={() => handleSelectPlan('Free')}
+                className={`w-full py-3 rounded-2xl font-bold text-xs transition-colors ${
+                  currentTier === 'Free'
+                    ? 'bg-slate-100 text-[#111827] border border-slate-300 cursor-default'
+                    : 'bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 cursor-pointer'
+                }`}
+              >
+                {currentTier === 'Free' ? 'Current Plan' : 'Select Free ($0)'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -570,15 +699,31 @@ export const SubscriptionScreen: React.FC = () => {
             </div>
 
             <div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold text-[#111827] font-heading">$9.99</span>
-                <span className="text-xs text-[#111827] font-medium">/ month</span>
-              </div>
-              <p className="text-xs text-[#111827] font-medium mt-1">
-                {hasActiveLaunchGrant && launchGrantExpiresLabel
-                  ? `Free 30-day Launch Member grant active through ${launchGrantExpiresLabel}`
-                  : 'Private messaging unlocked with mutual matches'}
-              </p>
+              {isFreeDuringLaunch ? (
+                <div className="space-y-1">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-4xl font-extrabold text-[#BE185D] font-heading">$0</span>
+                    <span className="text-xs font-bold text-[#047857] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                      Free During Launch
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#111827] font-semibold">
+                    Regular price saved for later: <span className="line-through text-slate-500">$9.99/mo</span> · No card required
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-extrabold text-[#111827] font-heading">$9.99</span>
+                    <span className="text-xs text-[#111827] font-medium">/ month</span>
+                  </div>
+                  <p className="text-xs text-[#111827] font-medium mt-1">
+                    {hasActiveLaunchGrant && launchGrantExpiresLabel
+                      ? `Free 30-day Founding Member grant active through ${launchGrantExpiresLabel}`
+                      : 'Private messaging unlocked with mutual matches'}
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="space-y-3 pt-4 border-t border-slate-200 text-xs text-[#111827] font-medium">
@@ -589,7 +734,7 @@ export const SubscriptionScreen: React.FC = () => {
               <div className="flex items-start gap-2.5">
                 <Check className="w-4 h-4 text-[#BE185D] shrink-0 mt-0.5" />
                 <span>
-                  <strong>Private messaging unlocked</strong> after a mutual match with eligible paid members
+                  <strong>Private messaging unlocked</strong> after a mutual match
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
@@ -600,15 +745,31 @@ export const SubscriptionScreen: React.FC = () => {
                 <Check className="w-4 h-4 text-[#BE185D] shrink-0 mt-0.5" />
                 <span>Premium Member profile badge</span>
               </div>
-              <div className="flex items-start gap-2.5 text-[#111827] font-medium pt-1">
-                <X className="w-4 h-4 text-[#111827] shrink-0 mt-0.5" />
-                <span>No live video speed dating</span>
-              </div>
+              {isFreeDuringLaunch ? (
+                <div className="flex items-start gap-2.5">
+                  <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
+                  <span><strong>Bonus during launch:</strong> Live speed-dating events also free!</span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2.5 text-[#111827] font-medium pt-1">
+                  <X className="w-4 h-4 text-[#111827] shrink-0 mt-0.5" />
+                  <span>No live video speed dating</span>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="pt-6">
-            {isAndroid ? (
+            {isFreeDuringLaunch ? (
+              <button
+                type="button"
+                onClick={() => handleJoinFreeDuringLaunch('messages')}
+                className="w-full py-3 rounded-2xl btn-pink-gradient font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Heart className="w-3.5 h-3.5 fill-white" />
+                <span>Join Free</span>
+              </button>
+            ) : isAndroid ? (
               <div className="p-3 rounded-2xl bg-slate-50 border border-slate-300 text-center text-[11px] text-[#111827] font-medium">
                 <span>{hasActiveLaunchGrant ? `Free Month Active (#${currentUser?.LaunchOfferGrantNumber})` : 'Google Play Billing coming soon'}</span>
               </div>
@@ -650,7 +811,11 @@ export const SubscriptionScreen: React.FC = () => {
         >
           {/* Ribbon */}
           <div className="absolute -top-3 right-6 bg-gradient-to-r from-[#B45309] to-[#BE185D] text-white font-bold text-[10px] px-3 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-            {currentTier === 'Premium Plus' ? 'Active Plan' : 'Event membership coming soon.'}
+            {isFreeDuringLaunch
+              ? '💕 Free During Launch'
+              : currentTier === 'Premium Plus'
+              ? 'Active Plan'
+              : 'Live Speed Dating'}
           </div>
 
           <div className="space-y-5">
@@ -662,7 +827,11 @@ export const SubscriptionScreen: React.FC = () => {
                 </span>
                 <h3 className="text-2xl font-bold text-[#111827] font-heading mt-0.5">PREMIUM PLUS</h3>
               </div>
-              {currentTier === 'Premium Plus' && (
+              {hasDeferredFirst50Grant && currentUser?.LaunchOfferGrantNumber ? (
+                <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-amber-100 text-[#92400E] border border-amber-300 font-bold">
+                  Saved · #{currentUser.LaunchOfferGrantNumber}
+                </span>
+              ) : currentTier === 'Premium Plus' && (
                 <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-amber-100 text-[#92400E] border border-amber-300 font-bold">
                   Active
                 </span>
@@ -670,15 +839,33 @@ export const SubscriptionScreen: React.FC = () => {
             </div>
 
             <div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold text-[#111827] font-heading">$14.99</span>
-                <span className="text-xs text-[#111827] font-medium">/ month</span>
-              </div>
-              <p className="text-xs text-[#111827] font-medium mt-1">
-                {currentTier === 'Premium Plus'
-                  ? 'Your existing subscriber access remains fully active.'
-                  : 'Event membership coming soon. Join our free launch waiting list in the meantime!'}
-              </p>
+              {isFreeDuringLaunch ? (
+                <div className="space-y-1">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-4xl font-extrabold text-[#BE185D] font-heading">$0</span>
+                    <span className="text-xs font-bold text-[#047857] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                      Free During Launch
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#111827] font-semibold">
+                    Regular price saved for later: <span className="line-through text-slate-500">$14.99/mo</span> · No card required
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-extrabold text-[#111827] font-heading">$14.99</span>
+                    <span className="text-xs text-[#111827] font-medium">/ month</span>
+                  </div>
+                  <p className="text-xs text-[#111827] font-medium mt-1">
+                    {hasActiveLaunchGrant && launchGrantExpiresLabel
+                      ? `Founding Member #${currentUser?.LaunchOfferGrantNumber} free month active through ${launchGrantExpiresLabel}`
+                      : currentTier === 'Premium Plus'
+                      ? 'Your Premium Plus access is active.'
+                      : 'Full access to live speed-dating events and private messaging.'}
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="space-y-3 pt-4 border-t border-pink-200 text-xs text-[#111827] font-medium">
@@ -714,51 +901,55 @@ export const SubscriptionScreen: React.FC = () => {
           </div>
 
           <div className="pt-6 space-y-2.5">
-            {currentTier === 'Premium Plus' ? (
+            {isFreeDuringLaunch ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleJoinFreeDuringLaunch('friday')}
+                  className="w-full py-3.5 rounded-2xl btn-pink-gradient font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-white" />
+                  <span>Join Free</span>
+                </button>
+                <p className="text-[11px] text-center text-[#111827] font-semibold">
+                  All speed-dating events are free during launch. No card required.
+                </p>
+              </>
+            ) : currentTier === 'Premium Plus' ? (
               <button
                 disabled
                 className="w-full py-3.5 rounded-2xl font-bold text-xs shadow-sm bg-amber-100 text-[#78350F] border border-amber-300 cursor-default flex items-center justify-center gap-1.5"
               >
                 <Crown className="w-3.5 h-3.5 text-[#B45309]" />
-                <span>Current Plan</span>
+                <span>
+                  {hasActiveLaunchGrant
+                    ? `Free Month Active (#${currentUser?.LaunchOfferGrantNumber})`
+                    : 'Current Plan'}
+                </span>
               </button>
+            ) : isAndroid ? (
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-300 text-center text-[11px] text-[#111827] font-medium">
+                <span>Google Play Billing coming soon</span>
+              </div>
             ) : (
-              <>
-                <div className="w-full py-3 px-4 rounded-2xl bg-amber-50 border border-amber-300 text-[#78350F] font-bold text-xs text-center">
-                  Event membership coming soon.
-                </div>
-                <button
-                  type="button"
-                  disabled={waitlistLoading}
-                  onClick={() => {
-                    if (waitlistJoined) {
-                      setCurrentView('friday');
-                    } else {
-                      joinWaitlist();
-                    }
-                  }}
-                  className="w-full py-3 rounded-2xl btn-pink-gradient font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-white" />
-                  <span>
-                    {waitlistLoading
-                      ? 'Saving...'
-                      : waitlistJoined
-                      ? 'On Event Waiting List · View Events'
-                      : 'Join the Event Waiting List (Free)'}
-                  </span>
-                </button>
-                {waitlistJoined && (
-                  <button
-                    type="button"
-                    disabled={waitlistLoading}
-                    onClick={() => leaveWaitlist()}
-                    className="w-full py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-[#BE123C] border border-rose-200 font-bold text-xs transition-colors cursor-pointer disabled:opacity-60"
-                  >
-                    Leave Waiting List
-                  </button>
+              <button
+                type="button"
+                disabled={loadingTier === 'Premium Plus'}
+                onClick={() => handleSelectPlan('Premium Plus')}
+                className="w-full py-3.5 rounded-2xl btn-pink-gradient font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {loadingTier === 'Premium Plus' ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Connecting Stripe...</span>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Subscribe with Stripe ($14.99/mo)</span>
+                  </>
                 )}
-              </>
+              </button>
             )}
           </div>
         </div>
@@ -777,7 +968,9 @@ export const SubscriptionScreen: React.FC = () => {
               key: 'free' as const,
               title: 'Free',
               price: '$0/mo',
-              subtitle: 'Browsing & mutual match viewing only',
+              subtitle: isFreeDuringLaunch
+                ? 'Full access free during launch'
+                : 'Browsing & mutual match viewing only',
               borderClass: 'border-slate-300 bg-white',
               headerBg: 'bg-slate-50 border-slate-200',
               titleClass: 'text-[#111827]',
@@ -786,8 +979,10 @@ export const SubscriptionScreen: React.FC = () => {
             {
               key: 'premium' as const,
               title: 'Premium',
-              price: '$9.99/mo',
-              subtitle: 'Includes private messaging after mutual matches',
+              price: isFreeDuringLaunch ? '$0 (Reg. $9.99)' : '$9.99/mo',
+              subtitle: isFreeDuringLaunch
+                ? 'Free during launch · $9.99/mo saved for later'
+                : 'Includes private messaging after mutual matches',
               borderClass: 'border-pink-300 bg-white',
               headerBg: 'bg-pink-50/70 border-pink-200',
               titleClass: 'text-[#BE185D]',
@@ -796,11 +991,10 @@ export const SubscriptionScreen: React.FC = () => {
             {
               key: 'premiumPlus' as const,
               title: 'Premium Plus',
-              price: currentTier === 'Premium Plus' ? '$14.99/mo' : 'Coming Soon',
-              subtitle:
-                currentTier === 'Premium Plus'
-                  ? 'Active subscriber access preserved'
-                  : 'Event membership coming soon.',
+              price: isFreeDuringLaunch ? '$0 (Reg. $14.99)' : '$14.99/mo',
+              subtitle: isFreeDuringLaunch
+                ? 'Free during launch · $14.99/mo saved for later'
+                : 'Full access to live speed-dating events & chat',
               borderClass: 'border-amber-300 bg-[#FFF8FA]',
               headerBg: 'bg-amber-50/80 border-amber-200',
               titleClass: 'text-[#B45309]',

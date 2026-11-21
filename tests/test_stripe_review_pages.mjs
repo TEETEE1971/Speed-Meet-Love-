@@ -76,6 +76,7 @@ function testPolicyContentAndNoStaleContradictions() {
     /impersonat/i,
     /illegal content/i,
     /Sexually explicit content and sexual solicitation are prohibited across Speed Meet Love, including in profiles, private messages, and live video dates, even when everyone involved consents\./,
+    /Sexual violence, including sexual assault, is strictly prohibited\./,
     /does not continuously monitor live video or automatically scan it/i,
   ];
 

@@ -1,37 +1,66 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FloatingHearts } from './FloatingHearts';
-import { Heart, Sparkles, MessageCircle, Calendar, X } from 'lucide-react';
+import { Heart, Sparkles, MessageCircle, Calendar, X, ShieldCheck } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export const LaunchOfferCelebrationModal: React.FC = () => {
-  const { currentUser, isAuthenticated, markLaunchOfferCelebrated, setCurrentView } = useApp();
+  const {
+    currentUser,
+    isAuthenticated,
+    speedDatingLaunched,
+    markLaunchOfferCelebrated,
+    markLaunchOfferActivationSeen,
+    setCurrentView,
+  } = useApp();
   const [isClosing, setIsClosing] = useState(false);
 
-  const shouldShow = Boolean(
+  const hasValidGrant = Boolean(
     isAuthenticated &&
       currentUser &&
       currentUser.EmailVerified === true &&
       currentUser.LaunchOfferGranted === true &&
       typeof currentUser.LaunchOfferGrantNumber === 'number' &&
       currentUser.LaunchOfferGrantNumber >= 1 &&
-      currentUser.LaunchOfferGrantNumber <= 50 &&
-      currentUser.LaunchOfferCelebrationPending === true
+      currentUser.LaunchOfferGrantNumber <= 50
+  );
+
+  const isCelebrationPending = Boolean(hasValidGrant && currentUser?.LaunchOfferCelebrationPending === true);
+  const isActivationNoticePending = Boolean(
+    hasValidGrant &&
+      speedDatingLaunched &&
+      currentUser?.LaunchOfferActive === true &&
+      currentUser?.LaunchOfferActivationPending === true
+  );
+
+  const shouldShow = isCelebrationPending || isActivationNoticePending;
+
+  // Determine which hearts celebration view to render:
+  // - If speed dating has officially launched and reward is active (either activation notice or first visit post-launch),
+  //   show the official activation in-app notification.
+  // - Otherwise (pre-launch reservation), show the exact First-50 reservation hearts celebration.
+  const isLaunchActivationMode = Boolean(
+    (isActivationNoticePending && !isCelebrationPending) ||
+      (speedDatingLaunched && currentUser?.LaunchOfferActive === true)
   );
 
   useEffect(() => {
     if (!shouldShow) return;
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return;
     try {
       confetti({
-        particleCount: 70,
-        spread: 80,
+        particleCount: 75,
+        spread: 85,
         origin: { y: 0.55 },
         colors: ['#FF2E93', '#14B8A6', '#DC2626', '#EAB308', '#F43F5E'],
       });
     } catch {
       // Ignore confetti errors in headless browsers without canvas support
     }
-  }, [shouldShow]);
+  }, [shouldShow, isLaunchActivationMode]);
 
   if (!shouldShow || !currentUser || !currentUser.LaunchOfferGrantNumber) {
     return null;
@@ -46,11 +75,16 @@ export const LaunchOfferCelebrationModal: React.FC = () => {
       })
     : '30 days from today';
 
-  const handleClose = async (navigateTo?: 'browse' | 'pricing') => {
+  const handleClose = async (navigateTo?: 'browse' | 'friday' | 'pricing') => {
     if (isClosing) return;
     setIsClosing(true);
     try {
-      await markLaunchOfferCelebrated();
+      if (isCelebrationPending) {
+        await markLaunchOfferCelebrated();
+      }
+      if (isActivationNoticePending) {
+        await markLaunchOfferActivationSeen();
+      }
       if (navigateTo) {
         setCurrentView(navigateTo);
       }
@@ -68,8 +102,8 @@ export const LaunchOfferCelebrationModal: React.FC = () => {
     >
       <div className="relative bg-white rounded-3xl max-w-lg w-full shadow-2xl border-2 border-pink-300 overflow-hidden animate-in fade-in zoom-in-95">
         {/* Animated Colorful Hearts Backdrop */}
-        <div className="relative bg-gradient-to-br from-[#FF2E93] via-rose-500 to-teal-500 px-6 pt-8 pb-7 text-white text-center overflow-hidden">
-          <FloatingHearts count={10} colors={['turquoise', 'pink', 'red', 'yellow', 'white']} />
+        <div className="relative bg-gradient-to-br from-[#FF2E93] via-rose-500 to-red-600 px-6 pt-8 pb-7 text-white text-center overflow-hidden">
+          <FloatingHearts count={14} colors={['turquoise', 'pink', 'red', 'yellow', 'white']} />
 
           <button
             type="button"
@@ -92,14 +126,20 @@ export const LaunchOfferCelebrationModal: React.FC = () => {
 
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 border border-white/40 text-[11px] font-bold uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5 text-amber-200" />
-              <span>Founding Launch Member Reward</span>
+              <span>
+                {isLaunchActivationMode
+                  ? `Speed Dating Launched · Member #${grantNumber}`
+                  : `First 50 Founding Member · #${grantNumber} of 50`}
+              </span>
             </div>
 
             <h2
               id="launch-offer-celebration-title"
-              className="text-2xl sm:text-3xl font-black font-heading tracking-tight leading-tight drop-shadow-xs"
+              className="text-2xl sm:text-3xl font-black text-white font-heading tracking-tight leading-tight drop-shadow-xs"
             >
-              Congratulations! You’re #{grantNumber}
+              {isLaunchActivationMode
+                ? `Your Free Month of Premium+ Has Begun!`
+                : `Congratulations! Member #${grantNumber}`}
             </h2>
           </div>
         </div>
@@ -107,27 +147,47 @@ export const LaunchOfferCelebrationModal: React.FC = () => {
         {/* Details & Actions */}
         <div className="relative p-6 sm:p-7 space-y-5 bg-gradient-to-b from-[#FFF8FA] to-white text-center">
           <p className="text-sm sm:text-base font-bold text-[#111827] leading-relaxed">
-            You’re officially one of our first 50 eligible members and have unlocked{' '}
-            <span className="text-[#BE185D]">30 days of Premium FREE</span>!
+            {isLaunchActivationMode ? (
+              <>
+                Speed dating on Speed Meet Love has officially launched! As member{' '}
+                <span className="text-[#BE185D]">#{grantNumber}</span> of our first 50, your earned{' '}
+                <span className="text-[#BE185D]">one free month of Premium+</span> is now active through{' '}
+                <strong>{expiresLabel}</strong>.
+              </>
+            ) : (
+              <>
+                Congratulations! You’re member #{grantNumber} of our first 50! You’ve earned one free month of Premium+. Your month will begin when our speed-dating events officially launch.
+              </>
+            )}
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left text-xs">
             <div className="p-3.5 rounded-2xl bg-pink-50 border border-pink-200 flex items-start gap-2.5">
-              <MessageCircle className="w-4 h-4 text-[#BE185D] shrink-0 mt-0.5" />
+              <Calendar className="w-4 h-4 text-[#BE185D] shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-[#111827] block">Premium Messaging Active</span>
+                <span className="font-bold text-[#111827] block">
+                  {isLaunchActivationMode ? '30-Day Premium+ Active Now' : 'Safely Reserved Until Launch'}
+                </span>
                 <span className="text-[#111827] font-medium">
-                  Exchange private messages after mutual matches at $0 during your free month.
+                  {isLaunchActivationMode ? (
+                    <>
+                      Enjoy live speed-dating events, private mutual-match messaging, and VIP perks through <strong>{expiresLabel}</strong>.
+                    </>
+                  ) : (
+                    <>
+                      Your reward month does not start at signup and will not expire while we build our community.
+                    </>
+                  )}
                 </span>
               </div>
             </div>
 
             <div className="p-3.5 rounded-2xl bg-teal-50 border border-teal-200 flex items-start gap-2.5">
-              <Calendar className="w-4 h-4 text-[#0F766E] shrink-0 mt-0.5" />
+              <ShieldCheck className="w-4 h-4 text-[#0F766E] shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-[#111827] block">30-Day Access Window</span>
+                <span className="font-bold text-[#111827] block">No Card · Never Auto-Charged</span>
                 <span className="text-[#111827] font-medium">
-                  Active now through <strong>{expiresLabel}</strong>. No card required.
+                  No credit card required. You will never be automatically charged when your free month ends.
                 </span>
               </div>
             </div>
@@ -137,10 +197,17 @@ export const LaunchOfferCelebrationModal: React.FC = () => {
             <button
               type="button"
               disabled={isClosing}
-              onClick={() => handleClose('browse')}
-              className="flex-1 py-3 px-5 rounded-2xl btn-glossy-red-pink text-white font-extrabold text-sm shadow-lg cursor-pointer disabled:opacity-60 transition-all"
+              onClick={() => handleClose(isLaunchActivationMode ? 'friday' : 'browse')}
+              className="flex-1 py-3 px-5 rounded-2xl btn-glossy-red-pink text-white font-extrabold text-sm shadow-lg cursor-pointer disabled:opacity-60 transition-all flex items-center justify-center gap-1.5"
             >
-              {isClosing ? 'Activating...' : 'Start Browsing & Matching'}
+              <MessageCircle className="w-4 h-4" />
+              <span>
+                {isClosing
+                  ? 'Saving...'
+                  : isLaunchActivationMode
+                  ? 'Explore Speed-Dating Events'
+                  : 'Start Browsing & Matching'}
+              </span>
             </button>
             <button
               type="button"

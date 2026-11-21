@@ -179,6 +179,7 @@ export const Navbar: React.FC = () => {
     clearLiveSession,
     pendingSecondDateCount,
     isOwner,
+    isFreeDuringLaunch,
   } = useApp();
 
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -190,6 +191,18 @@ export const Navbar: React.FC = () => {
     : 0;
 
   const getTierBadge = (tier: SubscriptionTier) => {
+    if (isFreeDuringLaunch) {
+      if (currentUser?.LaunchOfferGranted && currentUser?.LaunchOfferGrantNumber) {
+        return {
+          label: `Founding #${currentUser.LaunchOfferGrantNumber} · Free Launch`,
+          style: 'bg-amber-300 text-slate-950 font-black shadow-sm border border-amber-200',
+        };
+      }
+      return {
+        label: 'Free During Launch',
+        style: 'bg-white text-[#BE123C] font-black shadow-sm border border-rose-100',
+      };
+    }
     if (tier === 'Premium Plus') {
       return {
         label: 'Plus ($14.99)',
@@ -358,7 +371,7 @@ export const Navbar: React.FC = () => {
                     {currentUser.FirstName}
                   </div>
                   <div className="text-[10px] text-rose-100 font-bold leading-tight">
-                    {currentUser.SubscriptionTier}
+                    {isFreeDuringLaunch ? 'Free Launch Access' : currentUser.SubscriptionTier}
                   </div>
                 </div>
                 <Avatar user={currentUser} size="sm" showBadge />
@@ -379,7 +392,11 @@ export const Navbar: React.FC = () => {
                       </p>
                       <p className="text-[11px] text-[#111827] font-medium">{currentUser.Email}</p>
                       <span className="inline-block mt-1 text-[11px] font-bold text-[#B91C1C] bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                        Tier: {currentUser.SubscriptionTier}
+                        {isFreeDuringLaunch
+                          ? currentUser.LaunchOfferGranted && currentUser.LaunchOfferGrantNumber
+                            ? `Founding #${currentUser.LaunchOfferGrantNumber} · Free Launch`
+                            : 'Free During Launch'
+                          : `Tier: ${currentUser.SubscriptionTier}`}
                       </span>
                     </div>
                   </div>
@@ -602,7 +619,7 @@ export const Navbar: React.FC = () => {
                 className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl bg-white hover:bg-rose-50 text-[#B91C1C] font-extrabold text-[11px] sm:text-xs shadow-md transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0"
               >
                 <UserPlus className="w-3.5 h-3.5 hidden min-[400px]:inline shrink-0" />
-                <span>Create Account</span>
+                <span>{isFreeDuringLaunch ? 'Join Free' : 'Create Account'}</span>
               </button>
             </div>
           )}
@@ -738,7 +755,11 @@ export const Navbar: React.FC = () => {
                     </p>
                     <p className="text-[11px] text-[#111827] font-medium truncate">{currentUser.Email}</p>
                     <span className="inline-block mt-0.5 text-[10px] font-bold text-[#B91C1C] bg-white px-2 py-0.5 rounded-full border border-rose-200 shadow-2xs">
-                      {currentUser.SubscriptionTier}
+                      {isFreeDuringLaunch
+                        ? currentUser.LaunchOfferGranted && currentUser.LaunchOfferGrantNumber
+                          ? `Founding #${currentUser.LaunchOfferGrantNumber} · Free Launch`
+                          : 'Free During Launch'
+                        : currentUser.SubscriptionTier}
                     </span>
                   </div>
                 </div>

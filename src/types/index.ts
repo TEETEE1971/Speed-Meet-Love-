@@ -167,11 +167,16 @@ export interface User {
   LaunchOfferGranted?: boolean;
   LaunchOfferGrantNumber?: number | null;
   LaunchOfferGrantedAt?: number | null;
+  LaunchOfferActivatedAt?: number | null;
   LaunchOfferExpiresAt?: number | null;
+  LaunchOfferDeferred?: boolean;
+  LaunchOfferRewardTier?: 'Premium' | 'Premium Plus' | null;
   LaunchOfferActive?: boolean;
   LaunchOfferExpired?: boolean;
   LaunchOfferCelebrationPending?: boolean;
   LaunchOfferCelebrationShownAt?: number | null;
+  LaunchOfferActivationPending?: boolean;
+  LaunchOfferActivationNotifiedAt?: number | null;
 }
 
 export interface SpeedEvent {
@@ -398,8 +403,13 @@ export interface RegisteredUserSummary {
   emailVerifiedAt?: number | null;
   launchOfferGrantNumber?: number | null;
   launchOfferGrantedAt?: number | null;
+  launchOfferActivatedAt?: number | null;
   launchOfferExpiresAt?: number | null;
+  launchOfferDeferred?: boolean;
+  launchOfferRewardTier?: 'Premium' | 'Premium Plus' | null;
   launchOfferActive?: boolean;
+  launchOfferExpired?: boolean;
+  launchOfferActivationNotifiedAt?: number | null;
 }
 
 export interface TesterGrantRecord {

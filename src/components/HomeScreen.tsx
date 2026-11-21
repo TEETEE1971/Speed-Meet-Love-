@@ -44,6 +44,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
     joinWaitlist,
     leaveWaitlist,
     confirmedLaunchEvents,
+    isFreeDuringLaunch,
   } = useApp();
 
   const isEligible = currentUser ? canAccessLiveSpeedDating(currentUser) : false;
@@ -150,23 +151,90 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
             </h1>
           </div>
 
-          {/* Launch Waiting List Announcement */}
-          <div className="max-w-3xl mx-auto p-4 sm:p-5 rounded-2xl bg-white/95 border-2 border-pink-300 shadow-md space-y-2.5">
-            <p className="text-sm sm:text-lg font-bold text-[#111827] leading-relaxed">
-              We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined.
-            </p>
-            <p className="text-xs sm:text-sm font-medium text-[#111827] leading-relaxed">
-              Curated 5-minute live video dates with comfortable 2-minute breaks and confidential mutual matching.
-            </p>
-            {(!isAuthenticated || (currentUser?.EmailVerified !== true && !isOwner && !currentUser?.IsTester)) && (
-              <div className="mt-2 p-3 rounded-xl bg-gradient-to-r from-pink-50 via-rose-50 to-teal-50 border border-pink-200 text-xs sm:text-sm font-bold text-[#111827] flex items-center justify-center gap-2">
-                <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D] shrink-0" />
-                <span>
-                  Our first 50 eligible members receive one month of Premium FREE! Sign up and verify your email to discover if you’ve claimed a spot.
-                </span>
+          {/* Prominent Free During Launch Announcement */}
+          {isFreeDuringLaunch ? (
+            <div className="max-w-3xl mx-auto p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-white via-[#FFF5F8] to-[#FFE8F1] border-2 border-[#FF2E93]/45 shadow-lg space-y-3">
+              <div className="space-y-1.5">
+                <h2 className="text-xl sm:text-2xl font-black text-[#BE123C] font-heading tracking-tight">
+                  💕 Free During Launch!
+                </h2>
+                <p className="text-sm sm:text-base font-bold text-[#111827] leading-relaxed">
+                  Browse singles, connect with mutual matches, and join our speed-dating events—all free while our community grows. No card required.
+                </p>
               </div>
-            )}
-          </div>
+              <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                {!isAuthenticated ? (
+                  <button
+                    type="button"
+                    onClick={() => openAuthModal('signup')}
+                    className="px-6 py-2.5 rounded-full btn-glossy-red-pink text-white font-extrabold text-xs sm:text-sm shadow-md cursor-pointer transition-transform active:scale-95"
+                  >
+                    Join Free
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentView('browse')}
+                    className="px-6 py-2.5 rounded-full btn-glossy-red-pink text-white font-extrabold text-xs sm:text-sm shadow-md cursor-pointer transition-transform active:scale-95"
+                  >
+                    Browse Singles Free
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCurrentView('pricing')}
+                  className="px-5 py-2.5 rounded-full bg-white hover:bg-rose-50 text-[#9F1239] border border-rose-300 font-bold text-xs sm:text-sm shadow-xs cursor-pointer transition-colors"
+                >
+                  See Launch Details
+                </button>
+              </div>
+              {isAuthenticated && currentUser?.LaunchOfferGranted && currentUser?.LaunchOfferGrantNumber ? (
+                <div className="mt-2 p-3 rounded-xl bg-gradient-to-r from-amber-50 via-pink-50 to-teal-50 border border-amber-300 text-xs sm:text-sm font-bold text-[#111827] flex items-center justify-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#B45309] shrink-0" />
+                  <span>
+                    {currentUser.LaunchOfferDeferred
+                      ? `Member #${currentUser.LaunchOfferGrantNumber} of our first 50: Your earned one free month of Premium+ is safely reserved and will begin when our speed-dating events officially launch. No card required.`
+                      : currentUser.LaunchOfferActive
+                      ? `Member #${currentUser.LaunchOfferGrantNumber} of our first 50: Your free month of Premium+ is active now! No card required and never auto-charged.`
+                      : `Member #${currentUser.LaunchOfferGrantNumber} of our first 50 · Thank you for being a Founding Member!`}
+                  </span>
+                </div>
+              ) : (!isAuthenticated || (currentUser?.EmailVerified !== true && !isOwner && !currentUser?.IsTester)) && (
+                <div className="mt-2 p-3 rounded-xl bg-gradient-to-r from-pink-50 via-rose-50 to-teal-50 border border-pink-200 text-xs sm:text-sm font-bold text-[#111827] flex items-center justify-center gap-2">
+                  <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D] shrink-0" />
+                  <span>
+                    First 50 verified members earn one free month of Premium+ — safely reserved until our speed-dating events officially launch. No card required!
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="max-w-3xl mx-auto p-4 sm:p-5 rounded-2xl bg-white/95 border-2 border-pink-300 shadow-md space-y-2.5">
+              <p className="text-sm sm:text-lg font-bold text-[#111827] leading-relaxed">
+                We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined.
+              </p>
+              <p className="text-xs sm:text-sm font-medium text-[#111827] leading-relaxed">
+                Curated 5-minute live video dates with comfortable 2-minute breaks and confidential mutual matching.
+              </p>
+              {isAuthenticated && currentUser?.LaunchOfferGranted && currentUser?.LaunchOfferGrantNumber ? (
+                <div className="mt-2 p-3 rounded-xl bg-gradient-to-r from-amber-50 via-pink-50 to-teal-50 border border-amber-300 text-xs sm:text-sm font-bold text-[#111827] flex items-center justify-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#B45309] shrink-0" />
+                  <span>
+                    {currentUser.LaunchOfferDeferred
+                      ? `Member #${currentUser.LaunchOfferGrantNumber} of our first 50: Your earned one free month of Premium+ will begin when our speed-dating events officially launch. No card required.`
+                      : `Member #${currentUser.LaunchOfferGrantNumber} of our first 50: Your free month of Premium+ is active! No card required and never auto-charged.`}
+                  </span>
+                </div>
+              ) : (!isAuthenticated || (currentUser?.EmailVerified !== true && !isOwner && !currentUser?.IsTester)) && (
+                <div className="mt-2 p-3 rounded-xl bg-gradient-to-r from-pink-50 via-rose-50 to-teal-50 border border-pink-200 text-xs sm:text-sm font-bold text-[#111827] flex items-center justify-center gap-2">
+                  <Heart className="w-4 h-4 text-[#BE185D] fill-[#BE185D] shrink-0" />
+                  <span>
+                    Our first 50 eligible members earn one free month of Premium+ — your month begins when our speed-dating events officially launch. Verify your email to reserve your spot!
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* OVERLAPPING RECTANGULAR PROFILE PHOTOGRAPHS WITH CENTRAL KRISTY PHOTO */}
           <div className="pt-6 sm:pt-10 pb-10 sm:pb-14 flex flex-col items-center justify-center relative">
@@ -729,30 +797,51 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
           <div className="space-y-3 text-center lg:text-left max-w-2xl">
             <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-white/20 backdrop-blur-md text-white text-xs font-black uppercase tracking-wider border border-white/30">
               <Flame className="w-4 h-4 text-amber-300 fill-amber-300" />
-              <span>Founding Member Launch List</span>
+              <span>{isFreeDuringLaunch ? '💕 Free During Launch' : 'Founding Member Launch List'}</span>
             </div>
 
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white font-heading tracking-tight">
-              Join the Fun!
+              {isFreeDuringLaunch ? '💕 Free During Launch!' : 'Join the Fun!'}
             </h2>
 
             <p className="text-sm sm:text-base font-semibold text-rose-50 leading-relaxed">
-              We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined. Save your free spot on the waiting list today.
+              {isFreeDuringLaunch
+                ? 'Browse singles, connect with mutual matches, and join our speed-dating events—all free while our community grows. No card required.'
+                : 'We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined. Save your free spot on the waiting list today.'}
             </p>
 
-            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 pt-2 text-xs font-bold text-white">
-              <span className="px-3 py-1.5 rounded-xl bg-black/20 backdrop-blur-xs">Free ($0) Browse &amp; Waiting List</span>
-              <span>·</span>
-              <span className="px-3 py-1.5 rounded-xl bg-black/20 backdrop-blur-xs">Premium ($9.99/mo) Chat</span>
-              <span>·</span>
-              <span className="px-3 py-1.5 rounded-xl bg-white text-red-600 font-black shadow-sm">
-                Event membership coming soon.
-              </span>
-            </div>
+            {isFreeDuringLaunch ? (
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 pt-2 text-xs font-bold text-white">
+                <span className="px-3 py-1.5 rounded-xl bg-black/20 backdrop-blur-xs">Free Browsing &amp; Matching</span>
+                <span>·</span>
+                <span className="px-3 py-1.5 rounded-xl bg-black/20 backdrop-blur-xs">Free Mutual-Match Messaging</span>
+                <span>·</span>
+                <span className="px-3 py-1.5 rounded-xl bg-white text-red-600 font-black shadow-sm">
+                  Free Speed-Dating Events · No Card Required
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 pt-2 text-xs font-bold text-white">
+                <span className="px-3 py-1.5 rounded-xl bg-black/20 backdrop-blur-xs">Free ($0) Browse &amp; Waiting List</span>
+                <span>·</span>
+                <span className="px-3 py-1.5 rounded-xl bg-black/20 backdrop-blur-xs">Premium ($9.99/mo) Chat</span>
+                <span>·</span>
+                <span className="px-3 py-1.5 rounded-xl bg-white text-red-600 font-black shadow-sm">
+                  Premium Plus ($14.99/mo) Live Events
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="shrink-0 flex flex-col sm:flex-row lg:flex-col gap-3 w-full sm:w-auto">
-            {hasExistingPremiumPlus ? (
+            {isFreeDuringLaunch ? (
+              <button
+                onClick={() => (isAuthenticated ? setCurrentView('browse') : openAuthModal('signup'))}
+                className="py-4 px-8 rounded-full bg-white hover:bg-rose-50 text-[#BE123C] font-black text-base shadow-xl transition-all cursor-pointer text-center"
+              >
+                {isAuthenticated ? 'Browse Singles Free' : 'Join Free'}
+              </button>
+            ) : hasExistingPremiumPlus ? (
               <button
                 onClick={() => setCurrentView('pricing')}
                 className="py-4 px-8 rounded-full bg-white hover:bg-rose-50 text-red-600 font-black text-base shadow-xl transition-all cursor-pointer text-center"
@@ -764,7 +853,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
                 onClick={() => setCurrentView('pricing')}
                 className="py-4 px-7 rounded-full bg-white hover:bg-rose-50 text-[#9D174D] font-black text-sm sm:text-base shadow-xl transition-all cursor-pointer text-center"
               >
-                Event membership coming soon.
+                View Membership Plans
               </button>
             )}
             <button

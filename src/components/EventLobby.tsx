@@ -48,6 +48,7 @@ export const EventLobby: React.FC = () => {
     joinStagingTestSession,
     setActiveRoundIndex,
     isOwner,
+    isFreeDuringLaunch,
   } = useApp();
 
   if (!currentUser) {
@@ -359,10 +360,14 @@ export const EventLobby: React.FC = () => {
                   className="px-6 py-3 rounded-2xl btn-pink-gradient font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-pink-500/25 cursor-pointer hover:scale-[1.01] transition-transform"
                 >
                   <Sparkles className="w-4 h-4 fill-white" />
-                  <span>Register for Event (Free with Plus)</span>
+                  <span>
+                    {isFreeDuringLaunch ? 'Register Free for Event' : 'Register for Event (Free with Plus)'}
+                  </span>
                 </button>
                 <p className="text-[10px] text-[#111827] font-medium text-center">
-                  Included with your Premium Plus membership
+                  {isFreeDuringLaunch
+                    ? 'Free during launch · No card required'
+                    : 'Included with your Premium Plus membership'}
                 </p>
               </div>
             ) : isLive ? (
@@ -701,7 +706,17 @@ export const EventLobby: React.FC = () => {
                 Speed Dating Rules & Format ({activeEvent.DayOfWeek} at 7:00 PM ET):
               </div>
               <ul className="space-y-1.5 text-[#111827] font-medium list-disc list-inside text-[11px]">
-                <li>Exclusive to <strong>Premium Plus</strong> members ($14.99/mo).</li>
+                <li>
+                  {isFreeDuringLaunch ? (
+                    <>
+                      <strong>Free during launch</strong> for all verified adult members (18+, and 30+ for 30 &amp; Older events) — no card required.
+                    </>
+                  ) : (
+                    <>
+                      Exclusive to <strong>Premium Plus</strong> members ($14.99/mo).
+                    </>
+                  )}
+                </li>
                 <li><strong>Five-minute one-on-one video dates</strong> with rotating partners.</li>
                 <li>Privately choose <strong>Like ❤️</strong> or <strong>Pass</strong> after each date.</li>
                 <li><strong>Up to a two-minute break</strong> between dates to catch your breath and take notes.</li>

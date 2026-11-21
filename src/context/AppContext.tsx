@@ -86,6 +86,7 @@ interface AppContextType {
   verifyEmail: (payload: { token: string }) => Promise<{ success: boolean; error?: string; user?: User }>;
   resendVerificationEmail: (email?: string) => Promise<{ success: boolean; error?: string; emailSent?: boolean }>;
   markLaunchOfferCelebrated: () => Promise<void>;
+  markLaunchOfferActivationSeen: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   signUp: (formData: any) => Promise<{ success: boolean; error?: string; user?: User }>;
   sendPasswordResetEmail: (email: string) => Promise<{ success: boolean; message: string; error?: string }>;
@@ -226,6 +227,21 @@ interface AppContextType {
   }) => Promise<{ success: boolean; event?: SpeedEvent; error?: string }>;
   confirmLaunchEvent: (eventId: string, confirmed: boolean) => Promise<{ success: boolean; event?: SpeedEvent; error?: string }>;
   deleteLaunchEvent: (eventId: string) => Promise<{ success: boolean; error?: string }>;
+  isFreeDuringLaunch: boolean;
+  paidMembershipsReturnedAt: number | null;
+  speedDatingLaunched: boolean;
+  speedDatingLaunchedAt: number | null;
+  first50PreservedCount: number;
+  launchModeEnvOverride: boolean;
+  refreshLaunchMode: () => Promise<void>;
+  toggleLaunchFreeMode: (enabled: boolean) => Promise<{ success: boolean; error?: string; message?: string }>;
+  launchSpeedDating: () => Promise<{
+    success: boolean;
+    error?: string;
+    message?: string;
+    activatedCount?: number;
+    alreadyLaunched?: boolean;
+  }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -569,6 +585,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [waitlistLoading, setWaitlistLoading] = useState<boolean>(false);
   const [confirmedLaunchEvents, setConfirmedLaunchEvents] = useState<SpeedEvent[]>([]);
   const [ownerLaunchEvents, setOwnerLaunchEvents] = useState<SpeedEvent[]>([]);
+  const [isFreeDuringLaunch, setIsFreeDuringLaunch] = useState<boolean>(true);
+  const [paidMembershipsReturnedAt, setPaidMembershipsReturnedAt] = useState<number | null>(null);
+  const [speedDatingLaunched, setSpeedDatingLaunched] = useState<boolean>(false);
+  const [speedDatingLaunchedAt, setSpeedDatingLaunchedAt] = useState<number | null>(null);
+  const [first50PreservedCount, setFirst50PreservedCount] = useState<number>(0);
+  const [launchModeEnvOverride, setLaunchModeEnvOverride] = useState<boolean>(false);
+
+  const refreshLaunchMode = useCallback(async () => {
+    try {
+      const res = await fetch('/api/launch-mode');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && typeof data.freeDuringLaunch === 'boolean') {
+          setIsFreeDuringLaunch(data.freeDuringLaunch);
+          setPaidMembershipsReturnedAt(
+            typeof data.paidMembershipsReturnedAt === 'number' ? data.paidMembershipsReturnedAt : null
+          );
+          setSpeedDatingLaunched(Boolean(data.speedDatingLaunched));
+          setSpeedDatingLaunchedAt(
+            typeof data.speedDatingLaunchedAt === 'number' ? data.speedDatingLaunchedAt : null
+          );
+          setFirst50PreservedCount(
+            typeof data.first50PreservedCount === 'number' ? data.first50PreservedCount : 0
+          );
+          setLaunchModeEnvOverride(Boolean(data.envOverrideActive));
+        }
+      }
+    } catch {
+      // Keep default launch-free status if offline
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshLaunchMode();
+  }, [refreshLaunchMode]);
 
   const setAppMode = (mode: AppMode) => {
     if (!isOwner) {
@@ -1045,16 +1096,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const clearNotification = useCallback(() => setNotification(null), []);
 
-  // Access rule 1: Live Speed Dating requires Premium Plus ($14.99/mo) or Free Tester access
+  // Access rule 1: Live Speed Dating is free for all signed-in members during launch;
+  // once paid memberships return, requires Premium Plus ($14.99/mo), active First-50 Premium+ reward, or Free Tester access
   const canAccessLiveSpeedDating = (user?: User | null): boolean => {
     const target = user !== undefined ? user : currentUser;
     if (!target) return false;
+    if (isFreeDuringLaunch) return true;
     // Free tester access is kept strictly separate from paid subscription status
     if (target.IsTester || target.IsOwner || isOwner) return true;
+    if (target.LaunchOfferActive && (!target.LaunchOfferExpiresAt || Date.now() < target.LaunchOfferExpiresAt)) {
+      return true;
+    }
     return target.SubscriptionTier === 'Premium Plus';
   };
 
-  // Access rule 2: Private messaging only after mutual like AND both hold an eligible paid membership (Premium or Premium Plus) or Free Tester access
+  // Access rule 2: Private messaging only after mutual match; free for all signed-in members during launch,
+  // and requires eligible paid membership (Premium / Premium Plus), First-50 reward, or Free Tester once paid returns
   const canAccessMessaging = (match: Match): { allowed: boolean; reason?: string } => {
     if (!currentUser) {
       return {
@@ -1062,6 +1119,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reason: 'Please sign in to exchange private messages.',
       };
     }
+
+    const partnerId = match.UserA === currentUser.UserID ? match.UserB : match.UserA;
+    if (blockedUserIds.includes(partnerId)) {
+      return {
+        allowed: false,
+        reason: 'Messaging is unavailable because this member is blocked.',
+      };
+    }
+
+    if (isFreeDuringLaunch) {
+      return { allowed: true };
+    }
+
     const isPaidOrTester = (u: User) =>
       u.SubscriptionTier === 'Premium' ||
       u.SubscriptionTier === 'Premium Plus' ||
@@ -1070,7 +1140,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       Boolean(u.IsOwner) ||
       isOwner;
 
-    const partnerId = match.UserA === currentUser.UserID ? match.UserB : match.UserA;
     const partner = users.find(u => u.UserID === partnerId);
 
     if (!isPaidOrTester(currentUser)) {
@@ -1269,8 +1338,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!alreadyMatched) {
         const sharedInterests = currentUser.Interests.filter(i => partner.Interests.includes(i));
         const bothPaid =
-          (currentUser.SubscriptionTier === 'Premium' || currentUser.SubscriptionTier === 'Premium Plus') &&
-          (partner.SubscriptionTier === 'Premium' || partner.SubscriptionTier === 'Premium Plus');
+          isFreeDuringLaunch ||
+          ((currentUser.SubscriptionTier === 'Premium' ||
+            currentUser.SubscriptionTier === 'Premium Plus' ||
+            Boolean(currentUser.LaunchOfferActive)) &&
+            (partner.SubscriptionTier === 'Premium' ||
+              partner.SubscriptionTier === 'Premium Plus' ||
+              Boolean(partner.LaunchOfferActive)));
 
         const newMatch: Match = {
           MatchID: `match_${Date.now()}`,
@@ -2138,8 +2212,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!alreadyMatched) {
         const sharedInterests = currentUser.Interests.filter(i => targetPartner.Interests.includes(i));
         const bothPaid =
-          (currentUser.SubscriptionTier === 'Premium' || currentUser.SubscriptionTier === 'Premium Plus') &&
-          (targetPartner.SubscriptionTier === 'Premium' || targetPartner.SubscriptionTier === 'Premium Plus');
+          isFreeDuringLaunch ||
+          ((currentUser.SubscriptionTier === 'Premium' ||
+            currentUser.SubscriptionTier === 'Premium Plus' ||
+            Boolean(currentUser.LaunchOfferActive)) &&
+            (targetPartner.SubscriptionTier === 'Premium' ||
+              targetPartner.SubscriptionTier === 'Premium Plus' ||
+              Boolean(targetPartner.LaunchOfferActive)));
 
         const newMatch: Match = {
           MatchID: `match_${Date.now()}`,
@@ -2193,7 +2272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const skipRound = (roundId: string): { success: boolean; message: string } => {
-    if (!currentUser || currentUser.SubscriptionTier !== 'Premium Plus') {
+    if (!currentUser || !canAccessLiveSpeedDating(currentUser)) {
       showNotification('Round Skip is exclusive to Premium Plus members ($14.99/mo)!', 'pink');
       return { success: false, message: 'Premium Plus required to skip rounds.' };
     }
@@ -2203,12 +2282,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         r.RoundID === roundId ? { ...r, SkipTriggeredBy: currentUser.UserID } : r
       )
     );
-    showNotification('Round skipped via Premium Plus perk. Advancing to next round...', 'info');
+    showNotification('Round skipped. Advancing to next round...', 'info');
     return { success: true, message: 'Round skipped' };
   };
 
   const requestReplay = (roundId: string): { success: boolean; message: string } => {
-    if (!currentUser || currentUser.SubscriptionTier !== 'Premium Plus') {
+    if (!currentUser || !canAccessLiveSpeedDating(currentUser)) {
       showNotification('Replay Round is exclusive to Premium Plus members ($14.99/mo)!', 'pink');
       return { success: false, message: 'Premium Plus required to replay rounds.' };
     }
@@ -2431,7 +2510,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       openAuthModal('signin');
       return { success: false, error: 'Sign-in required' };
     }
-    if (currentUser.SubscriptionTier !== 'Premium Plus') {
+    if (!canAccessLiveSpeedDating(currentUser)) {
       showNotification('Second Chance live video dates are exclusive to Premium Plus members ($14.99/mo)!', 'pink');
       return { success: false, error: 'Premium Plus membership ($14.99/mo) required.' };
     }
@@ -2520,7 +2599,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       openAuthModal('signin');
       return { success: false, error: 'Sign-in required' };
     }
-    if (currentUser.SubscriptionTier !== 'Premium Plus') {
+    if (!canAccessLiveSpeedDating(currentUser)) {
       showNotification('Second Chance live video dates require Premium Plus ($14.99/mo).', 'pink');
       return { success: false, error: 'Premium Plus required.' };
     }
@@ -2725,11 +2804,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       LaunchOfferGranted: launchOfferGranted,
       LaunchOfferGrantNumber: launchOfferGrantNumber,
       LaunchOfferGrantedAt: launchOfferGranted ? (apiUser.LaunchOfferGrantedAt ?? apiUser.launchOfferGrantedAt ?? null) : null,
+      LaunchOfferActivatedAt: launchOfferGranted ? (apiUser.LaunchOfferActivatedAt ?? apiUser.launchOfferActivatedAt ?? null) : null,
       LaunchOfferExpiresAt: launchOfferGranted ? (apiUser.LaunchOfferExpiresAt ?? apiUser.launchOfferExpiresAt ?? null) : null,
+      LaunchOfferDeferred: launchOfferGranted && Boolean(apiUser.LaunchOfferDeferred ?? apiUser.launchOfferDeferred),
+      LaunchOfferRewardTier: launchOfferGranted
+        ? (apiUser.LaunchOfferRewardTier ?? apiUser.launchOfferRewardTier ?? 'Premium Plus')
+        : null,
       LaunchOfferActive: launchOfferGranted && Boolean(apiUser.LaunchOfferActive ?? apiUser.launchOfferActive),
       LaunchOfferExpired: launchOfferGranted && Boolean(apiUser.LaunchOfferExpired ?? apiUser.launchOfferExpired),
       LaunchOfferCelebrationPending: launchOfferGranted && Boolean(apiUser.LaunchOfferCelebrationPending ?? apiUser.launchOfferCelebrationPending),
       LaunchOfferCelebrationShownAt: launchOfferGranted ? (apiUser.LaunchOfferCelebrationShownAt ?? apiUser.launchOfferCelebrationShownAt ?? null) : null,
+      LaunchOfferActivationPending: launchOfferGranted && Boolean(apiUser.LaunchOfferActivationPending ?? apiUser.launchOfferActivationPending),
+      LaunchOfferActivationNotifiedAt: launchOfferGranted ? (apiUser.LaunchOfferActivationNotifiedAt ?? apiUser.launchOfferActivationNotifiedAt ?? null) : null,
       Bio: bio,
       Occupation: occupation,
       Interests: interests,
@@ -3117,12 +3203,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const markLaunchOfferCelebrated = useCallback(async () => {
     const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
     if (!token) return;
+    const now = Date.now();
     // Optimistically clear local flag so modal closes responsively
     if (currentUser) {
       setUsers(prev =>
         prev.map(u =>
           u.UserID === currentUser.UserID
-            ? { ...u, LaunchOfferCelebrationPending: false, LaunchOfferCelebrationShownAt: Date.now() }
+            ? {
+                ...u,
+                LaunchOfferCelebrationPending: false,
+                LaunchOfferCelebrationShownAt: now,
+                ...(speedDatingLaunched
+                  ? { LaunchOfferActivationPending: false, LaunchOfferActivationNotifiedAt: now }
+                  : {}),
+              }
             : u
         )
       );
@@ -3143,7 +3237,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // Non-fatal
     }
+  }, [authToken, currentUser, normalizeUserFromApi, speedDatingLaunched]);
+
+  const markLaunchOfferActivationSeen = useCallback(async () => {
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+    if (!token) return;
+    const now = Date.now();
+    if (currentUser) {
+      setUsers(prev =>
+        prev.map(u =>
+          u.UserID === currentUser.UserID
+            ? { ...u, LaunchOfferActivationPending: false, LaunchOfferActivationNotifiedAt: now }
+            : u
+        )
+      );
+    }
+    try {
+      const res = await fetch('/api/account/launch-offer/activation-notified', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.user) {
+        const normalized = normalizeUserFromApi(data.user);
+        setUsers(prev => prev.map(u => (u.UserID === normalized.UserID ? { ...u, ...normalized } : u)));
+      }
+    } catch {
+      // Non-fatal
+    }
   }, [authToken, currentUser, normalizeUserFromApi]);
+
+  // If a signed-in First-50 member has a reserved reward waiting for official speed-dating launch,
+  // re-check launch status on tab focus and periodically so they receive their in-app notification promptly.
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser?.LaunchOfferGranted || !currentUser?.LaunchOfferDeferred) {
+      return;
+    }
+    let cancelled = false;
+    const checkForLaunch = async () => {
+      try {
+        const res = await fetch('/api/launch-mode');
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (data?.success && data.speedDatingLaunched) {
+          setSpeedDatingLaunched(true);
+          setSpeedDatingLaunchedAt(
+            typeof data.speedDatingLaunchedAt === 'number' ? data.speedDatingLaunchedAt : Date.now()
+          );
+          await refreshCurrentUser();
+        }
+      } catch {
+        // Ignore transient network errors
+      }
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkForLaunch();
+      }
+    };
+    window.addEventListener('focus', checkForLaunch);
+    document.addEventListener('visibilitychange', handleVisibility);
+    const timer = window.setInterval(checkForLaunch, 60000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', checkForLaunch);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.clearInterval(timer);
+    };
+  }, [isAuthenticated, currentUser?.LaunchOfferGranted, currentUser?.LaunchOfferDeferred, refreshCurrentUser]);
 
   const sendPasswordResetEmail = useCallback(async (email: string): Promise<{ success: boolean; message: string; error?: string }> => {
     try {
@@ -3660,6 +3824,104 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const toggleLaunchFreeMode = useCallback(
+    async (enabled: boolean): Promise<{ success: boolean; error?: string; message?: string }> => {
+      if (!isOwner) {
+        return { success: false, error: 'Owner authorization required.' };
+      }
+      try {
+        const token = authToken || safeStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+        const res = await fetch('/api/owner/launch-mode', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ freeDuringLaunch: enabled }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setIsFreeDuringLaunch(Boolean(data.freeDuringLaunch));
+          setPaidMembershipsReturnedAt(
+            typeof data.paidMembershipsReturnedAt === 'number' ? data.paidMembershipsReturnedAt : null
+          );
+          if (typeof data.speedDatingLaunched === 'boolean') {
+            setSpeedDatingLaunched(data.speedDatingLaunched);
+          }
+          if (typeof data.speedDatingLaunchedAt === 'number') {
+            setSpeedDatingLaunchedAt(data.speedDatingLaunchedAt);
+          }
+          if (typeof data.first50PreservedCount === 'number') {
+            setFirst50PreservedCount(data.first50PreservedCount);
+          }
+          showNotification(
+            data.message ||
+              (enabled ? 'Free During Launch mode enabled.' : 'Paid memberships restored.'),
+            'success'
+          );
+          return { success: true, message: data.message };
+        }
+        const errMsg = data.error || 'Could not update launch mode.';
+        showNotification(errMsg, 'pink');
+        return { success: false, error: errMsg };
+      } catch (err: any) {
+        const errMsg = err?.message || 'Network error updating launch mode.';
+        showNotification(errMsg, 'pink');
+        return { success: false, error: errMsg };
+      }
+    },
+    [authToken, isOwner, showNotification]
+  );
+
+  const launchSpeedDating = useCallback(async (): Promise<{
+    success: boolean;
+    error?: string;
+    message?: string;
+    activatedCount?: number;
+    alreadyLaunched?: boolean;
+  }> => {
+    if (!isOwner) {
+      return { success: false, error: 'Founder authorization required.' };
+    }
+    try {
+      const token = authToken || safeStorage.getItem(`${STORAGE_KEY_PREFIX}authToken`);
+      const res = await fetch('/api/owner/launch-speed-dating', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSpeedDatingLaunched(true);
+        setSpeedDatingLaunchedAt(
+          typeof data.speedDatingLaunchedAt === 'number' ? data.speedDatingLaunchedAt : Date.now()
+        );
+        if (typeof data.first50PreservedCount === 'number') {
+          setFirst50PreservedCount(data.first50PreservedCount);
+        }
+        showNotification(
+          data.message || 'Speed dating officially launched! Reserved First-50 Premium+ rewards have begun.',
+          'success'
+        );
+        return {
+          success: true,
+          message: data.message,
+          activatedCount: typeof data.activatedCount === 'number' ? data.activatedCount : 0,
+          alreadyLaunched: Boolean(data.alreadyLaunched),
+        };
+      }
+      const errMsg = data.error || 'Could not launch speed dating.';
+      showNotification(errMsg, 'pink');
+      return { success: false, error: errMsg };
+    } catch (err: any) {
+      const errMsg = err?.message || 'Network error launching speed dating.';
+      showNotification(errMsg, 'pink');
+      return { success: false, error: errMsg };
+    }
+  }, [authToken, isOwner, showNotification]);
+
   return (
     <AppContext.Provider
       value={{
@@ -3677,6 +3939,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         verifyEmail,
         resendVerificationEmail,
         markLaunchOfferCelebrated,
+        markLaunchOfferActivationSeen,
         signIn,
         signUp,
         sendPasswordResetEmail,
@@ -3776,6 +4039,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         scheduleLaunchEvent,
         confirmLaunchEvent,
         deleteLaunchEvent,
+        isFreeDuringLaunch,
+        paidMembershipsReturnedAt,
+        speedDatingLaunched,
+        speedDatingLaunchedAt,
+        first50PreservedCount,
+        launchModeEnvOverride,
+        refreshLaunchMode,
+        toggleLaunchFreeMode,
+        launchSpeedDating,
       }}
     >
       {children}

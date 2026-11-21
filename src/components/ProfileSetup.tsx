@@ -267,8 +267,14 @@ export const ProfileSetup: React.FC = () => {
                 {currentUser.LaunchOfferGranted && currentUser.LaunchOfferGrantNumber && (
                   <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-teal-50 text-[#0F766E] border border-teal-200 font-bold flex items-center gap-1">
                     <Heart className="w-3 h-3 text-[#BE185D] fill-[#BE185D]" />
-                    Launch Member #{currentUser.LaunchOfferGrantNumber}
-                    {currentUser.LaunchOfferExpired ? ' (Offer Ended)' : ''}
+                    First 50 · Member #{currentUser.LaunchOfferGrantNumber}
+                    {currentUser.LaunchOfferDeferred
+                      ? ' (Premium+ Reserved)'
+                      : currentUser.LaunchOfferActive
+                      ? ' (Premium+ Active)'
+                      : currentUser.LaunchOfferExpired
+                      ? ' (Offer Ended)'
+                      : ''}
                   </span>
                 )}
               </>

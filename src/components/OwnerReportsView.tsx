@@ -51,10 +51,27 @@ interface OwnerReportsViewProps {
 }
 
 export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab = 'reports' }) => {
-  const { isOwner, currentUser, setCurrentView, authToken, showNotification } = useApp();
+  const {
+    isOwner,
+    currentUser,
+    setCurrentView,
+    authToken,
+    showNotification,
+    isFreeDuringLaunch,
+    paidMembershipsReturnedAt,
+    speedDatingLaunched,
+    speedDatingLaunchedAt,
+    first50PreservedCount,
+    launchModeEnvOverride,
+    toggleLaunchFreeMode,
+    launchSpeedDating,
+  } = useApp();
   const push = usePushNotifications(currentUser?.UserID || 'usr_kristy');
 
   const [activeDashboardTab, setActiveDashboardTab] = useState<'reports' | 'users' | 'waitlist'>(defaultTab);
+  const [togglingLaunchMode, setTogglingLaunchMode] = useState<boolean>(false);
+  const [launchingSpeedDating, setLaunchingSpeedDating] = useState<boolean>(false);
+  const [confirmLaunchSpeedDating, setConfirmLaunchSpeedDating] = useState<boolean>(false);
 
   // Safety Reports state
   const [reports, setReports] = useState<OwnerReportItem[]>([]);
@@ -114,6 +131,8 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
     maxGrants: number;
     grantedCount: number;
     liveAt: number;
+    speedDatingLaunched?: boolean;
+    speedDatingLaunchedAt?: number | null;
   } | null>(null);
   const [loadingUsers, setLoadingUsers] = useState<boolean>(true);
   const [isRefreshingUsers, setIsRefreshingUsers] = useState<boolean>(false);
@@ -640,6 +659,193 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
               }`}
             />
           </button>
+        </div>
+      </div>
+
+      {/* Founder-Only Controls: Launch Speed Dating (First-50 Rewards) & General Free Launch Access (Separate) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 1. Founder-Only "Launch Speed Dating" Control (Triggers Reserved First-50 Premium+ Rewards) */}
+        <div className="rounded-3xl bg-gradient-to-br from-[#FFF1F5] via-white to-pink-50/90 border-2 border-[#FF2E93]/45 p-4 sm:p-5 shadow-md flex flex-col justify-between gap-4">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-pink-100 text-[#9D174D] border border-pink-300">
+                <Crown className="w-3 h-3 text-[#BE185D]" />
+                <span>First 50 Premium+ Rewards</span>
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${
+                  speedDatingLaunched || launchOfferSummary?.speedDatingLaunched
+                    ? 'bg-emerald-50 text-[#065F46] border-emerald-300'
+                    : 'bg-amber-50 text-[#92400E] border-amber-300'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    speedDatingLaunched || launchOfferSummary?.speedDatingLaunched
+                      ? 'bg-emerald-500'
+                      : 'bg-amber-500 animate-pulse'
+                  }`}
+                />
+                {speedDatingLaunched || launchOfferSummary?.speedDatingLaunched
+                  ? 'Speed Dating Officially Launched'
+                  : 'Reserved · Waiting for Official Launch'}
+              </span>
+            </div>
+
+            <div className="flex items-baseline gap-2">
+              <span className="text-lg font-black text-[#111827] font-heading">
+                {launchOfferSummary?.grantedCount ?? first50PreservedCount} / 50
+              </span>
+              <span className="text-xs font-bold text-[#9D174D]">
+                eligible verified members reserved (founder &amp; testers excluded)
+              </span>
+            </div>
+
+            <p className="text-xs text-[#111827] font-medium leading-relaxed">
+              {speedDatingLaunched || launchOfferSummary?.speedDatingLaunched ? (
+                <>
+                  Speed dating officially launched
+                  {(speedDatingLaunchedAt || launchOfferSummary?.speedDatingLaunchedAt)
+                    ? ` on ${formatEasternDate(speedDatingLaunchedAt || launchOfferSummary?.speedDatingLaunchedAt)}`
+                    : ''}
+                  . All reserved First-50 members’ <strong>one free month of Premium+</strong> has started and in-app notifications have been sent. No card required; members are never automatically charged when their month ends.
+                </>
+              ) : (
+                <>
+                  Reserved First-50 Premium+ rewards do <strong>not</strong> start at signup and will never expire while building the community. Click <strong>Launch Speed Dating</strong> when you’re ready to start every reserved member’s free month and notify them inside the app. No card or auto-charge.
+                </>
+              )}
+            </p>
+          </div>
+
+          <div className="pt-1">
+            {speedDatingLaunched || launchOfferSummary?.speedDatingLaunched ? (
+              <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-[#065F46] font-bold text-xs">
+                <CheckCircle2 className="w-4 h-4 text-[#047857]" />
+                <span>Speed Dating Launched · First-50 Rewards Active</span>
+              </div>
+            ) : confirmLaunchSpeedDating ? (
+              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-300 space-y-2.5">
+                <p className="text-xs font-bold text-[#9F1239] leading-snug">
+                  Activate official speed-dating launch now? This starts the 1-month Premium+ clock for all{' '}
+                  {launchOfferSummary?.grantedCount ?? first50PreservedCount} reserved First-50 member(s) and notifies them inside the app (no card / no auto-charge).
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={launchingSpeedDating}
+                    onClick={async () => {
+                      setLaunchingSpeedDating(true);
+                      try {
+                        const res = await launchSpeedDating();
+                        if (res.success) {
+                          setConfirmLaunchSpeedDating(false);
+                          fetchRegisteredUsers(true);
+                        }
+                      } finally {
+                        setLaunchingSpeedDating(false);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl btn-glossy-red-pink text-white font-extrabold text-xs shadow-md cursor-pointer disabled:opacity-60"
+                  >
+                    {launchingSpeedDating ? 'Launching...' : 'Yes, Launch Speed Dating Now'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={launchingSpeedDating}
+                    onClick={() => setConfirmLaunchSpeedDating(false)}
+                    className="px-3.5 py-2 rounded-xl bg-white hover:bg-rose-50 text-[#111827] border border-rose-200 font-bold text-xs cursor-pointer disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={launchingSpeedDating}
+                onClick={() => setConfirmLaunchSpeedDating(true)}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-2xl btn-glossy-red-pink text-white font-extrabold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                <Heart className="w-3.5 h-3.5 fill-white" />
+                <span>Launch Speed Dating</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 2. General Free During Launch Access Mode Control (Separate from First-50 Rewards) */}
+        <div className="rounded-3xl bg-gradient-to-r from-[#FFF5F8] via-white to-amber-50/70 border-2 border-rose-200 p-4 sm:p-5 shadow-sm flex flex-col justify-between gap-4">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-rose-100 text-[#9F1239] border border-rose-300">
+                <Sparkles className="w-3 h-3 text-[#BE185D]" />
+                <span>General Launch Access</span>
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${
+                  isFreeDuringLaunch
+                    ? 'bg-emerald-50 text-[#065F46] border-emerald-300'
+                    : 'bg-amber-50 text-[#92400E] border-amber-300'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    isFreeDuringLaunch ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                  }`}
+                />
+                {isFreeDuringLaunch ? 'Free During Launch Active' : 'Paid Memberships Active ($9.99 / $14.99)'}
+              </span>
+            </div>
+            <p className="text-xs text-[#111827] font-medium leading-relaxed">
+              {isFreeDuringLaunch ? (
+                <>
+                  All new and existing members currently enjoy free browsing, mutual-match messaging, and live events with no card required. Regular rates (<strong>$9.99/mo</strong> &amp; <strong>$14.99/mo</strong>) remain saved for later. Kept completely separate from First-50 earned rewards.
+                </>
+              ) : (
+                <>
+                  Standard paid memberships are active (<strong>$9.99/mo</strong> Premium · <strong>$14.99/mo</strong> Premium Plus)
+                  {paidMembershipsReturnedAt ? ` since ${formatEasternDate(paidMembershipsReturnedAt)}` : ''}. First-50 earned Premium+ rewards remain governed separately by <strong>Launch Speed Dating</strong>.
+                </>
+              )}
+            </p>
+          </div>
+
+          <div className="pt-1">
+            <button
+              type="button"
+              disabled={togglingLaunchMode || launchModeEnvOverride}
+              onClick={async () => {
+                setTogglingLaunchMode(true);
+                try {
+                  await toggleLaunchFreeMode(!isFreeDuringLaunch);
+                  fetchRegisteredUsers(true);
+                } finally {
+                  setTogglingLaunchMode(false);
+                }
+              }}
+              className={`w-full sm:w-auto px-4 py-2.5 rounded-2xl font-bold text-xs shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                isFreeDuringLaunch
+                  ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                  : 'bg-rose-600 hover:bg-rose-700 text-white'
+              }`}
+              title={
+                launchModeEnvOverride
+                  ? 'Controlled by FREE_DURING_LAUNCH environment variable'
+                  : isFreeDuringLaunch
+                  ? 'Restore paid membership pricing ($9.99 / $14.99) without affecting First-50 Launch Speed Dating status'
+                  : 'Re-enable Free During Launch mode'
+              }
+            >
+              {togglingLaunchMode
+                ? 'Updating...'
+                : launchModeEnvOverride
+                ? 'Pinned by Env Var'
+                : isFreeDuringLaunch
+                ? 'Restore Paid Memberships ($9.99 / $14.99)'
+                : 'Enable Free During Launch'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1888,7 +2094,12 @@ export const OwnerReportsView: React.FC<OwnerReportsViewProps> = ({ defaultTab =
                           )}
                           {typeof user.launchOfferGrantNumber === 'number' && (
                             <span className="px-2 py-0.5 rounded-full bg-pink-50 text-[#BE185D] border border-pink-300 text-[10px] font-bold">
-                              Launch Grant #{user.launchOfferGrantNumber}{user.launchOfferActive ? ' (Active)' : ' (Ended)'}
+                              First-50 #{user.launchOfferGrantNumber}{' '}
+                              {user.launchOfferDeferred
+                                ? '(Reserved)'
+                                : user.launchOfferActive
+                                ? '(Premium+ Active)'
+                                : '(Ended)'}
                             </span>
                           )}
                           {user.subscriptionStatus && user.subscriptionStatus !== 'none' && (

@@ -1839,13 +1839,26 @@ app.post('/api/second-date/request', (req, res) => {
     });
   }
 
-  // Feature 5: Server-enforced membership check (Premium Plus $14.99/mo required)
-  if (tier && tier !== 'Premium Plus') {
-    return res.status(403).json({
-      success: false,
-      code: 'PREMIUM_PLUS_REQUIRED',
-      error: 'Access denied: Second Chance live video dates require an active Premium Plus membership ($14.99/mo).',
-    });
+  // Feature 5: Server-enforced membership check (unlocked free during launch; Premium Plus $14.99/mo once paid returns)
+  if (!isFreeDuringLaunch()) {
+    const authUser = verifyAuthenticatedUser(req);
+    const targetUser = authUser ? serverUsers.get(authUser.userId) : (serverUsers.get(userId) || null);
+    if (targetUser) {
+      const access = hasPaidOrTesterAccess(targetUser, 'Premium Plus');
+      if (!access.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: 'PREMIUM_PLUS_REQUIRED',
+          error: 'Access denied: Second Chance live video dates require an active Premium Plus membership ($14.99/mo).',
+        });
+      }
+    } else if (tier && tier !== 'Premium Plus') {
+      return res.status(403).json({
+        success: false,
+        code: 'PREMIUM_PLUS_REQUIRED',
+        error: 'Access denied: Second Chance live video dates require an active Premium Plus membership ($14.99/mo).',
+      });
+    }
   }
 
   const now = Date.now();
@@ -2122,12 +2135,25 @@ app.post('/api/second-date/start', (req, res) => {
     return res.status(404).json({ success: false, error: 'Second date session not found' });
   }
 
-  if (tier && tier !== 'Premium Plus') {
-    return res.status(403).json({
-      success: false,
-      code: 'PREMIUM_PLUS_REQUIRED',
-      error: 'Access denied: Second Chance live video dates require an active Premium Plus membership ($14.99/mo).',
-    });
+  if (!isFreeDuringLaunch()) {
+    const authUser = verifyAuthenticatedUser(req);
+    const targetUser = authUser ? serverUsers.get(authUser.userId) : (serverUsers.get(userId) || null);
+    if (targetUser) {
+      const access = hasPaidOrTesterAccess(targetUser, 'Premium Plus');
+      if (!access.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: 'PREMIUM_PLUS_REQUIRED',
+          error: 'Access denied: Second Chance live video dates require an active Premium Plus membership ($14.99/mo).',
+        });
+      }
+    } else if (tier && tier !== 'Premium Plus') {
+      return res.status(403).json({
+        success: false,
+        code: 'PREMIUM_PLUS_REQUIRED',
+        error: 'Access denied: Second Chance live video dates require an active Premium Plus membership ($14.99/mo).',
+      });
+    }
   }
 
   if (!session.userAConsent || !session.userBConsent) {
@@ -2327,8 +2353,9 @@ export interface ServerUserRecord {
   passwordResetSentAt?: number;
   launchOfferGrantNumber?: number;
   launchOfferGrantedAt?: number;
-  launchOfferExpiresAt?: number;
+  launchOfferExpiresAt?: number | null;
   launchOfferCelebrationShownAt?: number;
+  launchOfferActivationNotifiedAt?: number;
   createdAt: number;
   lastSignIn?: number; // Unix epoch ms of last sign-in
   isBanned?: boolean;
@@ -2358,17 +2385,32 @@ export interface LaunchOfferGrantRecord {
   email: string;
   grantNumber: number; // Permanent 1..50
   grantedAt: number;
-  expiresAt: number;
+  activatedAt?: number | null; // Null until founder activates "Launch Speed Dating"
+  expiresAt: number | null; // Null until activatedAt is set; never expires while building community
   source: 'existing_verified' | 'post_verification';
+  rewardTier?: 'Premium' | 'Premium Plus';
   celebrationShownAt?: number | null;
+  launchActivationNotifiedAt?: number | null;
 }
 
 export interface LaunchOfferConfigState {
   liveAt: number;
   maxGrants: number;
   durationDays: number;
+  freeDuringLaunch: boolean;
+  paidMembershipsReturnedAt: number | null;
+  speedDatingLaunchedAt: number | null;
+  speedDatingLaunchedBy?: string | null;
   updatedAt: number;
 }
+
+const ENV_FREE_DURING_LAUNCH_RAW = (process.env.FREE_DURING_LAUNCH || '').trim().toLowerCase();
+const ENV_FREE_DURING_LAUNCH_OVERRIDE: boolean | null =
+  ENV_FREE_DURING_LAUNCH_RAW === 'true'
+    ? true
+    : ENV_FREE_DURING_LAUNCH_RAW === 'false'
+    ? false
+    : null;
 
 const LAUNCH_OFFER_GRANTS_FILE = path.join(DATA_DIR, 'launch_offer_grants.json');
 const LAUNCH_OFFER_CONFIG_FILE = path.join(DATA_DIR, 'launch_offer_config.json');
@@ -2377,9 +2419,20 @@ let launchOfferConfig: LaunchOfferConfigState = {
   liveAt: Date.now(),
   maxGrants: LAUNCH_OFFER_MAX_GRANTS,
   durationDays: LAUNCH_OFFER_DURATION_DAYS,
+  freeDuringLaunch: ENV_FREE_DURING_LAUNCH_OVERRIDE ?? true,
+  paidMembershipsReturnedAt: null,
+  speedDatingLaunchedAt: null,
+  speedDatingLaunchedBy: null,
   updatedAt: Date.now(),
 };
 let launchOfferLockTail: Promise<unknown> = Promise.resolve();
+
+export function isFreeDuringLaunch(): boolean {
+  if (ENV_FREE_DURING_LAUNCH_OVERRIDE !== null) {
+    return ENV_FREE_DURING_LAUNCH_OVERRIDE;
+  }
+  return launchOfferConfig.freeDuringLaunch !== false;
+}
 
 function withLaunchOfferLock<T>(task: () => Promise<T>): Promise<T> {
   const next = launchOfferLockTail.then(task, task);
@@ -2404,6 +2457,22 @@ function loadLaunchOfferStateFromDisk() {
           liveAt: rawCfg.liveAt,
           maxGrants: LAUNCH_OFFER_MAX_GRANTS,
           durationDays: LAUNCH_OFFER_DURATION_DAYS,
+          freeDuringLaunch:
+            typeof rawCfg.freeDuringLaunch === 'boolean'
+              ? rawCfg.freeDuringLaunch
+              : (ENV_FREE_DURING_LAUNCH_OVERRIDE ?? true),
+          paidMembershipsReturnedAt:
+            typeof rawCfg.paidMembershipsReturnedAt === 'number' && rawCfg.paidMembershipsReturnedAt > 0
+              ? rawCfg.paidMembershipsReturnedAt
+              : null,
+          speedDatingLaunchedAt:
+            typeof rawCfg.speedDatingLaunchedAt === 'number' && rawCfg.speedDatingLaunchedAt > 0
+              ? rawCfg.speedDatingLaunchedAt
+              : null,
+          speedDatingLaunchedBy:
+            typeof rawCfg.speedDatingLaunchedBy === 'string' && rawCfg.speedDatingLaunchedBy.trim()
+              ? rawCfg.speedDatingLaunchedBy.trim()
+              : null,
           updatedAt: typeof rawCfg.updatedAt === 'number' ? rawCfg.updatedAt : rawCfg.liveAt,
         };
       }
@@ -2412,6 +2481,10 @@ function loadLaunchOfferStateFromDisk() {
         liveAt: Date.now(),
         maxGrants: LAUNCH_OFFER_MAX_GRANTS,
         durationDays: LAUNCH_OFFER_DURATION_DAYS,
+        freeDuringLaunch: ENV_FREE_DURING_LAUNCH_OVERRIDE ?? true,
+        paidMembershipsReturnedAt: null,
+        speedDatingLaunchedAt: null,
+        speedDatingLaunchedBy: null,
         updatedAt: Date.now(),
       };
       writeJsonAtomicSync(LAUNCH_OFFER_CONFIG_FILE, launchOfferConfig);
@@ -2420,15 +2493,35 @@ function loadLaunchOfferStateFromDisk() {
     if (fs.existsSync(LAUNCH_OFFER_GRANTS_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(LAUNCH_OFFER_GRANTS_FILE, 'utf-8'));
       if (Array.isArray(parsed)) {
+        const seenNumbers = new Set<number>();
+        const seenEmails = new Set<string>();
         for (const item of parsed) {
           if (
             item &&
             typeof item.userId === 'string' &&
             typeof item.grantNumber === 'number' &&
             item.grantNumber >= 1 &&
-            item.grantNumber <= LAUNCH_OFFER_MAX_GRANTS
+            item.grantNumber <= LAUNCH_OFFER_MAX_GRANTS &&
+            serverLaunchOfferGrants.size < LAUNCH_OFFER_MAX_GRANTS &&
+            !seenNumbers.has(item.grantNumber)
           ) {
-            serverLaunchOfferGrants.set(item.userId, item);
+            const normEmail = typeof item.email === 'string' ? item.email.toLowerCase().trim() : '';
+            if (normEmail && seenEmails.has(normEmail)) continue;
+            seenNumbers.add(item.grantNumber);
+            if (normEmail) seenEmails.add(normEmail);
+            serverLaunchOfferGrants.set(item.userId, {
+              ...item,
+              email: normEmail,
+              activatedAt:
+                typeof item.activatedAt === 'number' && item.activatedAt > 0 ? item.activatedAt : null,
+              expiresAt:
+                typeof item.expiresAt === 'number' && item.expiresAt > 0 ? item.expiresAt : null,
+              launchActivationNotifiedAt:
+                typeof item.launchActivationNotifiedAt === 'number' && item.launchActivationNotifiedAt > 0
+                  ? item.launchActivationNotifiedAt
+                  : null,
+              rewardTier: 'Premium Plus',
+            });
           }
         }
       }
@@ -2454,6 +2547,20 @@ function saveLaunchOfferConfigToDisk() {
     writeJsonAtomicSync(LAUNCH_OFFER_CONFIG_FILE, launchOfferConfig);
   } catch (err) {
     console.warn('Failed to save launch offer config to disk:', err);
+  }
+}
+
+async function saveLaunchOfferConfigToDurableDatabase(): Promise<void> {
+  saveLaunchOfferConfigToDisk();
+  if (firestoreDb) {
+    try {
+      await firestoreDb
+        .collection('launch_offer_config')
+        .doc('state')
+        .set(cleanFirestoreObject(launchOfferConfig));
+    } catch (err) {
+      logFirestoreError(err, FirestoreOperationType.WRITE, 'launch_offer_config/state');
+    }
   }
 }
 
@@ -2765,29 +2872,108 @@ export function isLaunchOfferEligibleMember(user: ServerUserRecord): boolean {
   return true;
 }
 
+export function isSpeedDatingOfficiallyLaunched(): boolean {
+  return (
+    typeof launchOfferConfig.speedDatingLaunchedAt === 'number' &&
+    launchOfferConfig.speedDatingLaunchedAt > 0
+  );
+}
+
+function findLaunchOfferGrantByUserOrEmail(
+  userId: string,
+  email?: string | null
+): LaunchOfferGrantRecord | null {
+  const byId = serverLaunchOfferGrants.get(userId);
+  if (byId) return byId;
+  const normEmail = (email || '').toLowerCase().trim();
+  if (!normEmail) return null;
+  for (const grant of serverLaunchOfferGrants.values()) {
+    if (grant.email && grant.email.toLowerCase().trim() === normEmail) {
+      return grant;
+    }
+  }
+  return null;
+}
+
 export function getActiveLaunchOfferGrant(
   user: ServerUserRecord
 ): LaunchOfferGrantRecord | null {
-  const fromLedger = serverLaunchOfferGrants.get(user.userId);
+  const fromLedger = findLaunchOfferGrantByUserOrEmail(user.userId, user.email);
   if (fromLedger) return fromLedger;
   if (
     typeof user.launchOfferGrantNumber === 'number' &&
     user.launchOfferGrantNumber >= 1 &&
     user.launchOfferGrantNumber <= LAUNCH_OFFER_MAX_GRANTS &&
-    typeof user.launchOfferGrantedAt === 'number' &&
-    typeof user.launchOfferExpiresAt === 'number'
+    typeof user.launchOfferGrantedAt === 'number'
   ) {
     return {
       userId: user.userId,
       email: (user.email || '').toLowerCase().trim(),
       grantNumber: user.launchOfferGrantNumber,
       grantedAt: user.launchOfferGrantedAt,
-      expiresAt: user.launchOfferExpiresAt,
+      activatedAt: isSpeedDatingOfficiallyLaunched()
+        ? Math.max(user.launchOfferGrantedAt, launchOfferConfig.speedDatingLaunchedAt as number)
+        : null,
+      expiresAt: typeof user.launchOfferExpiresAt === 'number' ? user.launchOfferExpiresAt : null,
       source: 'post_verification',
+      rewardTier: 'Premium Plus',
       celebrationShownAt: user.launchOfferCelebrationShownAt || null,
+      launchActivationNotifiedAt: user.launchOfferActivationNotifiedAt || null,
     };
   }
   return null;
+}
+
+export function getEffectiveLaunchOfferWindow(
+  grant: LaunchOfferGrantRecord | null,
+  now = Date.now()
+): {
+  deferred: boolean;
+  active: boolean;
+  expired: boolean;
+  startsAt: number | null;
+  expiresAt: number | null;
+  rewardTier: 'Premium Plus';
+} {
+  if (!grant) {
+    return {
+      deferred: false,
+      active: false,
+      expired: false,
+      startsAt: null,
+      expiresAt: null,
+      rewardTier: 'Premium Plus',
+    };
+  }
+
+  // First-50 Premium+ rewards NEVER start at signup and NEVER expire while building the community.
+  // They remain safely reserved (completely separate from general Free During Launch access)
+  // until the founder explicitly activates "Launch Speed Dating".
+  if (!isSpeedDatingOfficiallyLaunched()) {
+    return {
+      deferred: true,
+      active: false,
+      expired: false,
+      startsAt: null,
+      expiresAt: null,
+      rewardTier: 'Premium Plus',
+    };
+  }
+
+  const launchedAt = launchOfferConfig.speedDatingLaunchedAt as number;
+  const startsAt =
+    typeof grant.activatedAt === 'number' && grant.activatedAt > 0
+      ? grant.activatedAt
+      : Math.max(grant.grantedAt, launchedAt);
+  const expiresAt = startsAt + LAUNCH_OFFER_DURATION_MS;
+  return {
+    deferred: false,
+    active: now < expiresAt,
+    expired: now >= expiresAt,
+    startsAt,
+    expiresAt,
+    rewardTier: 'Premium Plus',
+  };
 }
 
 export function hasActiveLaunchOfferPremium(
@@ -2799,13 +2985,33 @@ export function hasActiveLaunchOfferPremium(
   const grant = getActiveLaunchOfferGrant(user);
   if (!grant) return false;
   if (grant.grantNumber < 1 || grant.grantNumber > LAUNCH_OFFER_MAX_GRANTS) return false;
-  return now < grant.expiresAt;
+  return getEffectiveLaunchOfferWindow(grant, now).active;
 }
 
 export function hasPaidOrTesterAccess(
   user: ServerUserRecord,
   requiredTier: 'Premium' | 'Premium Plus'
-): { allowed: boolean; reason?: string; isTesterOverride: boolean; isLaunchOfferGrant?: boolean } {
+): {
+  allowed: boolean;
+  reason?: string;
+  isTesterOverride: boolean;
+  isLaunchOfferGrant?: boolean;
+  isLaunchFreeAccess?: boolean;
+} {
+  // During Free Launch, all non-banned members enjoy full browsing, matching, mutual-match messaging, and live events free.
+  // Age verification (18+/30+), email verification, blocking, reporting, and safety bans remain strictly enforced.
+  if (isFreeDuringLaunch()) {
+    const normEmail = (user.email || '').toLowerCase().trim();
+    if (user.isBanned || bannedUsers.has(user.userId) || (normEmail && bannedUsers.has(normEmail))) {
+      return {
+        allowed: false,
+        reason: 'This account has been suspended for violating community safety standards.',
+        isTesterOverride: false,
+      };
+    }
+    return { allowed: true, isTesterOverride: false, isLaunchFreeAccess: true };
+  }
+
   // Free tester access is kept strictly separate from paid subscription status
   if (isTesterAccount(user)) {
     return { allowed: true, isTesterOverride: true };
@@ -2825,8 +3031,8 @@ export function hasPaidOrTesterAccess(
     return { allowed: true, isTesterOverride: false };
   }
 
-  // First-50 Launch Offer awards 30 days of free Premium (never Premium Plus)
-  if (requiredTier === 'Premium' && hasActiveLaunchOfferPremium(user)) {
+  // First-50 Launch Offer preserves 30 days of free Premium+ starting when paid memberships return
+  if (hasActiveLaunchOfferPremium(user)) {
     return { allowed: true, isTesterOverride: false, isLaunchOfferGrant: true };
   }
 
@@ -3253,12 +3459,28 @@ async function syncDurableDatabaseOnStartup() {
     // 2e. Sync launch offer state & grants from durable storage
     const launchCfgSnap = await firestoreDb.collection('launch_offer_config').doc('state').get().catch(() => null);
     if (launchCfgSnap && launchCfgSnap.exists) {
-      const cfg = launchCfgSnap.data() as LaunchOfferConfigState;
+      const cfg = launchCfgSnap.data() as Partial<LaunchOfferConfigState>;
       if (cfg && typeof cfg.liveAt === 'number' && cfg.liveAt > 0) {
         launchOfferConfig = {
           liveAt: Math.min(launchOfferConfig.liveAt, cfg.liveAt),
           maxGrants: LAUNCH_OFFER_MAX_GRANTS,
           durationDays: LAUNCH_OFFER_DURATION_DAYS,
+          freeDuringLaunch:
+            typeof cfg.freeDuringLaunch === 'boolean'
+              ? cfg.freeDuringLaunch
+              : launchOfferConfig.freeDuringLaunch,
+          paidMembershipsReturnedAt:
+            typeof cfg.paidMembershipsReturnedAt === 'number' && cfg.paidMembershipsReturnedAt > 0
+              ? cfg.paidMembershipsReturnedAt
+              : launchOfferConfig.paidMembershipsReturnedAt,
+          speedDatingLaunchedAt:
+            typeof cfg.speedDatingLaunchedAt === 'number' && cfg.speedDatingLaunchedAt > 0
+              ? cfg.speedDatingLaunchedAt
+              : launchOfferConfig.speedDatingLaunchedAt,
+          speedDatingLaunchedBy:
+            typeof cfg.speedDatingLaunchedBy === 'string' && cfg.speedDatingLaunchedBy.trim()
+              ? cfg.speedDatingLaunchedBy.trim()
+              : launchOfferConfig.speedDatingLaunchedBy || null,
           updatedAt: cfg.updatedAt || cfg.liveAt,
         };
       }
@@ -3271,18 +3493,47 @@ async function syncDurableDatabaseOnStartup() {
       launchGrantsSnap.forEach(d => {
         const item = d.data() as LaunchOfferGrantRecord;
         if (item && item.userId && typeof item.grantNumber === 'number' && item.grantNumber >= 1 && item.grantNumber <= LAUNCH_OFFER_MAX_GRANTS) {
-          const existing = serverLaunchOfferGrants.get(item.userId);
+          const normEmail = (item.email || '').toLowerCase().trim();
+          const existing = findLaunchOfferGrantByUserOrEmail(item.userId, normEmail);
           if (!existing) {
-            serverLaunchOfferGrants.set(item.userId, item);
+            if (serverLaunchOfferGrants.size < LAUNCH_OFFER_MAX_GRANTS) {
+              serverLaunchOfferGrants.set(item.userId, {
+                ...item,
+                email: normEmail,
+                rewardTier: 'Premium Plus',
+                activatedAt:
+                  typeof item.activatedAt === 'number' && item.activatedAt > 0 ? item.activatedAt : null,
+                expiresAt:
+                  typeof item.expiresAt === 'number' && item.expiresAt > 0 ? item.expiresAt : null,
+                launchActivationNotifiedAt:
+                  typeof item.launchActivationNotifiedAt === 'number' && item.launchActivationNotifiedAt > 0
+                    ? item.launchActivationNotifiedAt
+                    : null,
+              });
+            }
           } else {
-            // Preserve earliest grant timestamps and non-null celebration acknowledgment
+            // Preserve earliest grant timestamps and non-null acknowledgments
             const mergedShownAt =
               existing.celebrationShownAt && item.celebrationShownAt
                 ? Math.min(existing.celebrationShownAt, item.celebrationShownAt)
                 : existing.celebrationShownAt || item.celebrationShownAt || null;
-            serverLaunchOfferGrants.set(item.userId, {
+            const mergedActivationNotifiedAt =
+              existing.launchActivationNotifiedAt && item.launchActivationNotifiedAt
+                ? Math.min(existing.launchActivationNotifiedAt, item.launchActivationNotifiedAt)
+                : existing.launchActivationNotifiedAt || item.launchActivationNotifiedAt || null;
+            const mergedActivatedAt =
+              existing.activatedAt && item.activatedAt
+                ? Math.min(existing.activatedAt, item.activatedAt)
+                : existing.activatedAt || item.activatedAt || null;
+            serverLaunchOfferGrants.set(existing.userId, {
               ...existing,
+              rewardTier: 'Premium Plus',
+              activatedAt: mergedActivatedAt,
+              expiresAt: mergedActivatedAt
+                ? mergedActivatedAt + LAUNCH_OFFER_DURATION_MS
+                : existing.expiresAt ?? item.expiresAt ?? null,
               celebrationShownAt: mergedShownAt,
+              launchActivationNotifiedAt: mergedActivationNotifiedAt,
             });
           }
         }
@@ -3644,35 +3895,77 @@ function allocateNextSpotNumber(used: Set<number>): number | null {
   return null;
 }
 
+function getUsedLaunchOfferEmails(): Set<string> {
+  const used = new Set<string>();
+  for (const grant of serverLaunchOfferGrants.values()) {
+    const email = (grant.email || '').toLowerCase().trim();
+    if (email) used.add(email);
+  }
+  return used;
+}
+
 export async function reconcileLaunchOfferGrants(): Promise<void> {
   await withLaunchOfferLock(async () => {
-    // 1. Hydrate ledger from any user records that already possess durable grant metadata
     let ledgerChanged = false;
+
+    // 0. Exclude founder/tester/demo accounts from holding First-50 reward spots
+    for (const [grantUserId, grant] of Array.from(serverLaunchOfferGrants.entries())) {
+      const u = serverUsers.get(grantUserId);
+      const isIneligible = u
+        ? !isLaunchOfferEligibleMember(u)
+        : isOwnerUser({ userId: grantUserId, email: grant.email || '' }) ||
+          isTesterAccount({ userId: grantUserId, email: grant.email || '' });
+      if (isIneligible) {
+        serverLaunchOfferGrants.delete(grantUserId);
+        ledgerChanged = true;
+        if (firestoreDb) {
+          await firestoreDb.collection('launch_offer_grants').doc(grantUserId).delete().catch(() => null);
+        }
+      }
+    }
+
+    // 1. Hydrate ledger from any eligible user records that already possess durable grant metadata
     for (const u of serverUsers.values()) {
+      if (!isLaunchOfferEligibleMember(u)) continue;
       if (
         typeof u.launchOfferGrantNumber === 'number' &&
         u.launchOfferGrantNumber >= 1 &&
         u.launchOfferGrantNumber <= LAUNCH_OFFER_MAX_GRANTS &&
-        typeof u.launchOfferGrantedAt === 'number' &&
-        typeof u.launchOfferExpiresAt === 'number'
+        typeof u.launchOfferGrantedAt === 'number'
       ) {
-        const existing = serverLaunchOfferGrants.get(u.userId);
+        const normEmail = (u.email || '').toLowerCase().trim();
+        const existing = findLaunchOfferGrantByUserOrEmail(u.userId, normEmail);
         if (!existing) {
           const used = getUsedLaunchOfferNumbers();
-          if (!used.has(u.launchOfferGrantNumber) && serverLaunchOfferGrants.size < LAUNCH_OFFER_MAX_GRANTS) {
+          const usedEmails = getUsedLaunchOfferEmails();
+          if (
+            !used.has(u.launchOfferGrantNumber) &&
+            (!normEmail || !usedEmails.has(normEmail)) &&
+            serverLaunchOfferGrants.size < LAUNCH_OFFER_MAX_GRANTS
+          ) {
+            const launchedAt = launchOfferConfig.speedDatingLaunchedAt;
+            const activatedAt =
+              typeof launchedAt === 'number' && launchedAt > 0
+                ? Math.max(u.launchOfferGrantedAt, launchedAt)
+                : null;
+            const expiresAt = activatedAt ? activatedAt + LAUNCH_OFFER_DURATION_MS : null;
             serverLaunchOfferGrants.set(u.userId, {
               userId: u.userId,
-              email: (u.email || '').toLowerCase().trim(),
+              email: normEmail,
               grantNumber: u.launchOfferGrantNumber,
               grantedAt: u.launchOfferGrantedAt,
-              expiresAt: u.launchOfferExpiresAt,
+              activatedAt,
+              expiresAt,
               source: 'existing_verified',
+              rewardTier: 'Premium Plus',
               celebrationShownAt: u.launchOfferCelebrationShownAt || null,
+              launchActivationNotifiedAt: u.launchOfferActivationNotifiedAt || null,
             });
             ledgerChanged = true;
           }
         } else {
-          // Ensure user record keeps ledger values without resetting expiration
+          // Ensure user record stays in sync with ledger values without resetting active expiration
+          const effectiveWindow = getEffectiveLaunchOfferWindow(existing);
           let userChanged = false;
           if (u.launchOfferGrantNumber !== existing.grantNumber) {
             u.launchOfferGrantNumber = existing.grantNumber;
@@ -3682,8 +3975,8 @@ export async function reconcileLaunchOfferGrants(): Promise<void> {
             u.launchOfferGrantedAt = existing.grantedAt;
             userChanged = true;
           }
-          if (u.launchOfferExpiresAt !== existing.expiresAt) {
-            u.launchOfferExpiresAt = existing.expiresAt;
+          if ((u.launchOfferExpiresAt ?? null) !== effectiveWindow.expiresAt) {
+            u.launchOfferExpiresAt = effectiveWindow.expiresAt;
             userChanged = true;
           }
           if (existing.celebrationShownAt && !u.launchOfferCelebrationShownAt) {
@@ -3691,6 +3984,13 @@ export async function reconcileLaunchOfferGrants(): Promise<void> {
             userChanged = true;
           } else if (u.launchOfferCelebrationShownAt && !existing.celebrationShownAt) {
             existing.celebrationShownAt = u.launchOfferCelebrationShownAt;
+            ledgerChanged = true;
+          }
+          if (existing.launchActivationNotifiedAt && !u.launchOfferActivationNotifiedAt) {
+            u.launchOfferActivationNotifiedAt = existing.launchActivationNotifiedAt;
+            userChanged = true;
+          } else if (u.launchOfferActivationNotifiedAt && !existing.launchActivationNotifiedAt) {
+            existing.launchActivationNotifiedAt = u.launchOfferActivationNotifiedAt;
             ledgerChanged = true;
           }
           if (userChanged) {
@@ -3703,44 +4003,78 @@ export async function reconcileLaunchOfferGrants(): Promise<void> {
     // Also sync grants present in ledger onto serverUsers records
     for (const grant of serverLaunchOfferGrants.values()) {
       const u = serverUsers.get(grant.userId);
-      if (u && u.launchOfferGrantNumber !== grant.grantNumber) {
-        u.launchOfferGrantNumber = grant.grantNumber;
-        u.launchOfferGrantedAt = grant.grantedAt;
-        u.launchOfferExpiresAt = grant.expiresAt;
-        if (grant.celebrationShownAt) {
-          u.launchOfferCelebrationShownAt = grant.celebrationShownAt;
+      if (u && isLaunchOfferEligibleMember(u)) {
+        const effectiveWindow = getEffectiveLaunchOfferWindow(grant);
+        let changed = false;
+        if (u.launchOfferGrantNumber !== grant.grantNumber) {
+          u.launchOfferGrantNumber = grant.grantNumber;
+          changed = true;
         }
-        await saveUserToDurableDatabase(u);
+        if (u.launchOfferGrantedAt !== grant.grantedAt) {
+          u.launchOfferGrantedAt = grant.grantedAt;
+          changed = true;
+        }
+        if ((u.launchOfferExpiresAt ?? null) !== effectiveWindow.expiresAt) {
+          u.launchOfferExpiresAt = effectiveWindow.expiresAt;
+          changed = true;
+        }
+        if (grant.celebrationShownAt && !u.launchOfferCelebrationShownAt) {
+          u.launchOfferCelebrationShownAt = grant.celebrationShownAt;
+          changed = true;
+        }
+        if (grant.launchActivationNotifiedAt && !u.launchOfferActivationNotifiedAt) {
+          u.launchOfferActivationNotifiedAt = grant.launchActivationNotifiedAt;
+          changed = true;
+        }
+        if (changed) {
+          await saveUserToDurableDatabase(u);
+        }
       }
     }
 
-    // 2. Reserve spots in signup order (createdAt ascending) for existing email-verified eligible non-tester members
+    // 2. Automatically reserve spots in signup order (createdAt ascending) for existing email-verified eligible non-founder/non-tester members
+    const used = getUsedLaunchOfferNumbers();
+    const usedEmails = getUsedLaunchOfferEmails();
     const existingVerifiedEligible = Array.from(serverUsers.values())
-      .filter(
-        u =>
+      .filter(u => {
+        const normEmail = (u.email || '').toLowerCase().trim();
+        return (
           u.emailVerified === true &&
           isLaunchOfferEligibleMember(u) &&
           !serverLaunchOfferGrants.has(u.userId) &&
+          (!normEmail || !usedEmails.has(normEmail)) &&
           typeof u.launchOfferGrantNumber !== 'number'
-      )
+        );
+      })
       .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0) || a.userId.localeCompare(b.userId));
 
-    const used = getUsedLaunchOfferNumbers();
     const goLiveStart = launchOfferConfig.liveAt || Date.now();
+    const launchedAt = launchOfferConfig.speedDatingLaunchedAt;
 
     for (const member of existingVerifiedEligible) {
+      const normEmail = (member.email || '').toLowerCase().trim();
+      if (normEmail && usedEmails.has(normEmail)) continue;
       const spotNum = allocateNextSpotNumber(used);
       if (spotNum === null) break;
       used.add(spotNum);
+      if (normEmail) usedEmails.add(normEmail);
+
+      const grantedAt = member.emailVerifiedAt || member.createdAt || goLiveStart;
+      const activatedAt =
+        typeof launchedAt === 'number' && launchedAt > 0 ? Math.max(grantedAt, launchedAt) : null;
+      const expiresAt = activatedAt ? activatedAt + LAUNCH_OFFER_DURATION_MS : null;
 
       const grantRecord: LaunchOfferGrantRecord = {
         userId: member.userId,
-        email: (member.email || '').toLowerCase().trim(),
+        email: normEmail,
         grantNumber: spotNum,
-        grantedAt: goLiveStart,
-        expiresAt: goLiveStart + LAUNCH_OFFER_DURATION_MS,
+        grantedAt,
+        activatedAt,
+        expiresAt,
         source: 'existing_verified',
+        rewardTier: 'Premium Plus',
         celebrationShownAt: member.launchOfferCelebrationShownAt || null,
+        launchActivationNotifiedAt: member.launchOfferActivationNotifiedAt || null,
       };
       serverLaunchOfferGrants.set(member.userId, grantRecord);
       member.launchOfferGrantNumber = grantRecord.grantNumber;
@@ -3749,7 +4083,9 @@ export async function reconcileLaunchOfferGrants(): Promise<void> {
       await saveLaunchOfferGrantToDurableDatabase(grantRecord);
       await saveUserToDurableDatabase(member);
       ledgerChanged = true;
-      console.log(`[LAUNCH OFFER] Reserved existing verified spot #${spotNum}/50 for ${member.userId}`);
+      console.log(
+        `[LAUNCH OFFER] Reserved existing verified spot #${spotNum}/50 (Premium+ reward, ${activatedAt ? 'active' : 'deferred until speed-dating launch'}) for ${member.userId}`
+      );
     }
 
     if (ledgerChanged) {
@@ -3769,28 +4105,44 @@ export async function tryAwardLaunchOfferSpot(
     if (user.emailVerified !== true) return null;
     if (!isLaunchOfferEligibleMember(user)) return null;
 
-    const existing = serverLaunchOfferGrants.get(userId);
-    if (existing) return existing;
+    const normEmail = (user.email || '').toLowerCase().trim();
+
+    // Prevent duplicate rewards by BOTH userId and normalized email
+    const existingByUserOrEmail = findLaunchOfferGrantByUserOrEmail(userId, normEmail);
+    if (existingByUserOrEmail) {
+      return existingByUserOrEmail.userId === userId ? existingByUserOrEmail : null;
+    }
 
     if (
       typeof user.launchOfferGrantNumber === 'number' &&
       user.launchOfferGrantNumber >= 1 &&
       user.launchOfferGrantNumber <= LAUNCH_OFFER_MAX_GRANTS &&
-      typeof user.launchOfferGrantedAt === 'number' &&
-      typeof user.launchOfferExpiresAt === 'number'
+      typeof user.launchOfferGrantedAt === 'number'
     ) {
-      const restored: LaunchOfferGrantRecord = {
-        userId: user.userId,
-        email: (user.email || '').toLowerCase().trim(),
-        grantNumber: user.launchOfferGrantNumber,
-        grantedAt: user.launchOfferGrantedAt,
-        expiresAt: user.launchOfferExpiresAt,
-        source,
-        celebrationShownAt: user.launchOfferCelebrationShownAt || null,
-      };
-      serverLaunchOfferGrants.set(userId, restored);
-      saveLaunchOfferGrantsToDisk();
-      return restored;
+      const usedCheck = getUsedLaunchOfferNumbers();
+      if (!usedCheck.has(user.launchOfferGrantNumber) && serverLaunchOfferGrants.size < LAUNCH_OFFER_MAX_GRANTS) {
+        const launchedAt = launchOfferConfig.speedDatingLaunchedAt;
+        const activatedAt =
+          typeof launchedAt === 'number' && launchedAt > 0
+            ? Math.max(user.launchOfferGrantedAt, launchedAt)
+            : null;
+        const restored: LaunchOfferGrantRecord = {
+          userId: user.userId,
+          email: normEmail,
+          grantNumber: user.launchOfferGrantNumber,
+          grantedAt: user.launchOfferGrantedAt,
+          activatedAt,
+          expiresAt: activatedAt ? activatedAt + LAUNCH_OFFER_DURATION_MS : null,
+          source,
+          rewardTier: 'Premium Plus',
+          celebrationShownAt: user.launchOfferCelebrationShownAt || null,
+          launchActivationNotifiedAt: user.launchOfferActivationNotifiedAt || null,
+        };
+        serverLaunchOfferGrants.set(userId, restored);
+        saveLaunchOfferGrantsToDisk();
+        return restored;
+      }
+      return null;
     }
 
     const used = getUsedLaunchOfferNumbers();
@@ -3800,14 +4152,24 @@ export async function tryAwardLaunchOfferSpot(
     }
 
     const now = Date.now();
+    const alreadyLaunched = isSpeedDatingOfficiallyLaunched();
+    // Do NOT start the 1-month reward clock at signup if speed dating has not officially launched yet
+    const activatedAt = alreadyLaunched ? now : null;
+    const expiresAt = alreadyLaunched ? now + LAUNCH_OFFER_DURATION_MS : null;
+
     const grantRecord: LaunchOfferGrantRecord = {
       userId: user.userId,
-      email: (user.email || '').toLowerCase().trim(),
+      email: normEmail,
       grantNumber: spotNumber,
       grantedAt: now,
-      expiresAt: now + LAUNCH_OFFER_DURATION_MS,
+      activatedAt,
+      expiresAt,
       source,
+      rewardTier: 'Premium Plus',
       celebrationShownAt: null,
+      // If speed dating is already launched when they verify, their initial celebration modal
+      // already informs them their month has begun — no duplicate second popup needed.
+      launchActivationNotifiedAt: alreadyLaunched ? now : null,
     };
 
     // Reserve synchronously in memory before awaiting any IO
@@ -3816,10 +4178,15 @@ export async function tryAwardLaunchOfferSpot(
     user.launchOfferGrantNumber = grantRecord.grantNumber;
     user.launchOfferGrantedAt = grantRecord.grantedAt;
     user.launchOfferExpiresAt = grantRecord.expiresAt;
+    if (alreadyLaunched) {
+      user.launchOfferActivationNotifiedAt = now;
+    }
 
     await saveLaunchOfferGrantToDurableDatabase(grantRecord);
     await saveUserToDurableDatabase(user);
-    console.log(`[LAUNCH OFFER] Awarded spot #${spotNumber}/50 to verified member ${user.userId}`);
+    console.log(
+      `[LAUNCH OFFER] Reserved spot #${spotNumber}/50 (Premium+ reward, ${alreadyLaunched ? 'active now' : 'begins on speed-dating launch'}) for verified member ${user.userId}`
+    );
     return grantRecord;
   });
 }
@@ -4123,19 +4490,32 @@ function sanitizeUser(u: ServerUserRecord) {
 
   const isEmailVerified = Boolean(u.emailVerified);
   const now = Date.now();
+  const freeDuringLaunch = isFreeDuringLaunch();
+  const speedDatingLaunched = isSpeedDatingOfficiallyLaunched();
   const grant = isEmailVerified && isLaunchOfferEligibleMember(u) ? getActiveLaunchOfferGrant(u) : null;
+  const grantWindow = getEffectiveLaunchOfferWindow(grant, now);
   const launchOfferGranted = Boolean(isEmailVerified && grant);
-  const launchOfferActive = Boolean(launchOfferGranted && grant && now < grant.expiresAt);
-  const launchOfferExpired = Boolean(launchOfferGranted && grant && now >= grant.expiresAt);
+  const launchOfferDeferred = Boolean(launchOfferGranted && grantWindow.deferred);
+  const launchOfferActive = Boolean(launchOfferGranted && grantWindow.active);
+  const launchOfferExpired = Boolean(launchOfferGranted && grantWindow.expired);
   const launchOfferCelebrationShownAt = launchOfferGranted
     ? (grant?.celebrationShownAt || u.launchOfferCelebrationShownAt || null)
     : null;
-  const launchOfferCelebrationPending = Boolean(launchOfferActive && !launchOfferCelebrationShownAt);
+  const launchOfferCelebrationPending = Boolean(
+    launchOfferGranted && !launchOfferExpired && !launchOfferCelebrationShownAt
+  );
+  const launchOfferActivationNotifiedAt = launchOfferGranted
+    ? (grant?.launchActivationNotifiedAt || u.launchOfferActivationNotifiedAt || null)
+    : null;
+  const launchOfferActivationPending = Boolean(
+    launchOfferGranted && speedDatingLaunched && launchOfferActive && !launchOfferActivationNotifiedAt
+  );
 
-  // Effective tier: granted testers receive Premium Plus; verified first-50 launch offer recipients receive 30 days of Premium
+  // Effective tier: granted testers receive Premium Plus; verified First-50 launch offer recipients
+  // receive 30 days of Premium Plus once speed-dating events officially launch (no card, no auto-charge)
   let effectiveTier = isGrantedTester ? 'Premium Plus' : (u.subscriptionTier || 'Free');
-  if (launchOfferActive && effectiveTier === 'Free') {
-    effectiveTier = 'Premium';
+  if (launchOfferActive && effectiveTier !== 'Premium Plus') {
+    effectiveTier = 'Premium Plus';
   }
   const effectiveStatus = isGrantedTester
     ? (u.subscriptionStatus === 'canceled' ? 'active' : (u.subscriptionStatus || 'active'))
@@ -4179,7 +4559,10 @@ function sanitizeUser(u: ServerUserRecord) {
     testerAccessGranted: isGrantedTester,
     testerAccessGrantedAt: u.testerAccessGrantedAt || (isGrantedTester ? grantedTesterRecords.get(normEmail)?.grantedAt : null) || null,
     testerAccessGrantedBy: u.testerAccessGrantedBy || (isGrantedTester ? grantedTesterRecords.get(normEmail)?.grantedBy : null) || null,
-    hasActiveSubscription: effectiveStatus === 'active' || effectiveStatus === 'trialing' || launchOfferActive,
+    hasActiveSubscription: effectiveStatus === 'active' || effectiveStatus === 'trialing' || launchOfferActive || freeDuringLaunch,
+    freeDuringLaunch,
+    speedDatingLaunched,
+    speedDatingLaunchedAt: launchOfferConfig.speedDatingLaunchedAt,
     subscriptionCurrentPeriodEnd: u.subscriptionCurrentPeriodEnd || null,
     emailVerified: isEmailVerified,
     EmailVerified: isEmailVerified,
@@ -4192,8 +4575,14 @@ function sanitizeUser(u: ServerUserRecord) {
     LaunchOfferGrantNumber: launchOfferGranted && grant ? grant.grantNumber : null,
     launchOfferGrantedAt: launchOfferGranted && grant ? grant.grantedAt : null,
     LaunchOfferGrantedAt: launchOfferGranted && grant ? grant.grantedAt : null,
-    launchOfferExpiresAt: launchOfferGranted && grant ? grant.expiresAt : null,
-    LaunchOfferExpiresAt: launchOfferGranted && grant ? grant.expiresAt : null,
+    launchOfferActivatedAt: launchOfferGranted && grant ? grantWindow.startsAt : null,
+    LaunchOfferActivatedAt: launchOfferGranted && grant ? grantWindow.startsAt : null,
+    launchOfferExpiresAt: launchOfferGranted && grant ? grantWindow.expiresAt : null,
+    LaunchOfferExpiresAt: launchOfferGranted && grant ? grantWindow.expiresAt : null,
+    launchOfferDeferred,
+    LaunchOfferDeferred: launchOfferDeferred,
+    launchOfferRewardTier: launchOfferGranted ? 'Premium Plus' : null,
+    LaunchOfferRewardTier: launchOfferGranted ? 'Premium Plus' : null,
     launchOfferActive,
     LaunchOfferActive: launchOfferActive,
     launchOfferExpired,
@@ -4202,6 +4591,10 @@ function sanitizeUser(u: ServerUserRecord) {
     LaunchOfferCelebrationPending: launchOfferCelebrationPending,
     launchOfferCelebrationShownAt,
     LaunchOfferCelebrationShownAt: launchOfferCelebrationShownAt,
+    launchOfferActivationPending,
+    LaunchOfferActivationPending: launchOfferActivationPending,
+    launchOfferActivationNotifiedAt,
+    LaunchOfferActivationNotifiedAt: launchOfferActivationNotifiedAt,
     Interests: interests,
     interests: interests,
     IcebreakerAnswer: u.icebreakerAnswer || undefined,
@@ -4280,6 +4673,10 @@ app.get('/api/auth/status', (_req, res) => {
     firestoreDatabaseId: firestoreConfig?.firestoreDatabaseId || 'default',
     survivesRedeployments: health.firestoreReadVerified && health.firestoreWriteVerified,
     consistentAcrossInstances: health.firestoreReadVerified && health.firestoreWriteVerified,
+    freeDuringLaunch: isFreeDuringLaunch(),
+    paidMembershipsReturnedAt: launchOfferConfig.paidMembershipsReturnedAt,
+    speedDatingLaunched: isSpeedDatingOfficiallyLaunched(),
+    speedDatingLaunchedAt: launchOfferConfig.speedDatingLaunchedAt,
     features: {
       passwordHashing: 'PBKDF2-SHA512 (100,000 iterations + 16-byte random salt)',
       adultVerification: '18+ age enforcement on registration',
@@ -4550,13 +4947,71 @@ app.post('/api/account/launch-offer/celebrated', async (req, res) => {
 
     const grant = serverLaunchOfferGrants.get(user.userId);
     const shownAt = grant?.celebrationShownAt || user.launchOfferCelebrationShownAt || Date.now();
+    const launched = isSpeedDatingOfficiallyLaunched();
+
+    let grantDirty = false;
+    let userDirty = false;
 
     if (grant && !grant.celebrationShownAt) {
       grant.celebrationShownAt = shownAt;
-      await saveLaunchOfferGrantToDurableDatabase(grant);
+      grantDirty = true;
     }
     if (!user.launchOfferCelebrationShownAt) {
       user.launchOfferCelebrationShownAt = shownAt;
+      userDirty = true;
+    }
+    // If speed dating has already officially launched when this modal is dismissed,
+    // also mark the activation notice seen so the member doesn't get a duplicate popup immediately.
+    if (launched) {
+      if (grant && !grant.launchActivationNotifiedAt) {
+        grant.launchActivationNotifiedAt = shownAt;
+        grantDirty = true;
+      }
+      if (!user.launchOfferActivationNotifiedAt) {
+        user.launchOfferActivationNotifiedAt = shownAt;
+        userDirty = true;
+      }
+    }
+
+    if (grant && grantDirty) {
+      await saveLaunchOfferGrantToDurableDatabase(grant);
+    }
+    if (userDirty) {
+      await saveUserToDurableDatabase(user);
+    }
+    return user;
+  });
+
+  if (!updatedUser) {
+    return res.status(404).json({ success: false, error: 'User account not found.' });
+  }
+
+  return res.json({
+    success: true,
+    user: sanitizeUser(updatedUser),
+  });
+});
+
+// API: Acknowledge First-50 Speed-Dating Launch Activation In-App Notification
+app.post('/api/account/launch-offer/activation-notified', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, code: 'UNAUTHORIZED', error: 'Authentication required.' });
+  }
+
+  const updatedUser = await withLaunchOfferLock(async () => {
+    const user = serverUsers.get(authUser.userId);
+    if (!user) return null;
+
+    const grant = serverLaunchOfferGrants.get(user.userId);
+    const notifiedAt = grant?.launchActivationNotifiedAt || user.launchOfferActivationNotifiedAt || Date.now();
+
+    if (grant && !grant.launchActivationNotifiedAt) {
+      grant.launchActivationNotifiedAt = notifiedAt;
+      await saveLaunchOfferGrantToDurableDatabase(grant);
+    }
+    if (!user.launchOfferActivationNotifiedAt) {
+      user.launchOfferActivationNotifiedAt = notifiedAt;
       await saveUserToDurableDatabase(user);
     }
     return user;
@@ -5006,10 +5461,26 @@ const PRIVILEGED_PROFILE_KEYS = [
   'LaunchOfferGrantNumber',
   'launchOfferGrantedAt',
   'LaunchOfferGrantedAt',
+  'launchOfferActivatedAt',
+  'LaunchOfferActivatedAt',
   'launchOfferExpiresAt',
   'LaunchOfferExpiresAt',
+  'launchOfferDeferred',
+  'LaunchOfferDeferred',
+  'launchOfferRewardTier',
+  'LaunchOfferRewardTier',
+  'launchOfferActive',
+  'LaunchOfferActive',
+  'launchOfferExpired',
+  'LaunchOfferExpired',
+  'launchOfferCelebrationPending',
+  'LaunchOfferCelebrationPending',
   'launchOfferCelebrationShownAt',
   'LaunchOfferCelebrationShownAt',
+  'launchOfferActivationPending',
+  'LaunchOfferActivationPending',
+  'launchOfferActivationNotifiedAt',
+  'LaunchOfferActivationNotifiedAt',
 ];
 
 function extractRequestedTargetUserId(req: express.Request): string | null {
@@ -6290,10 +6761,12 @@ app.get('/api/owner/registered-users', async (req, res) => {
     const isGrantedTester = grantedTesterRecords.has((u.email || '').toLowerCase().trim()) || u.testerAccessGranted === true;
     const isVerified = Boolean(u.emailVerified);
     const grant = isVerified && isLaunchOfferEligibleMember(u) ? getActiveLaunchOfferGrant(u) : null;
-    const launchOfferActive = Boolean(grant && Date.now() < grant.expiresAt);
+    const grantWindow = getEffectiveLaunchOfferWindow(grant);
+    const launchOfferActive = Boolean(grant && grantWindow.active);
+    const launchOfferDeferred = Boolean(grant && grantWindow.deferred);
     let effectiveTier: string = isGrantedTester ? 'Premium Plus' : (u.subscriptionTier || 'Free');
-    if (launchOfferActive && effectiveTier === 'Free') {
-      effectiveTier = 'Premium';
+    if (launchOfferActive && effectiveTier !== 'Premium Plus') {
+      effectiveTier = 'Premium Plus';
     }
 
     return {
@@ -6325,8 +6798,13 @@ app.get('/api/owner/registered-users', async (req, res) => {
       emailVerifiedAt: isVerified ? (u.emailVerifiedAt || null) : null,
       launchOfferGrantNumber: grant ? grant.grantNumber : null,
       launchOfferGrantedAt: grant ? grant.grantedAt : null,
-      launchOfferExpiresAt: grant ? grant.expiresAt : null,
+      launchOfferActivatedAt: grant ? grantWindow.startsAt : null,
+      launchOfferExpiresAt: grant ? grantWindow.expiresAt : null,
+      launchOfferDeferred,
+      launchOfferRewardTier: grant ? 'Premium Plus' : null,
       launchOfferActive,
+      launchOfferExpired: Boolean(grant && grantWindow.expired),
+      launchOfferActivationNotifiedAt: grant ? (grant.launchActivationNotifiedAt || u.launchOfferActivationNotifiedAt || null) : null,
       createdAt: u.createdAt, // epoch ms
       lastSignIn, // epoch ms or null if unavailable
       hasActiveSession,
@@ -6345,6 +6823,10 @@ app.get('/api/owner/registered-users', async (req, res) => {
       maxGrants: LAUNCH_OFFER_MAX_GRANTS,
       grantedCount: serverLaunchOfferGrants.size,
       liveAt: launchOfferConfig.liveAt,
+      freeDuringLaunch: isFreeDuringLaunch(),
+      paidMembershipsReturnedAt: launchOfferConfig.paidMembershipsReturnedAt,
+      speedDatingLaunched: isSpeedDatingOfficiallyLaunched(),
+      speedDatingLaunchedAt: launchOfferConfig.speedDatingLaunchedAt,
     },
     storageDiagnostic: {
       storageType:
@@ -6542,10 +7024,171 @@ app.post('/api/owner/testers', async (req, res) => {
 // Premium Plus ($14.99/mo): price_1UZJR6GzWqYTtaSTVJCIeJip
 // ============================================================================
 
+// API: Public Launch-Free Mode & Speed-Dating Launch Status (saved prices + First-50 summary; no PII)
+app.get('/api/launch-mode', (_req, res) => {
+  const freeDuringLaunch = isFreeDuringLaunch();
+  const speedDatingLaunched = isSpeedDatingOfficiallyLaunched();
+  return res.json({
+    success: true,
+    freeDuringLaunch,
+    envOverrideActive: ENV_FREE_DURING_LAUNCH_OVERRIDE !== null,
+    paidMembershipsReturnedAt: launchOfferConfig.paidMembershipsReturnedAt,
+    speedDatingLaunched,
+    speedDatingLaunchedAt: launchOfferConfig.speedDatingLaunchedAt,
+    savedPrices: {
+      premium: 9.99,
+      premiumPlus: 14.99,
+      currency: 'USD',
+      interval: 'month',
+    },
+    first50PreservedCount: serverLaunchOfferGrants.size,
+    first50MaxGrants: LAUNCH_OFFER_MAX_GRANTS,
+    first50RewardTier: 'Premium Plus',
+    first50DurationDays: LAUNCH_OFFER_DURATION_DAYS,
+  });
+});
+
+// API: Owner-Only Toggle for General Free During Launch Mode
+// Kept strictly separate from First-50 earned Premium+ rewards (which start only when the founder activates "Launch Speed Dating").
+app.post('/api/owner/launch-mode', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({ success: false, error: 'Access denied: Owner authorization required.' });
+  }
+  if (ENV_FREE_DURING_LAUNCH_OVERRIDE !== null) {
+    return res.status(409).json({
+      success: false,
+      code: 'ENV_OVERRIDE_ACTIVE',
+      error: `FREE_DURING_LAUNCH environment variable is currently pinning launch mode to ${ENV_FREE_DURING_LAUNCH_OVERRIDE}. Remove or update FREE_DURING_LAUNCH in server environment to change it dynamically.`,
+    });
+  }
+
+  const { freeDuringLaunch } = req.body || {};
+  if (typeof freeDuringLaunch !== 'boolean') {
+    return res.status(400).json({
+      success: false,
+      error: 'Boolean field freeDuringLaunch is required.',
+    });
+  }
+
+  const now = Date.now();
+  const wasFree = launchOfferConfig.freeDuringLaunch !== false;
+
+  await withLaunchOfferLock(async () => {
+    launchOfferConfig.freeDuringLaunch = freeDuringLaunch;
+    launchOfferConfig.updatedAt = now;
+
+    if (wasFree && !freeDuringLaunch) {
+      launchOfferConfig.paidMembershipsReturnedAt = now;
+      console.log(
+        `[LAUNCH MODE] Owner ${authUser.email} restored standard paid memberships (First-50 rewards remain governed strictly by Launch Speed Dating).`
+      );
+    } else if (!wasFree && freeDuringLaunch) {
+      console.log(`[LAUNCH MODE] Owner ${authUser.email} enabled Free During Launch mode.`);
+    }
+
+    await saveLaunchOfferConfigToDurableDatabase();
+  });
+
+  return res.json({
+    success: true,
+    freeDuringLaunch: isFreeDuringLaunch(),
+    paidMembershipsReturnedAt: launchOfferConfig.paidMembershipsReturnedAt,
+    speedDatingLaunched: isSpeedDatingOfficiallyLaunched(),
+    speedDatingLaunchedAt: launchOfferConfig.speedDatingLaunchedAt,
+    first50PreservedCount: serverLaunchOfferGrants.size,
+    first50MaxGrants: LAUNCH_OFFER_MAX_GRANTS,
+    first50RewardTier: 'Premium Plus',
+    message: freeDuringLaunch
+      ? 'Free During Launch mode is now active. General launch access is free and remains separate from First-50 earned rewards.'
+      : 'Paid memberships restored ($9.99 / $14.99). First-50 earned Premium+ rewards remain governed separately by Launch Speed Dating.',
+  });
+});
+
+// API: Founder-Only "Launch Speed Dating" Activation
+// Automatically begins all reserved First-50 Premium+ rewards for one month (30 days)
+// and queues in-app notifications for every reserved member. No card required; never auto-charges.
+app.post('/api/owner/launch-speed-dating', async (req, res) => {
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required.' });
+  }
+  if (!isOwnerUser(authUser)) {
+    return res.status(403).json({ success: false, error: 'Access denied: Founder authorization required.' });
+  }
+
+  // Ensure any existing eligible verified members are reserved prior to launch activation
+  await reconcileLaunchOfferGrants();
+
+  const result = await withLaunchOfferLock(async () => {
+    if (isSpeedDatingOfficiallyLaunched()) {
+      return {
+        alreadyLaunched: true,
+        launchedAt: launchOfferConfig.speedDatingLaunchedAt as number,
+        activatedCount: serverLaunchOfferGrants.size,
+      };
+    }
+
+    const now = Date.now();
+    launchOfferConfig.speedDatingLaunchedAt = now;
+    launchOfferConfig.speedDatingLaunchedBy = authUser.email;
+    launchOfferConfig.updatedAt = now;
+
+    let activatedCount = 0;
+    for (const grant of serverLaunchOfferGrants.values()) {
+      const startsAt = Math.max(grant.grantedAt, now);
+      grant.rewardTier = 'Premium Plus';
+      grant.activatedAt = startsAt;
+      grant.expiresAt = startsAt + LAUNCH_OFFER_DURATION_MS;
+      // Queue in-app notification for every reserved First-50 member
+      grant.launchActivationNotifiedAt = null;
+
+      const member = serverUsers.get(grant.userId);
+      if (member) {
+        member.launchOfferExpiresAt = grant.expiresAt;
+        delete member.launchOfferActivationNotifiedAt;
+        await saveUserToDurableDatabase(member);
+      }
+      await saveLaunchOfferGrantToDurableDatabase(grant);
+      activatedCount += 1;
+    }
+
+    await saveLaunchOfferConfigToDurableDatabase();
+    console.log(
+      `[SPEED DATING LAUNCH] Founder ${authUser.email} officially launched speed dating. Activated 1-month Premium+ rewards and queued in-app notifications for ${activatedCount} reserved First-50 member(s).`
+    );
+
+    return {
+      alreadyLaunched: false,
+      launchedAt: now,
+      activatedCount,
+    };
+  });
+
+  return res.json({
+    success: true,
+    alreadyLaunched: result.alreadyLaunched,
+    speedDatingLaunched: true,
+    speedDatingLaunchedAt: result.launchedAt,
+    activatedCount: result.activatedCount,
+    first50PreservedCount: serverLaunchOfferGrants.size,
+    first50MaxGrants: LAUNCH_OFFER_MAX_GRANTS,
+    first50RewardTier: 'Premium Plus',
+    first50DurationDays: LAUNCH_OFFER_DURATION_DAYS,
+    message: result.alreadyLaunched
+      ? `Speed dating is already officially launched. All ${result.activatedCount} reserved First-50 Premium+ reward(s) have already started.`
+      : `Speed dating officially launched! Started 1-month Premium+ rewards for ${result.activatedCount} reserved First-50 member(s) and queued in-app notifications (no card or auto-charge).`,
+  });
+});
+
 // API: Stripe Public Configuration & Price Map
 app.get('/api/stripe/config', async (_req, res) => {
   await ensureStripePricesResolved();
   const webhookConfig = getStripeWebhookSecretConfig();
+  const freeDuringLaunch = isFreeDuringLaunch();
   res.json({
     success: true,
     isConfigured: Boolean(stripe),
@@ -6561,8 +7204,13 @@ app.get('/api/stripe/config', async (_req, res) => {
     hasWebhookSecret: webhookConfig.hasSecret,
     webhookSecretFormatValid: webhookConfig.validFormatCount > 0,
     serverStartedAt: SERVER_STARTED_AT,
-    premiumPlusPaused: true,
-    premiumPlusPauseMessage: 'Event membership coming soon.',
+    freeDuringLaunch,
+    paidMembershipsPaused: freeDuringLaunch,
+    paidMembershipsReturnedAt: launchOfferConfig.paidMembershipsReturnedAt,
+    premiumPlusPaused: freeDuringLaunch,
+    premiumPlusPauseMessage: freeDuringLaunch
+      ? 'Free during launch — no card required.'
+      : 'Available with Premium Plus ($14.99/mo).',
     prices: {
       premium: {
         id: STRIPE_PRICES.PREMIUM,
@@ -6571,6 +7219,7 @@ app.get('/api/stripe/config', async (_req, res) => {
         amount: 9.99,
         interval: 'month',
         currency: 'USD',
+        pausedForNewPurchases: freeDuringLaunch,
         features: ['Browsing', 'Mutual Matches', 'Private Messaging'],
       },
       premiumPlus: {
@@ -6580,8 +7229,10 @@ app.get('/api/stripe/config', async (_req, res) => {
         amount: 14.99,
         interval: 'month',
         currency: 'USD',
-        pausedForNewPurchases: true,
-        pauseMessage: 'Event membership coming soon.',
+        pausedForNewPurchases: freeDuringLaunch,
+        pauseMessage: freeDuringLaunch
+          ? 'Free during launch — no card required.'
+          : 'Available with Premium Plus ($14.99/mo).',
         features: [
           'Everything in Premium',
           'Live Speed Dating',
@@ -7405,18 +8056,16 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
     });
   }
 
-  // Pause new paid Premium Plus purchases while gathering first launch waitlist members.
-  // Existing subscribers' records, Stripe portal, webhooks, and Premium ($9.99/mo) remain active.
-  if (
-    requestedTier === 'Premium Plus' ||
-    resolvedPriceId === STRIPE_PRICES.PREMIUM_PLUS ||
-    resolvedPriceId === SANDBOX_FALLBACK_PRICES.PREMIUM_PLUS
-  ) {
+  // During Free Launch, block ALL new paid Stripe checkout sessions so no card is ever required
+  // and no paid subscription starts while the community grows. Saved prices ($9.99 / $14.99),
+  // existing Stripe customer portal, and webhooks remain cleanly preserved for later.
+  if (isFreeDuringLaunch()) {
     return res.status(403).json({
       success: false,
       paused: true,
-      code: 'PREMIUM_PLUS_PAUSED',
-      error: 'Event membership coming soon.',
+      freeDuringLaunch: true,
+      code: 'FREE_DURING_LAUNCH',
+      error: 'Speed Meet Love is free during launch! Browse singles, connect with mutual matches, and join speed-dating events with no card required.',
     });
   }
 
@@ -8113,13 +8762,13 @@ const handleMatchQueue = (req: express.Request, res: express.Response) => {
         error: 'Access denied: Live speed dating requires an active Premium Plus membership.',
       });
     }
-  } else if (tier !== 'Premium Plus') {
-    return res.status(403).json({
-      success: false,
-      code: 'PREMIUM_PLUS_REQUIRED',
-      error: 'Access denied: Live speed dating requires an active Premium Plus membership.',
-    });
-  }
+    } else if (!isFreeDuringLaunch() && tier !== 'Premium Plus') {
+      return res.status(403).json({
+        success: false,
+        code: 'PREMIUM_PLUS_REQUIRED',
+        error: 'Access denied: Live speed dating requires an active Premium Plus membership.',
+      });
+    }
 
   // 4. Developer Staging Authorization Check: Restricted to authorized developer/QA accounts
   const isStagingEvent = eventId === 'evt_staging_dev' || eventId.startsWith('evt_staging_');
@@ -8488,7 +9137,7 @@ app.post('/api/livekit/token', async (req, res) => {
             error: 'Access denied: Second Chance live video dates require an active Premium Plus membership ($14.99/mo).',
           });
         }
-      } else if (tier && tier !== 'Premium Plus') {
+      } else if (!isFreeDuringLaunch() && tier && tier !== 'Premium Plus') {
         return res.status(403).json({
           success: false,
           code: 'PREMIUM_PLUS_REQUIRED',
@@ -8631,7 +9280,7 @@ app.post('/api/livekit/token', async (req, res) => {
           error: 'Access denied: Live speed-dating video calls require an active Premium Plus membership.',
         });
       }
-    } else if (tier && tier !== 'Premium Plus') {
+    } else if (!isFreeDuringLaunch() && tier && tier !== 'Premium Plus') {
       return res.status(403).json({
         success: false,
         code: 'PREMIUM_PLUS_REQUIRED',

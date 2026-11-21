@@ -75,6 +75,9 @@ export const AcceptableUsePage: React.FC = () => {
               <strong>Human Trafficking:</strong> Any attempt to recruit, transport, harbor, advertise, solicit, or profit from human trafficking, forced labor, or commercial sex trafficking.
             </li>
             <li>
+              <strong>Sexual Violence &amp; Sexual Assault:</strong> Sexual violence, including sexual assault, is strictly prohibited.
+            </li>
+            <li>
               <strong>Sexual Exploitation:</strong> Commercial sexual exploitation, prostitution or escort services, non-consensual sexual acts or content, sextortion, sexual coercion, or sharing intimate imagery without explicit consent.
             </li>
             <li>

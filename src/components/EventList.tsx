@@ -53,6 +53,7 @@ export const EventList: React.FC = () => {
     setActiveRoundIndex,
     openAuthModal,
     isOwner,
+    isFreeDuringLaunch,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'cards' | 'table'>('cards');
@@ -317,10 +318,14 @@ export const EventList: React.FC = () => {
             <div className="text-[#111827] font-semibold">Waiting List &amp; Access</div>
             <div className="text-[#B45309] font-bold text-sm flex items-center gap-1">
               <Crown className="w-3.5 h-3.5" />
-              {currentUser?.SubscriptionTier || 'Guest'}
+              {isFreeDuringLaunch ? 'Free During Launch' : currentUser?.SubscriptionTier || 'Guest'}
             </div>
             <div className="text-[11px] text-[#111827] font-medium">
-              {currentUser
+              {isFreeDuringLaunch
+                ? currentUser
+                  ? 'Free live events unlocked · No card required'
+                  : 'Join Free to attend · No card required'
+                : currentUser
                 ? isEligibleForSpeedDating
                   ? 'Existing Plus / Tester Access Active'
                   : waitlistJoined
