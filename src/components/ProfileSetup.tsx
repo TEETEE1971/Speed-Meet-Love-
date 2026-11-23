@@ -121,10 +121,10 @@ export const ProfileSetup: React.FC = () => {
     showDrinking: currentUser?.PrivacySettings?.showDrinking ?? true,
     showChildren: currentUser?.PrivacySettings?.showChildren ?? true,
     shareLocation: currentUser?.PrivacySettings?.shareLocation ?? true,
-    // Preferences
-    ageMin: currentUser?.Preferences?.ageMin || 30,
-    ageMax: currentUser?.Preferences?.ageMax || 55,
-    distanceMiles: currentUser?.Preferences?.distanceMiles ?? 50,
+    // Preferences (optional, independent)
+    ageMin: currentUser?.Preferences?.ageMin != null && currentUser.Preferences.ageMin > 0 ? String(currentUser.Preferences.ageMin) : '',
+    ageMax: currentUser?.Preferences?.ageMax != null && currentUser.Preferences.ageMax > 0 ? String(currentUser.Preferences.ageMax) : '',
+    distanceMiles: currentUser?.Preferences?.distanceMiles != null && currentUser.Preferences.distanceMiles > 0 ? String(currentUser.Preferences.distanceMiles) : '',
     intent: currentUser?.Preferences?.intent || 'Any',
   });
 
@@ -157,9 +157,9 @@ export const ProfileSetup: React.FC = () => {
       showDrinking: currentUser.PrivacySettings?.showDrinking ?? true,
       showChildren: currentUser.PrivacySettings?.showChildren ?? true,
       shareLocation: currentUser.PrivacySettings?.shareLocation ?? true,
-      ageMin: currentUser.Preferences?.ageMin || 30,
-      ageMax: currentUser.Preferences?.ageMax || 55,
-      distanceMiles: currentUser.Preferences?.distanceMiles ?? 50,
+      ageMin: currentUser.Preferences?.ageMin != null && currentUser.Preferences.ageMin > 0 ? String(currentUser.Preferences.ageMin) : '',
+      ageMax: currentUser.Preferences?.ageMax != null && currentUser.Preferences.ageMax > 0 ? String(currentUser.Preferences.ageMax) : '',
+      distanceMiles: currentUser.Preferences?.distanceMiles != null && currentUser.Preferences.distanceMiles > 0 ? String(currentUser.Preferences.distanceMiles) : '',
       intent: currentUser.Preferences?.intent || 'Any',
     });
   }, [currentUser]);
@@ -211,9 +211,9 @@ export const ProfileSetup: React.FC = () => {
       },
       Preferences: {
         ...currentUser.Preferences,
-        ageMin: Number(formData.ageMin),
-        ageMax: Number(formData.ageMax),
-        distanceMiles: Number(formData.distanceMiles),
+        ageMin: formData.ageMin.trim() ? Number(formData.ageMin) : null,
+        ageMax: formData.ageMax.trim() ? Number(formData.ageMax) : null,
+        distanceMiles: formData.distanceMiles.trim() ? Number(formData.distanceMiles) : null,
         intent: formData.intent as any,
       },
     });
@@ -672,41 +672,45 @@ export const ProfileSetup: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div>
-              <label className="block text-[#111827] font-bold mb-1">Min Age</label>
+              <label className="block text-[#111827] font-bold mb-1">Min Age (Optional)</label>
               <input
                 type="number"
+                inputMode="numeric"
                 min={18}
+                max={120}
                 value={formData.ageMin}
-                onChange={e => setFormData(prev => ({ ...prev, ageMin: Number(e.target.value) }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-bold"
+                onChange={e => setFormData(prev => ({ ...prev, ageMin: e.target.value }))}
+                placeholder="Any (All ages)"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] placeholder:text-slate-400 font-bold"
               />
             </div>
 
             <div>
-              <label className="block text-[#111827] font-bold mb-1">Max Age</label>
+              <label className="block text-[#111827] font-bold mb-1">Max Age (Optional)</label>
               <input
                 type="number"
-                max={99}
+                inputMode="numeric"
+                min={18}
+                max={120}
                 value={formData.ageMax}
-                onChange={e => setFormData(prev => ({ ...prev, ageMax: Number(e.target.value) }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-bold"
+                onChange={e => setFormData(prev => ({ ...prev, ageMax: e.target.value }))}
+                placeholder="Any (All ages)"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] placeholder:text-slate-400 font-bold"
               />
             </div>
 
             <div>
-              <label className="block text-[#111827] font-bold mb-1">Max Distance</label>
-              <select
+              <label className="block text-[#111827] font-bold mb-1">Preferred Distance (miles)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={25000}
                 value={formData.distanceMiles}
-                onChange={e => setFormData(prev => ({ ...prev, distanceMiles: Number(e.target.value) }))}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-bold"
-              >
-                <option value={10}>10 miles</option>
-                <option value={25}>25 miles</option>
-                <option value={50}>50 miles (Demo Default)</option>
-                <option value={100}>100 miles</option>
-                <option value={250}>250 miles</option>
-                <option value={0}>Anywhere</option>
-              </select>
+                onChange={e => setFormData(prev => ({ ...prev, distanceMiles: e.target.value }))}
+                placeholder="Any distance"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] placeholder:text-slate-400 font-bold"
+              />
             </div>
 
             <div>
@@ -716,7 +720,7 @@ export const ProfileSetup: React.FC = () => {
                 onChange={e => setFormData(prev => ({ ...prev, intent: e.target.value as any }))}
                 className="w-full px-3.5 py-2 rounded-xl bg-[#FFF8FA] border border-slate-300 text-[#111827] font-bold"
               >
-                <option value="Any">Any Intention</option>
+                <option value="Any">Any</option>
                 <option value="Serious Relationship">Serious Relationship</option>
                 <option value="Casual Dating">Casual Dating</option>
                 <option value="Friendship First">Friendship First</option>

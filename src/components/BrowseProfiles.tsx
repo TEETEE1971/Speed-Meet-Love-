@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { User, UserPreferences, DEFAULT_DEMO_PREFERENCES } from '../types';
+import {
+  User,
+  UserPreferences,
+  HairColorOption,
+  EyeColorOption,
+  RelationshipIntentOption,
+} from '../types';
 import {
   Heart,
   X,
@@ -11,25 +17,33 @@ import {
   Sparkles,
   Edit3,
   Flame,
-  CheckCircle,
   ShieldCheck,
-  Crown,
   Lock,
   Plus,
   SlidersHorizontal,
   RotateCcw,
-  Smile,
-  Eye,
-  Ruler,
   Cigarette,
   Wine,
   Baby,
-  Tag
+  Search,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
-import { HomeScreen } from './HomeScreen';
-import { FindMyMatchModal, formatHeightLabel } from './FindMyMatchModal';
+import { FindMyMatchModal } from './FindMyMatchModal';
 import { AuthGate } from './AuthGate';
+import {
+  HAIR_COLOR_OPTIONS,
+  EYE_COLOR_OPTIONS,
+  RELATIONSHIP_INTENT_OPTIONS,
+  HEIGHT_INCHES_OPTIONS,
+  DEFAULT_SEARCH_PREFERENCES,
+  formatHeightLabel,
+  normalizeSearchPreferences,
+  validateSearchInputs,
+  filterMembers,
+} from '../utils/memberSearch';
 import confetti from 'canvas-confetti';
 
 export const BrowseProfiles: React.FC = () => {
@@ -48,14 +62,45 @@ export const BrowseProfiles: React.FC = () => {
   } = useApp();
 
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [filterGender, setFilterGender] = useState<string>('All');
-
-  if (!currentUser) {
-    return <AuthGate featureName="Browse Singles" />;
-  }
   const [viewStyle, setViewStyle] = useState<'card' | 'grid'>('card');
   const [editingTargetUser, setEditingTargetUser] = useState<User | null>(null);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(true);
+
+  const userPrefs = useMemo<UserPreferences>(
+    () => normalizeSearchPreferences(currentUser?.Preferences),
+    [currentUser?.Preferences]
+  );
+
+  // Draft search form state (editable independently and repeatable via "Search Members")
+  const [ageMinInput, setAgeMinInput] = useState<string>(
+    userPrefs.ageMin != null ? String(userPrefs.ageMin) : ''
+  );
+  const [ageMaxInput, setAgeMaxInput] = useState<string>(
+    userPrefs.ageMax != null ? String(userPrefs.ageMax) : ''
+  );
+  const [distanceInput, setDistanceInput] = useState<string>(
+    userPrefs.distanceMiles != null ? String(userPrefs.distanceMiles) : ''
+  );
+  const [hairColorInput, setHairColorInput] = useState<HairColorOption>(userPrefs.hairColor || 'Any');
+  const [eyeColorInput, setEyeColorInput] = useState<EyeColorOption>(userPrefs.eyeColor || 'Any');
+  const [heightMinInput, setHeightMinInput] = useState<number>(userPrefs.heightMinInches || 0);
+  const [heightMaxInput, setHeightMaxInput] = useState<number>(userPrefs.heightMaxInches || 0);
+  const [intentInput, setIntentInput] = useState<RelationshipIntentOption>(userPrefs.intent || 'Any');
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  // Keep draft inputs in sync whenever applied preferences change (e.g., from modal, chip removal, or clear)
+  useEffect(() => {
+    setAgeMinInput(userPrefs.ageMin != null ? String(userPrefs.ageMin) : '');
+    setAgeMaxInput(userPrefs.ageMax != null ? String(userPrefs.ageMax) : '');
+    setDistanceInput(userPrefs.distanceMiles != null ? String(userPrefs.distanceMiles) : '');
+    setHairColorInput(userPrefs.hairColor || 'Any');
+    setEyeColorInput(userPrefs.eyeColor || 'Any');
+    setHeightMinInput(userPrefs.heightMinInches || 0);
+    setHeightMaxInput(userPrefs.heightMaxInches || 0);
+    setIntentInput(userPrefs.intent || 'Any');
+    setSearchError(null);
+  }, [userPrefs]);
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -67,91 +112,25 @@ export const BrowseProfiles: React.FC = () => {
     intent: 'Dating & chemistry' as User['Preferences']['intent'],
   });
 
-  const userPrefs: UserPreferences = currentUser.Preferences || DEFAULT_DEMO_PREFERENCES;
-
   // Base eligible candidates: all users except currentUser and blocked users
-  const allEligibleCandidates = users.filter(u => {
-    if (u.UserID === currentUser.UserID) return false;
-    if (blockedUserIds.includes(u.UserID)) return false;
-    return true;
-  });
+  const allEligibleCandidates = useMemo(() => {
+    if (!currentUser) return [];
+    return users.filter(u => {
+      if (u.UserID === currentUser.UserID) return false;
+      if (blockedUserIds.includes(u.UserID)) return false;
+      return true;
+    });
+  }, [users, currentUser, blockedUserIds]);
 
-  // Filter candidates combining all active preferences
-  const candidates = allEligibleCandidates.filter(u => {
-    // 1. Gender tab filter (All / Women / Men) or userPrefs.gender
-    if (filterGender !== 'All') {
-      if (filterGender === 'Women' && u.Gender !== 'Woman') return false;
-      if (filterGender === 'Men' && u.Gender !== 'Man') return false;
-    } else if (userPrefs.gender && userPrefs.gender !== 'Any') {
-      if (userPrefs.gender === 'Women' && u.Gender !== 'Woman') return false;
-      if (userPrefs.gender === 'Men' && u.Gender !== 'Man') return false;
-      if (userPrefs.gender === 'Non-Binary' && u.Gender !== 'Non-Binary') return false;
-    }
+  // Filter candidates using the shared independent filter engine
+  const candidates = useMemo(
+    () => filterMembers(allEligibleCandidates, userPrefs),
+    [allEligibleCandidates, userPrefs]
+  );
 
-    // 2. Age Range
-    const age = u.Age || 0;
-    if (userPrefs.ageMin && age < userPrefs.ageMin) return false;
-    if (userPrefs.ageMax && age > userPrefs.ageMax) return false;
-
-    // 3. Distance
-    if (userPrefs.distanceMiles && userPrefs.distanceMiles > 0) {
-      const dist = u.DistanceMiles ?? 15;
-      if (dist > userPrefs.distanceMiles) return false;
-    }
-
-    // 4. Hair Color
-    if (userPrefs.hairColor && userPrefs.hairColor !== 'Any') {
-      if (u.HairColor && u.HairColor !== userPrefs.hairColor) return false;
-    }
-
-    // 5. Height
-    if (userPrefs.heightMinInches && userPrefs.heightMinInches > 0) {
-      const h = u.HeightInches ?? 68;
-      if (h < userPrefs.heightMinInches) return false;
-    }
-    if (userPrefs.heightMaxInches && userPrefs.heightMaxInches > 0) {
-      const h = u.HeightInches ?? 68;
-      if (h > userPrefs.heightMaxInches) return false;
-    }
-
-    // 6. Eye Color
-    if (userPrefs.eyeColor && userPrefs.eyeColor !== 'Any') {
-      if (u.EyeColor && u.EyeColor !== userPrefs.eyeColor) return false;
-    }
-
-    // 7. Relationship Intentions
-    if (userPrefs.intent && userPrefs.intent !== 'Any') {
-      const candidateIntent = u.RelationshipIntent || u.Preferences?.intent;
-      if (candidateIntent && candidateIntent !== userPrefs.intent) return false;
-    }
-
-    // 8. Smoking
-    if (userPrefs.smoking && userPrefs.smoking !== 'Any') {
-      if (u.Smoking && u.Smoking !== userPrefs.smoking) return false;
-    }
-
-    // 9. Drinking
-    if (userPrefs.drinking && userPrefs.drinking !== 'Any') {
-      if (u.Drinking && u.Drinking !== userPrefs.drinking) return false;
-    }
-
-    // 10. Children & Family
-    if (userPrefs.children && userPrefs.children !== 'Any') {
-      if (u.Children && u.Children !== userPrefs.children) return false;
-    }
-
-    // 11. Interests & Hobbies
-    if (userPrefs.interests && userPrefs.interests.length > 0) {
-      const sharesInterest = userPrefs.interests.some(prefInterest =>
-        u.Interests.some(candInterest =>
-          candInterest.toLowerCase().includes(prefInterest.toLowerCase())
-        )
-      );
-      if (!sharesInterest) return false;
-    }
-
-    return true;
-  });
+  if (!currentUser) {
+    return <AuthGate featureName="Browse Singles" />;
+  }
 
   const activeProfile: User | undefined = candidates[currentIndex % Math.max(1, candidates.length)];
 
@@ -183,55 +162,88 @@ export const BrowseProfiles: React.FC = () => {
     setReportModalTarget(targetUser, { source: 'browse' });
   };
 
-  const handleApplyPreferences = (newPrefs: UserPreferences) => {
-    updateUserPreferences(currentUser.UserID, newPrefs);
-    showNotification('Search filters applied and saved to your account!', 'pink');
+  const handleSearchMembersSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const validation = validateSearchInputs({
+      ageMinInput,
+      ageMaxInput,
+      distanceInput,
+      heightMinInches: heightMinInput,
+      heightMaxInches: heightMaxInput,
+    });
+
+    if (!validation.valid) {
+      setSearchError(validation.error || 'Please check your search filters.');
+      return;
+    }
+
+    setSearchError(null);
+    const nextPrefs = normalizeSearchPreferences({
+      ...userPrefs,
+      ageMin: validation.ageMin,
+      ageMax: validation.ageMax,
+      distanceMiles: validation.distanceMiles,
+      hairColor: hairColorInput,
+      eyeColor: eyeColorInput,
+      heightMinInches: heightMinInput,
+      heightMaxInches: heightMaxInput,
+      intent: intentInput,
+    });
+
+    updateUserPreferences(currentUser.UserID, nextPrefs);
     setCurrentIndex(0);
+    const matchCount = filterMembers(allEligibleCandidates, nextPrefs).length;
+    showNotification(
+      matchCount === 0
+        ? 'No members matched those filters. Adjust any filter and search again.'
+        : `Search updated: ${matchCount} ${matchCount === 1 ? 'member' : 'members'} found.`,
+      matchCount > 0 ? 'pink' : 'info'
+    );
   };
 
-  const handleResetDefaults = () => {
-    updateUserPreferences(currentUser.UserID, { ...DEFAULT_DEMO_PREFERENCES });
-    showNotification('Reset to demonstration defaults (Age 30–55, 50 miles).', 'info');
+  const handleApplyPreferences = (newPrefs: UserPreferences) => {
+    const normalized = normalizeSearchPreferences(newPrefs);
+    updateUserPreferences(currentUser.UserID, normalized);
     setCurrentIndex(0);
+    const matchCount = filterMembers(allEligibleCandidates, normalized).length;
+    showNotification(
+      `Search updated: ${matchCount} ${matchCount === 1 ? 'member' : 'members'} found.`,
+      'pink'
+    );
   };
 
   const handleClearAll = () => {
-    updateUserPreferences(currentUser.UserID, {
-      ageMin: 18,
-      ageMax: 80,
-      hairColor: 'Any',
-      heightMinInches: 0,
-      heightMaxInches: 0,
-      eyeColor: 'Any',
-      distanceMiles: 0,
-      gender: 'Any',
-      intent: 'Any',
-      smoking: 'Any',
-      drinking: 'Any',
-      children: 'Any',
-      interests: [],
-    });
-    setFilterGender('All');
-    showNotification('All search filters cleared.', 'info');
+    const cleared: UserPreferences = { ...DEFAULT_SEARCH_PREFERENCES, interests: [] };
+    updateUserPreferences(currentUser.UserID, cleared);
+    setSearchError(null);
+    showNotification('All search filters cleared — showing members of all ages and any distance.', 'info');
     setCurrentIndex(0);
   };
 
   const removeSingleFilter = (key: keyof UserPreferences) => {
-    const updated = { ...userPrefs };
-    if (key === 'ageMin' || key === 'ageMax') {
-      updated.ageMin = 18;
-      updated.ageMax = 80;
+    const updated: UserPreferences = { ...userPrefs };
+    if (key === 'ageMin') {
+      updated.ageMin = null;
+    } else if (key === 'ageMax') {
+      updated.ageMax = null;
     } else if (key === 'distanceMiles') {
-      updated.distanceMiles = 0;
+      updated.distanceMiles = null;
+    } else if (key === 'heightMinInches') {
+      updated.heightMinInches = 0;
+    } else if (key === 'heightMaxInches') {
+      updated.heightMaxInches = 0;
     } else if (key === 'interests') {
       updated.interests = [];
-    } else if (key === 'heightMinInches' || key === 'heightMaxInches') {
-      updated.heightMinInches = 0;
-      updated.heightMaxInches = 0;
     } else {
-      (updated as any)[key] = 'Any';
+      (updated as Record<string, unknown>)[key] = 'Any';
     }
     updateUserPreferences(currentUser.UserID, updated);
+    setCurrentIndex(0);
+  };
+
+  const handleQuickGenderChange = (genderValue: 'Any' | 'Women' | 'Men' | 'Non-Binary') => {
+    updateUserPreferences(currentUser.UserID, { gender: genderValue });
+    setCurrentIndex(0);
   };
 
   const canEditProfile = (user: User | null | undefined): boolean =>
@@ -290,18 +302,18 @@ export const BrowseProfiles: React.FC = () => {
     return namePart;
   };
 
-  // Determine active filter chips to render in the quick-clear pill bar
+  // Independent active filter chips (each filter can be dismissed on its own without affecting others)
   const activeChips: { key: keyof UserPreferences; label: string }[] = [];
-  if (userPrefs.ageMin !== 18 || userPrefs.ageMax !== 80) {
-    activeChips.push({
-      key: 'ageMin',
-      label: `Age: ${userPrefs.ageMin || 18}–${(userPrefs.ageMax || 80) >= 80 ? '80+' : userPrefs.ageMax}`,
-    });
+  if (userPrefs.ageMin != null) {
+    activeChips.push({ key: 'ageMin', label: `Min Age: ${userPrefs.ageMin}+` });
   }
-  if (userPrefs.distanceMiles && userPrefs.distanceMiles > 0) {
+  if (userPrefs.ageMax != null) {
+    activeChips.push({ key: 'ageMax', label: `Max Age: ≤ ${userPrefs.ageMax}` });
+  }
+  if (userPrefs.distanceMiles != null && userPrefs.distanceMiles > 0) {
     activeChips.push({
       key: 'distanceMiles',
-      label: `Within ${userPrefs.distanceMiles} mi`,
+      label: `Within ${userPrefs.distanceMiles} ${userPrefs.distanceMiles === 1 ? 'mi' : 'miles'}`,
     });
   }
   if (userPrefs.hairColor && userPrefs.hairColor !== 'Any') {
@@ -310,10 +322,16 @@ export const BrowseProfiles: React.FC = () => {
   if (userPrefs.eyeColor && userPrefs.eyeColor !== 'Any') {
     activeChips.push({ key: 'eyeColor', label: `Eyes: ${userPrefs.eyeColor}` });
   }
-  if (userPrefs.heightMinInches || userPrefs.heightMaxInches) {
+  if (userPrefs.heightMinInches && userPrefs.heightMinInches > 0) {
     activeChips.push({
       key: 'heightMinInches',
-      label: `Height: ${formatHeightLabel(userPrefs.heightMinInches)} – ${formatHeightLabel(userPrefs.heightMaxInches)}`,
+      label: `Min Height: ${formatHeightLabel(userPrefs.heightMinInches)}`,
+    });
+  }
+  if (userPrefs.heightMaxInches && userPrefs.heightMaxInches > 0) {
+    activeChips.push({
+      key: 'heightMaxInches',
+      label: `Max Height: ${formatHeightLabel(userPrefs.heightMaxInches)}`,
     });
   }
   if (userPrefs.gender && userPrefs.gender !== 'Any') {
@@ -337,33 +355,50 @@ export const BrowseProfiles: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Header bar with Find My Match CTA */}
+      {/* Header bar & Customizable Member Search Panel */}
       <div className="p-5 sm:p-6 rounded-3xl bg-white border-2 border-rose-100 shadow-md space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-[#B91C1C] flex items-center gap-1.5 font-heading">
               <Sparkles className="w-3.5 h-3.5 text-[#B45309] fill-amber-400" />
-              Discover & Connect
+              Discover &amp; Connect
             </span>
             <h1 className="text-2xl font-bold text-[#111827] font-heading mt-0.5">
               Browse Dating Profiles
             </h1>
             <p className="text-xs font-medium text-[#111827] mt-0.5">
-              Explore single members. Like to find mutual sparks and unlock confidential mutual matches!
+              Customize any combination of optional filters below and search members anytime.
             </p>
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            {/* FIND MY MATCH BUTTON (Prominent Red-to-Hot-Pink Gradient Button) */}
+            {/* Toggle Search Panel */}
             <button
+              type="button"
+              onClick={() => setIsSearchPanelOpen(prev => !prev)}
+              className="py-2.5 px-4 rounded-2xl bg-rose-50 hover:bg-rose-100 border-2 border-rose-200 font-bold text-xs text-[#9F1239] transition-all cursor-pointer flex items-center gap-1.5"
+              aria-expanded={isSearchPanelOpen}
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>{isSearchPanelOpen ? 'Hide Search' : 'Edit Search'}</span>
+              {isSearchPanelOpen ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+
+            {/* More Filters Modal CTA */}
+            <button
+              type="button"
               onClick={() => setIsFilterModalOpen(true)}
-              className="btn-glossy-red-pink py-2.5 px-5 rounded-2xl font-bold text-xs text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2 ring-2 ring-rose-200"
-              title="Open search and matching filters"
+              className="btn-glossy-red-pink py-2.5 px-4 rounded-2xl font-bold text-xs text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2 ring-2 ring-rose-200"
+              title="Open full search and lifestyle filters"
             >
               <SlidersHorizontal className="w-4 h-4 text-white" />
-              <span>Find My Match</span>
+              <span>More Filters</span>
               {activeChips.length > 0 && (
-                <span className="ml-1 w-5 h-5 rounded-full bg-white text-[#B91C1C] text-[10px] font-bold flex items-center justify-center shadow-xs">
+                <span className="ml-0.5 w-5 h-5 rounded-full bg-white text-[#B91C1C] text-[10px] font-bold flex items-center justify-center shadow-xs">
                   {activeChips.length}
                 </span>
               )}
@@ -372,12 +407,14 @@ export const BrowseProfiles: React.FC = () => {
             {/* Mode Switcher */}
             <div className="flex items-center p-1 bg-rose-50 rounded-2xl border border-rose-200 text-xs font-bold">
               <button
+                type="button"
                 onClick={() => setCurrentView('home')}
                 className="px-3 py-1.5 rounded-xl font-bold transition-all text-[#111827] hover:text-[#B91C1C] cursor-pointer"
               >
                 🌟 Home
               </button>
               <button
+                type="button"
                 onClick={() => setViewStyle('card')}
                 className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
                   viewStyle === 'card'
@@ -388,6 +425,7 @@ export const BrowseProfiles: React.FC = () => {
                 Swipe Card
               </button>
               <button
+                type="button"
                 onClick={() => setViewStyle('grid')}
                 className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
                   viewStyle === 'grid'
@@ -401,47 +439,281 @@ export const BrowseProfiles: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Gender Row & Active Filters Bar */}
-        <div className="pt-3 border-t border-rose-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* Gender Filter Buttons */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-[#111827] mr-1">Showing:</span>
-            {['All', 'Women', 'Men'].map(g => (
-              <button
-                key={g}
-                onClick={() => {
-                  setFilterGender(g);
-                  setCurrentIndex(0);
-                }}
-                className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                  filterGender === g
-                    ? 'bg-red-600 text-white shadow-xs'
-                    : 'bg-rose-50/80 text-[#111827] hover:bg-rose-100 border border-rose-200'
-                }`}
+        {/* Inline Customizable Member Search Form */}
+        {isSearchPanelOpen && (
+          <form
+            onSubmit={handleSearchMembersSubmit}
+            className="pt-4 border-t border-rose-100 space-y-3.5"
+            aria-label="Member search filters"
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Minimum Age (Optional) */}
+              <div>
+                <label
+                  htmlFor="browse-min-age"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Min Age <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <input
+                  id="browse-min-age"
+                  type="number"
+                  inputMode="numeric"
+                  min={18}
+                  max={120}
+                  value={ageMinInput}
+                  onChange={e => {
+                    setAgeMinInput(e.target.value);
+                    setSearchError(null);
+                  }}
+                  placeholder="All ages"
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] placeholder:text-slate-400 text-xs font-bold focus:outline-none focus:border-[#BE185D]"
+                />
+              </div>
+
+              {/* Maximum Age (Optional) */}
+              <div>
+                <label
+                  htmlFor="browse-max-age"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Max Age <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <input
+                  id="browse-max-age"
+                  type="number"
+                  inputMode="numeric"
+                  min={18}
+                  max={120}
+                  value={ageMaxInput}
+                  onChange={e => {
+                    setAgeMaxInput(e.target.value);
+                    setSearchError(null);
+                  }}
+                  placeholder="All ages"
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] placeholder:text-slate-400 text-xs font-bold focus:outline-none focus:border-[#BE185D]"
+                />
+              </div>
+
+              {/* Preferred Distance in Miles (Optional) */}
+              <div>
+                <label
+                  htmlFor="browse-distance-miles"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Distance (miles) <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <input
+                  id="browse-distance-miles"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={25000}
+                  value={distanceInput}
+                  onChange={e => {
+                    setDistanceInput(e.target.value);
+                    setSearchError(null);
+                  }}
+                  placeholder="Any distance"
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] placeholder:text-slate-400 text-xs font-bold focus:outline-none focus:border-[#BE185D]"
+                />
+              </div>
+
+              {/* Relationship Intentions (Default: Any) */}
+              <div>
+                <label
+                  htmlFor="browse-intent"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Relationship Intent
+                </label>
+                <select
+                  id="browse-intent"
+                  value={intentInput}
+                  onChange={e => setIntentInput(e.target.value as RelationshipIntentOption)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] text-xs font-bold focus:outline-none focus:border-[#BE185D] cursor-pointer"
+                >
+                  {RELATIONSHIP_INTENT_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Hair Color (Default: Any) */}
+              <div>
+                <label
+                  htmlFor="browse-hair-color"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Hair Color
+                </label>
+                <select
+                  id="browse-hair-color"
+                  value={hairColorInput}
+                  onChange={e => setHairColorInput(e.target.value as HairColorOption)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] text-xs font-bold focus:outline-none focus:border-[#BE185D] cursor-pointer"
+                >
+                  {HAIR_COLOR_OPTIONS.map(color => (
+                    <option key={color} value={color}>
+                      {color}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Eye Color (Default: Any) */}
+              <div>
+                <label
+                  htmlFor="browse-eye-color"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Eye Color
+                </label>
+                <select
+                  id="browse-eye-color"
+                  value={eyeColorInput}
+                  onChange={e => setEyeColorInput(e.target.value as EyeColorOption)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] text-xs font-bold focus:outline-none focus:border-[#BE185D] cursor-pointer"
+                >
+                  {EYE_COLOR_OPTIONS.map(color => (
+                    <option key={color} value={color}>
+                      {color}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Min Height (Default: Any) */}
+              <div>
+                <label
+                  htmlFor="browse-min-height"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Min Height
+                </label>
+                <select
+                  id="browse-min-height"
+                  value={heightMinInput}
+                  onChange={e => {
+                    setHeightMinInput(Number(e.target.value));
+                    setSearchError(null);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] text-xs font-bold focus:outline-none focus:border-[#BE185D] cursor-pointer"
+                >
+                  <option value={0}>Any</option>
+                  {HEIGHT_INCHES_OPTIONS.map(inches => (
+                    <option key={inches} value={inches}>
+                      {formatHeightLabel(inches)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Max Height (Default: Any) */}
+              <div>
+                <label
+                  htmlFor="browse-max-height"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Max Height
+                </label>
+                <select
+                  id="browse-max-height"
+                  value={heightMaxInput}
+                  onChange={e => {
+                    setHeightMaxInput(Number(e.target.value));
+                    setSearchError(null);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] text-xs font-bold focus:outline-none focus:border-[#BE185D] cursor-pointer"
+                >
+                  <option value={0}>Any</option>
+                  {HEIGHT_INCHES_OPTIONS.map(inches => (
+                    <option key={inches} value={inches}>
+                      {formatHeightLabel(inches)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {searchError && (
+              <div
+                role="alert"
+                className="p-2.5 rounded-xl bg-rose-50 border border-rose-300 text-[#9F1239] text-xs font-bold flex items-center gap-2"
               >
-                {g}
-              </button>
-            ))}
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{searchError}</span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+              <p className="text-[11px] text-slate-600 font-medium">
+                Leave age blank for all ages · Leave distance blank for any distance · Each filter works independently.
+              </p>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-[#111827] font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Clear Filters
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl btn-glossy-red-pink text-white font-extrabold text-xs shadow-md hover:scale-[1.02] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Search className="w-3.5 h-3.5 text-white" />
+                  Search Members
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {/* Quick Gender Row & Match Count Bar */}
+        <div className="pt-3 border-t border-rose-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Independent Gender Filter Buttons */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-bold text-[#111827] mr-1">Showing:</span>
+            {(
+              [
+                { label: 'All', value: 'Any' },
+                { label: 'Women', value: 'Women' },
+                { label: 'Men', value: 'Men' },
+                { label: 'Non-Binary', value: 'Non-Binary' },
+              ] as const
+            ).map(g => {
+              const active = (userPrefs.gender || 'Any') === g.value;
+              return (
+                <button
+                  key={g.value}
+                  type="button"
+                  onClick={() => handleQuickGenderChange(g.value)}
+                  className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                    active
+                      ? 'bg-red-600 text-white shadow-xs'
+                      : 'bg-rose-50/80 text-[#111827] hover:bg-rose-100 border border-rose-200'
+                  }`}
+                >
+                  {g.label}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Matches count & clear filter shortcut */}
+          {/* Matches count */}
           <div className="flex items-center gap-2 text-xs">
             <span className="font-semibold text-[#111827]">
-              <span className="text-[#B91C1C] font-bold">{candidates.length}</span> singles match filters
+              <span className="text-[#B91C1C] font-bold">{candidates.length}</span>{' '}
+              {candidates.length === 1 ? 'member matches' : 'members match'} your search
             </span>
-            {activeChips.length > 0 && (
-              <button
-                onClick={handleResetDefaults}
-                className="text-[#B91C1C] hover:underline font-bold ml-2 cursor-pointer flex items-center gap-1"
-                title="Reset to 30-55 and 50 miles"
-              >
-                <RotateCcw className="w-3 h-3" /> Reset
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Active Filter Chips with Quick Dismiss (X) */}
+        {/* Independent Active Filter Chips with Quick Dismiss (X) */}
         {activeChips.length > 0 && (
           <div className="pt-2 flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-bold text-[#111827] uppercase tracking-wider mr-1">
@@ -458,12 +730,14 @@ export const BrowseProfiles: React.FC = () => {
                   onClick={() => removeSingleFilter(chip.key)}
                   className="w-4 h-4 rounded-full hover:bg-rose-200/80 text-[#BE123C] flex items-center justify-center transition-colors cursor-pointer"
                   title={`Remove ${chip.label}`}
+                  aria-label={`Remove ${chip.label}`}
                 >
                   <X className="w-2.5 h-2.5 stroke-[3]" />
                 </button>
               </span>
             ))}
             <button
+              type="button"
               onClick={handleClearAll}
               className="text-xs font-bold text-[#111827] hover:underline ml-1 cursor-pointer"
             >
@@ -481,32 +755,30 @@ export const BrowseProfiles: React.FC = () => {
           </div>
           <div className="space-y-1">
             <h3 className="text-xl font-bold text-[#111827] font-heading">
-              No profiles match your filters
+              No members match your current search
             </h3>
             <p className="text-xs text-[#111827] font-medium max-w-md mx-auto leading-relaxed">
-              We couldn't find registered singles matching every one of your chosen criteria.
-              Try widening your age range, increasing distance, or resetting to demonstration defaults.
+              Try widening your age or distance, setting optional filters back to Any, or clearing all filters to view everyone.
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
             <button
-              onClick={() => setIsFilterModalOpen(true)}
+              type="button"
+              onClick={() => {
+                setIsSearchPanelOpen(true);
+                setIsFilterModalOpen(true);
+              }}
               className="px-5 py-2.5 rounded-2xl btn-glossy-red-pink text-white font-bold text-xs shadow-md cursor-pointer flex items-center gap-1.5"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-white" />
-              Adjust Filters
+              Edit Search Filters
             </button>
             <button
-              onClick={handleResetDefaults}
-              className="px-5 py-2.5 rounded-2xl bg-white border-2 border-rose-300 hover:bg-rose-50 text-[#111827] font-bold text-xs transition-colors cursor-pointer"
-            >
-              Reset to Demo Defaults (30–55)
-            </button>
-            <button
+              type="button"
               onClick={handleClearAll}
               className="px-5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 font-bold text-xs transition-colors cursor-pointer"
             >
-              Show All Singles
+              Show All Members
             </button>
           </div>
         </div>
@@ -1039,14 +1311,13 @@ export const BrowseProfiles: React.FC = () => {
         </div>
       )}
 
-      {/* FIND MY MATCH MODAL */}
+      {/* FIND MY MATCH / MORE FILTERS MODAL */}
       <FindMyMatchModal
         isOpen={isFilterModalOpen}
         onClose={() => setIsFilterModalOpen(false)}
         currentPreferences={userPrefs}
         onApply={handleApplyPreferences}
         allCandidates={allEligibleCandidates}
-        onResetDefaults={handleResetDefaults}
         onClearAll={handleClearAll}
       />
     </div>

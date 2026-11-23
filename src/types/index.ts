@@ -85,10 +85,10 @@ export type DrinkingOption = 'Any' | 'Non-drinker' | 'Social drinker' | 'Regular
 export type ChildrenOption = 'Any' | 'Has children' | 'Wants children' | "Doesn't want children" | 'Open to children';
 
 export interface UserPreferences {
-  ageMin: number;
-  ageMax: number;
+  ageMin?: number | null;
+  ageMax?: number | null;
   maxDistanceKm?: number;
-  distanceMiles?: number;
+  distanceMiles?: number | null;
   hairColor?: HairColorOption;
   heightMinInches?: number;
   heightMaxInches?: number;
@@ -102,13 +102,13 @@ export interface UserPreferences {
 }
 
 export const DEFAULT_DEMO_PREFERENCES: UserPreferences = {
-  ageMin: 30,
-  ageMax: 55,
+  ageMin: null,
+  ageMax: null,
   hairColor: 'Any',
   heightMinInches: 0,
   heightMaxInches: 0,
   eyeColor: 'Any',
-  distanceMiles: 50,
+  distanceMiles: null,
   gender: 'Any',
   intent: 'Any',
   smoking: 'Any',

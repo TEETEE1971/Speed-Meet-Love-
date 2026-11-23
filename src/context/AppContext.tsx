@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { User, SpeedEvent, Round, Match, Message, SubscriptionTier, EventType, UserReport, AppView, LiveSessionState, AppMode, UserPreferences, SecondDateSession, WaitlistEntrySummary, ReportContextPayload, ReportNotificationDispatch } from '../types';
 import { INITIAL_USERS, INITIAL_EVENTS, INITIAL_ROUNDS, INITIAL_MATCHES, INITIAL_MESSAGES } from '../data/initialData';
+import { DEFAULT_SEARCH_PREFERENCES, isLegacyDemoDefaultPreferences, normalizeSearchPreferences } from '../utils/memberSearch';
 
 export type { AppView, LiveSessionState, AppMode, SecondDateSession };
 
@@ -311,17 +312,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          const legacyMigratedKey = `${STORAGE_KEY_PREFIX}search_filters_v2_migrated`;
+          const needsLegacyPresetMigration = !localStorage.getItem(legacyMigratedKey);
           const updated = parsed.map((u: User) => {
             const initialMatch = INITIAL_USERS.find(iu => iu.UserID === u.UserID);
+            const rawMergedPrefs = {
+              ...(initialMatch?.Preferences || DEFAULT_SEARCH_PREFERENCES),
+              ...(u.Preferences || {}),
+            };
+            const resolvedPrefs =
+              needsLegacyPresetMigration && isLegacyDemoDefaultPreferences(rawMergedPrefs)
+                ? { ...DEFAULT_SEARCH_PREFERENCES, interests: [] }
+                : normalizeSearchPreferences(rawMergedPrefs);
             return {
               ...(initialMatch || {}),
               ...u,
               Age: u.UserID === 'usr_kristy' ? (u.Age && u.Age >= 18 ? u.Age : 28) : u.Age,
               SubscriptionTier: u.UserID === 'usr_kristy' ? ('Premium Plus' as SubscriptionTier) : u.SubscriptionTier,
-              Preferences: {
-                ...(initialMatch?.Preferences || {}),
-                ...(u.Preferences || {}),
-              },
+              Preferences: resolvedPrefs,
               PrivacySettings: {
                 ...(initialMatch?.PrivacySettings || {
                   showHeight: true,
@@ -334,6 +342,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               },
             };
           });
+          if (needsLegacyPresetMigration) {
+            localStorage.setItem(legacyMigratedKey, '1');
+          }
           const existingIds = new Set(updated.map((u: User) => u.UserID));
           const missingUsers = INITIAL_USERS.filter(iu => !existingIds.has(iu.UserID));
           return [...updated, ...missingUsers];
@@ -1264,10 +1275,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers(prev =>
       prev.map(u => {
         if (u.UserID === currentUser.UserID) {
-          const updatedPrefs: UserPreferences = {
+          const updatedPrefs = normalizeSearchPreferences({
             ...u.Preferences,
             ...prefs,
-          };
+          });
           return {
             ...u,
             Preferences: updatedPrefs,
@@ -2835,21 +2846,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showChildren: true,
         shareLocation: true,
       },
-      Preferences: apiUser.Preferences || apiUser.preferences || {
-        ageMin: 30,
-        ageMax: 55,
-        hairColor: 'Any',
-        heightMinInches: 0,
-        heightMaxInches: 0,
-        eyeColor: 'Any',
-        distanceMiles: 50,
-        gender: 'Any',
-        intent: 'Any',
-        smoking: 'Any',
-        drinking: 'Any',
-        children: 'Any',
-        interests: [],
-      },
+      Preferences: normalizeSearchPreferences(apiUser.Preferences || apiUser.preferences || DEFAULT_SEARCH_PREFERENCES),
       EventHistory: apiUser.EventHistory || apiUser.eventHistory || [],
       MatchHistory: apiUser.MatchHistory || apiUser.matchHistory || [],
     };
