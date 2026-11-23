@@ -123,7 +123,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
         <FloatingHearts count={12} colors={['turquoise', 'pink', 'red', 'yellow']} />
 
         <div className="relative z-10 max-w-5xl mx-auto text-center space-y-6 sm:space-y-8">
-          
+
+          {/* Animated 3D Welcome Headline */}
+          <div className="welcome-3d-scene flex justify-center" role="heading" aria-level={2} aria-label="Welcome to Speed Meet Love">
+            <div className="welcome-3d text-center font-heading">
+              <span className="welcome-line-small text-sm sm:text-base font-extrabold uppercase tracking-[0.35em] text-[#BE123C]">
+                Welcome to
+              </span>
+              <span className="welcome-line-big text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-none mt-1">
+                Speed Meet Love
+              </span>
+              <span className="block mt-3 text-base sm:text-xl font-bold text-[#9F1239]">
+                We&rsquo;re happy you&rsquo;re here! 💕
+              </span>
+            </div>
+          </div>
+
           {/* Recreated Large SPEED MEET Love Logo (Requirement) */}
           <div className="flex justify-center pt-2">
             <SpeedMeetLoveLogo variant="on-light" size="xl" className="transform scale-105 sm:scale-115" />
