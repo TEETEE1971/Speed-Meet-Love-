@@ -2912,6 +2912,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   }, [applyAuthenticatedUserSnapshot, authToken, currentUser?.EmailVerified, showNotification]);
 
+  // Sync real registered members from the server so Browse shows actual
+  // members, not only the built-in demonstration profiles. The server
+  // returns public profile fields only (no emails or account data).
+  // Skipped in demonstration mode, which is a self-contained sandbox.
+  const serverMemberIdsRef = React.useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!authToken || !currentUserId || rawAppMode === 'demonstration') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/members', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok || !data.success || !Array.isArray(data.members)) return;
+        const incoming = data.members
+          .map((raw: any) => normalizeUserFromApi(raw))
+          .filter((u: User) => u && u.UserID && u.UserID !== currentUserId);
+        const incomingIds = new Set<string>(incoming.map((u: User) => u.UserID));
+        setUsers(prev => {
+          // Drop members the server no longer returns (e.g. banned or
+          // deleted accounts) while keeping demonstration profiles and
+          // any locally known users untouched.
+          const kept = prev.filter(u => !serverMemberIdsRef.current.has(u.UserID) || incomingIds.has(u.UserID));
+          const byId = new Map(kept.map(u => [u.UserID, u]));
+          for (const member of incoming) {
+            const existing = byId.get(member.UserID);
+            byId.set(member.UserID, existing ? { ...existing, ...member } : member);
+          }
+          return Array.from(byId.values());
+        });
+        serverMemberIdsRef.current = incomingIds;
+      } catch {
+        // Offline or server restarting: keep the cached list
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, currentUserId, rawAppMode, normalizeUserFromApi]);
+
   // Handle email verification link (/verify-email?token=...) and hydrate session sequentially to avoid race conditions
   useEffect(() => {
     if (typeof window === 'undefined') return;

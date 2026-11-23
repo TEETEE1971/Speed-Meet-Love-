@@ -4624,6 +4624,41 @@ function sanitizeUser(u: ServerUserRecord) {
   };
 }
 
+// Public member-directory view of a user record: only the fields other
+// members may see in Browse and matching. Never expose emails, credentials,
+// billing identifiers, or verification/reset internals here.
+function sanitizeMemberProfile(u: ServerUserRecord) {
+  const full = sanitizeUser(u);
+  return {
+    UserID: full.UserID,
+    FirstName: full.FirstName,
+    LastName: full.LastName,
+    Age: full.Age,
+    Gender: full.Gender,
+    InterestedIn: full.InterestedIn,
+    Location: full.Location,
+    Occupation: full.Occupation,
+    Bio: full.Bio,
+    ProfilePhoto: full.ProfilePhoto,
+    SubscriptionTier: full.SubscriptionTier,
+    Interests: full.Interests,
+    IcebreakerAnswer: full.IcebreakerAnswer,
+    AvatarColor: full.AvatarColor,
+    HairColor: full.HairColor,
+    HeightInches: full.HeightInches,
+    EyeColor: full.EyeColor,
+    RelationshipIntent: full.RelationshipIntent,
+    Smoking: full.Smoking,
+    Drinking: full.Drinking,
+    Children: full.Children,
+    PrivacySettings: full.PrivacySettings,
+    EmailVerified: full.EmailVerified,
+    IsTester: full.IsTester,
+    IsOwner: full.IsOwner,
+    CreatedAt: u.createdAt,
+  };
+}
+
 export function createServerAuthSession(userId: string, email: string): ServerAuthSession {
   const token = `sml_sec_${crypto.randomBytes(32).toString('hex')}`;
   const now = Date.now();
@@ -6702,8 +6737,58 @@ export function isDemoUserRecord(u: { userId?: string; email?: string }): boolea
   return false;
 }
 
-// API: Owner Review - Fetch All Real Registered Users (Owner-Only)
-// Strictly protected: excludes passwords, hashes, salts, and session tokens
+// API: Member directory — public profiles of real registered members, so
+// signed-in members can discover each other in Browse. Auth required;
+// returns public profile fields only (see sanitizeMemberProfile).
+app.get('/api/members', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  const authUser = verifyAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
+  // Ensure fresh memory representation from durable Cloud Firestore
+  if (firestoreDb) {
+    try {
+      const snap = await firestoreDb.collection('users').get();
+      if (!snap.empty) {
+        snap.forEach(d => {
+          const data = d.data() as ServerUserRecord;
+          if (data && data.userId && data.email) {
+            const localRecord = serverUsers.get(data.userId);
+            const mergedPasswordHash = data.passwordHash || localRecord?.passwordHash;
+            const mergedPasswordSalt = data.passwordSalt || localRecord?.passwordSalt;
+            serverUsers.set(data.userId, {
+              ...localRecord,
+              ...data,
+              ...(mergedPasswordHash ? { passwordHash: mergedPasswordHash } : {}),
+              ...(mergedPasswordSalt ? { passwordSalt: mergedPasswordSalt } : {}),
+            });
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[MEMBERS] Error refreshing from Firestore:', e);
+    }
+  } else {
+    loadUsersFromDisk();
+  }
+
+  const members = Array.from(serverUsers.values())
+    .filter(u => u.userId !== authUser.userId)
+    .filter(u => !isDemoUserRecord(u))
+    .filter(u => !u.isBanned && !bannedUsers.has(u.userId) && !bannedUsers.has((u.email || '').toLowerCase()))
+    .filter(u => {
+      // Exclude automated test records (e.g. @realmail.test, @testdomain.org)
+      const domain = (u.email || '').toLowerCase().split('@')[1] || '';
+      return !domain.endsWith('.test') && domain !== 'testdomain.org';
+    })
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .map(u => sanitizeMemberProfile(u));
+
+  return res.json({ success: true, members });
+});
+
 // API: Owner Review - Fetch All Real Registered Users (Owner-Only)
 // Strictly protected: excludes passwords, hashes, salts, and session tokens
 app.get('/api/owner/registered-users', async (req, res) => {
