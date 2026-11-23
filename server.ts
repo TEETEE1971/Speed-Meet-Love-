@@ -3262,12 +3262,12 @@ function seedDefaultUsersIfEmpty() {
       };
       serverUsers.set(acc.userId, userRecord);
       added = true;
-    } else if (!existingUser.passwordHash || !existingUser.passwordSalt) {
-      const salt = crypto.randomBytes(16).toString('hex');
-      existingUser.passwordSalt = salt;
-      existingUser.passwordHash = hashPassword('SpeedMeetLove2026!', salt);
-      added = true;
     }
+    // NOTE: An existing account whose record momentarily lacks credentials
+    // (e.g. a stale local copy before the durable database sync finishes)
+    // must NEVER have its password silently replaced here. Doing so locked
+    // the founder out after redeploys. Email password reset is the safe
+    // recovery path.
   }
   if (added) {
     saveUsersToDisk();
@@ -3634,10 +3634,10 @@ async function syncDurableDatabaseOnStartup() {
           changed = true;
         }
         if (!userRecord.passwordHash || !userRecord.passwordSalt) {
-          const salt = crypto.randomBytes(16).toString('hex');
-          userRecord.passwordSalt = salt;
-          userRecord.passwordHash = hashPassword('SpeedMeetLove2026!', salt);
-          changed = true;
+          // Never invent a replacement password for the founder: silently
+          // overwriting it locked the founder out after redeploys. Leave the
+          // record untouched; email password reset remains the safe recovery.
+          console.warn('[FOUNDER REPAIR] Founder record is missing password credentials; leaving it unchanged.');
         }
         if (changed) {
           await saveUserToDurableDatabase(userRecord);
@@ -3745,7 +3745,29 @@ function isFirestorePermissionError(err: unknown): boolean {
   return code === 7 || code === 'permission-denied' || /permission[_-]?denied|insufficient permissions/i.test(msg);
 }
 
+// Credentials must never be lost when a remote (Firestore) copy of a user
+// record is missing them: a partial remote document would otherwise overwrite
+// good in-memory credentials and lock the member out (their next save would
+// then persist the credential-less record everywhere). Always carry the
+// existing password hash/salt forward when the incoming record lacks them.
+function preserveCredentials<T extends Partial<ServerUserRecord>>(incoming: T, existing?: ServerUserRecord | null): T {
+  if (!existing) return incoming;
+  const merged: any = { ...incoming };
+  if (!merged.passwordHash && existing.passwordHash) merged.passwordHash = existing.passwordHash;
+  if (!merged.passwordSalt && existing.passwordSalt) merged.passwordSalt = existing.passwordSalt;
+  return merged;
+}
+
 async function saveUserToDurableDatabase(user: ServerUserRecord): Promise<void> {
+  // Choke-point guard: never persist a record that has lost its credentials
+  // over a copy that still has them.
+  if (!user.passwordHash || !user.passwordSalt) {
+    const existing = serverUsers.get(user.userId);
+    if (existing && existing.passwordHash && existing.passwordSalt) {
+      user.passwordHash = user.passwordHash || existing.passwordHash;
+      user.passwordSalt = user.passwordSalt || existing.passwordSalt;
+    }
+  }
   serverUsers.set(user.userId, user);
   saveUsersToDisk();
   if (firestoreDb) {
@@ -5147,9 +5169,10 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       snap.forEach(d => {
         const remote = d.data() as ServerUserRecord;
         if (remote && remote.userId && remote.email) {
-          serverUsers.set(remote.userId, remote);
-          if (remote.email.toLowerCase().trim() === normalizedEmail) {
-            targetUser = remote;
+          const merged = preserveCredentials(remote, serverUsers.get(remote.userId));
+          serverUsers.set(remote.userId, merged);
+          if (merged.email.toLowerCase().trim() === normalizedEmail) {
+            targetUser = merged;
           }
         }
       });
@@ -5246,9 +5269,10 @@ app.get('/api/auth/reset-password/validate', async (req, res) => {
       snap.forEach(d => {
         const remote = d.data() as ServerUserRecord;
         if (remote && remote.userId && remote.email) {
-          serverUsers.set(remote.userId, remote);
-          if (remote.passwordResetTokenHash && timingSafeEqualHex(remote.passwordResetTokenHash, hashedToken)) {
-            targetUser = remote;
+          const merged = preserveCredentials(remote, serverUsers.get(remote.userId));
+          serverUsers.set(remote.userId, merged);
+          if (merged.passwordResetTokenHash && timingSafeEqualHex(merged.passwordResetTokenHash, hashedToken)) {
+            targetUser = merged;
           }
         }
       });
@@ -5319,9 +5343,10 @@ app.post('/api/auth/reset-password', async (req, res) => {
       snap.forEach(d => {
         const remote = d.data() as ServerUserRecord;
         if (remote && remote.userId && remote.email) {
-          serverUsers.set(remote.userId, remote);
-          if (remote.passwordResetTokenHash && timingSafeEqualHex(remote.passwordResetTokenHash, hashedToken)) {
-            targetUser = remote;
+          const merged = preserveCredentials(remote, serverUsers.get(remote.userId));
+          serverUsers.set(remote.userId, merged);
+          if (merged.passwordResetTokenHash && timingSafeEqualHex(merged.passwordResetTokenHash, hashedToken)) {
+            targetUser = merged;
           }
         }
       });
@@ -5406,7 +5431,7 @@ app.get('/api/auth/me', async (req, res) => {
       if (snap && snap.exists) {
         const remote = snap.data() as ServerUserRecord;
         if (remote && remote.userId) {
-          user = user ? { ...user, ...remote } : remote;
+          user = user ? preserveCredentials({ ...user, ...remote }, user) : remote;
           serverUsers.set(authUser.userId, user);
           saveUsersToDisk();
         }
@@ -6808,7 +6833,7 @@ app.get('/api/owner/registered-users', async (req, res) => {
         snap.forEach(d => {
           const data = d.data() as ServerUserRecord;
           if (data && data.userId && data.email) {
-            serverUsers.set(data.userId, data);
+            serverUsers.set(data.userId, preserveCredentials(data, serverUsers.get(data.userId)));
           }
         });
       }
