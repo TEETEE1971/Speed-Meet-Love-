@@ -1,0 +1,1338 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { useApp } from '../context/AppContext';
+import {
+  User,
+  UserPreferences,
+  HairColorOption,
+  EyeColorOption,
+  RelationshipIntentOption,
+} from '../types';
+import {
+  Heart,
+  X,
+  ShieldAlert,
+  Ban,
+  MapPin,
+  Briefcase,
+  Sparkles,
+  Edit3,
+  Flame,
+  ShieldCheck,
+  Lock,
+  Plus,
+  SlidersHorizontal,
+  RotateCcw,
+  Cigarette,
+  Wine,
+  Baby,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+} from 'lucide-react';
+import { Avatar } from './Avatar';
+import { FindMyMatchModal } from './FindMyMatchModal';
+import { AuthGate } from './AuthGate';
+import {
+  HAIR_COLOR_OPTIONS,
+  EYE_COLOR_OPTIONS,
+  RELATIONSHIP_INTENT_OPTIONS,
+  HEIGHT_INCHES_OPTIONS,
+  DEFAULT_SEARCH_PREFERENCES,
+  formatHeightLabel,
+  normalizeSearchPreferences,
+  validateSearchInputs,
+  filterMembers,
+} from '../utils/memberSearch';
+import confetti from 'canvas-confetti';
+import { INITIAL_USERS } from '../data/initialData';
+
+// Built-in demonstration profiles that ship with the app. In production
+// mode these seed profiles are never real members, so they are hidden
+// from Browse; they remain available in demonstration mode for testing.
+// usr_kristy is the owner's real profile and is always kept.
+const DEMO_PROFILE_IDS = new Set(
+  INITIAL_USERS.map(u => u.UserID).filter(id => id !== 'usr_kristy')
+);
+
+export const BrowseProfiles: React.FC = () => {
+  const {
+    users,
+    currentUser,
+    appMode,
+    blockedUserIds,
+    likeProfile,
+    passProfile,
+    blockUser,
+    setReportModalTarget,
+    updateUserProfile,
+    updateUserPreferences,
+    showNotification,
+    setCurrentView,
+  } = useApp();
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [viewStyle, setViewStyle] = useState<'card' | 'grid'>('card');
+  const [editingTargetUser, setEditingTargetUser] = useState<User | null>(null);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(true);
+
+  const userPrefs = useMemo<UserPreferences>(
+    () => normalizeSearchPreferences(currentUser?.Preferences),
+    [currentUser?.Preferences]
+  );
+
+  // Draft search form state (editable independently and repeatable via "Search Members")
+  const [ageMinInput, setAgeMinInput] = useState<string>(
+    userPrefs.ageMin != null ? String(userPrefs.ageMin) : ''
+  );
+  const [ageMaxInput, setAgeMaxInput] = useState<string>(
+    userPrefs.ageMax != null ? String(userPrefs.ageMax) : ''
+  );
+  const [distanceInput, setDistanceInput] = useState<string>(
+    userPrefs.distanceMiles != null ? String(userPrefs.distanceMiles) : ''
+  );
+  const [hairColorInput, setHairColorInput] = useState<HairColorOption>(userPrefs.hairColor || 'Any');
+  const [eyeColorInput, setEyeColorInput] = useState<EyeColorOption>(userPrefs.eyeColor || 'Any');
+  const [heightMinInput, setHeightMinInput] = useState<number>(userPrefs.heightMinInches || 0);
+  const [heightMaxInput, setHeightMaxInput] = useState<number>(userPrefs.heightMaxInches || 0);
+  const [intentInput, setIntentInput] = useState<RelationshipIntentOption>(userPrefs.intent || 'Any');
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  // Keep draft inputs in sync whenever applied preferences change (e.g., from modal, chip removal, or clear)
+  useEffect(() => {
+    setAgeMinInput(userPrefs.ageMin != null ? String(userPrefs.ageMin) : '');
+    setAgeMaxInput(userPrefs.ageMax != null ? String(userPrefs.ageMax) : '');
+    setDistanceInput(userPrefs.distanceMiles != null ? String(userPrefs.distanceMiles) : '');
+    setHairColorInput(userPrefs.hairColor || 'Any');
+    setEyeColorInput(userPrefs.eyeColor || 'Any');
+    setHeightMinInput(userPrefs.heightMinInches || 0);
+    setHeightMaxInput(userPrefs.heightMaxInches || 0);
+    setIntentInput(userPrefs.intent || 'Any');
+    setSearchError(null);
+  }, [userPrefs]);
+
+  // Edit form state
+  const [editForm, setEditForm] = useState({
+    Age: '',
+    Location: '',
+    Occupation: '',
+    Bio: '',
+    Interests: '',
+    intent: 'Dating & chemistry' as User['Preferences']['intent'],
+  });
+
+  // Base eligible candidates: all users except currentUser and blocked users.
+  // In production mode the built-in demonstration profiles are excluded so
+  // members only ever see real registered members.
+  const allEligibleCandidates = useMemo(() => {
+    if (!currentUser) return [];
+    return users.filter(u => {
+      if (u.UserID === currentUser.UserID) return false;
+      if (blockedUserIds.includes(u.UserID)) return false;
+      if (appMode === 'production' && DEMO_PROFILE_IDS.has(u.UserID)) return false;
+      return true;
+    });
+  }, [users, currentUser, blockedUserIds, appMode]);
+
+  // Filter candidates using the shared independent filter engine
+  const candidates = useMemo(
+    () => filterMembers(allEligibleCandidates, userPrefs),
+    [allEligibleCandidates, userPrefs]
+  );
+
+  if (!currentUser) {
+    return <AuthGate featureName="Browse Singles" />;
+  }
+
+  const activeProfile: User | undefined = candidates[currentIndex % Math.max(1, candidates.length)];
+
+  const handleLike = (targetUser: User) => {
+    const res = likeProfile(targetUser.UserID);
+    if (res.isMatch) {
+      try {
+        confetti({
+          particleCount: 75,
+          spread: 80,
+          origin: { y: 0.6 },
+          colors: ['#FF2E93', '#FF147E', '#E11D48', '#FFE600'],
+        });
+      } catch (e) {}
+    }
+    setCurrentIndex(prev => prev + 1);
+  };
+
+  const handlePass = (targetUser: User) => {
+    passProfile(targetUser.UserID);
+    setCurrentIndex(prev => prev + 1);
+  };
+
+  const handleBlock = (targetUser: User) => {
+    blockUser(targetUser.UserID);
+  };
+
+  const handleReport = (targetUser: User) => {
+    setReportModalTarget(targetUser, { source: 'browse' });
+  };
+
+  const handleSearchMembersSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const validation = validateSearchInputs({
+      ageMinInput,
+      ageMaxInput,
+      distanceInput,
+      heightMinInches: heightMinInput,
+      heightMaxInches: heightMaxInput,
+    });
+
+    if (!validation.valid) {
+      setSearchError(validation.error || 'Please check your search filters.');
+      return;
+    }
+
+    setSearchError(null);
+    const nextPrefs = normalizeSearchPreferences({
+      ...userPrefs,
+      ageMin: validation.ageMin,
+      ageMax: validation.ageMax,
+      distanceMiles: validation.distanceMiles,
+      hairColor: hairColorInput,
+      eyeColor: eyeColorInput,
+      heightMinInches: heightMinInput,
+      heightMaxInches: heightMaxInput,
+      intent: intentInput,
+    });
+
+    updateUserPreferences(currentUser.UserID, nextPrefs);
+    setCurrentIndex(0);
+    const matchCount = filterMembers(allEligibleCandidates, nextPrefs).length;
+    showNotification(
+      matchCount === 0
+        ? 'No members matched those filters. Adjust any filter and search again.'
+        : `Search updated: ${matchCount} ${matchCount === 1 ? 'member' : 'members'} found.`,
+      matchCount > 0 ? 'pink' : 'info'
+    );
+  };
+
+  const handleApplyPreferences = (newPrefs: UserPreferences) => {
+    const normalized = normalizeSearchPreferences(newPrefs);
+    updateUserPreferences(currentUser.UserID, normalized);
+    setCurrentIndex(0);
+    const matchCount = filterMembers(allEligibleCandidates, normalized).length;
+    showNotification(
+      `Search updated: ${matchCount} ${matchCount === 1 ? 'member' : 'members'} found.`,
+      'pink'
+    );
+  };
+
+  const handleClearAll = () => {
+    const cleared: UserPreferences = { ...DEFAULT_SEARCH_PREFERENCES, interests: [] };
+    updateUserPreferences(currentUser.UserID, cleared);
+    setSearchError(null);
+    showNotification('All search filters cleared — showing members of all ages and any distance.', 'info');
+    setCurrentIndex(0);
+  };
+
+  const removeSingleFilter = (key: keyof UserPreferences) => {
+    const updated: UserPreferences = { ...userPrefs };
+    if (key === 'ageMin') {
+      updated.ageMin = null;
+    } else if (key === 'ageMax') {
+      updated.ageMax = null;
+    } else if (key === 'distanceMiles') {
+      updated.distanceMiles = null;
+    } else if (key === 'heightMinInches') {
+      updated.heightMinInches = 0;
+    } else if (key === 'heightMaxInches') {
+      updated.heightMaxInches = 0;
+    } else if (key === 'interests') {
+      updated.interests = [];
+    } else {
+      (updated as Record<string, unknown>)[key] = 'Any';
+    }
+    updateUserPreferences(currentUser.UserID, updated);
+    setCurrentIndex(0);
+  };
+
+  const handleQuickGenderChange = (genderValue: 'Any' | 'Women' | 'Men' | 'Non-Binary') => {
+    updateUserPreferences(currentUser.UserID, { gender: genderValue });
+    setCurrentIndex(0);
+  };
+
+  const canEditProfile = (user: User | null | undefined): boolean =>
+    Boolean(currentUser && user && user.UserID === currentUser.UserID);
+
+  const openEditModal = (user: User) => {
+    if (!canEditProfile(user)) {
+      setEditingTargetUser(null);
+      showNotification('Permission denied: You can only edit your own profile.', 'info');
+      return;
+    }
+    setEditingTargetUser(user);
+    setEditForm({
+      Age: user.Age && user.Age > 0 ? String(user.Age) : '',
+      Location: user.Location || '',
+      Occupation: user.Occupation || '',
+      Bio: user.Bio || '',
+      Interests: user.Interests.join(', '),
+      intent: user.Preferences?.intent || 'Dating & chemistry',
+    });
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTargetUser || !canEditProfile(editingTargetUser)) {
+      setEditingTargetUser(null);
+      showNotification('Permission denied: You can only edit your own profile.', 'info');
+      return;
+    }
+
+    const parsedAge = editForm.Age.trim() ? Number(editForm.Age) : 0;
+    const interestsList = editForm.Interests.split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    updateUserProfile({
+      Age: parsedAge,
+      Location: editForm.Location.trim(),
+      Occupation: editForm.Occupation.trim(),
+      Bio: editForm.Bio.trim(),
+      Interests: interestsList,
+      Preferences: {
+        ...editingTargetUser.Preferences,
+        intent: editForm.intent,
+      },
+    });
+
+    setEditingTargetUser(null);
+  };
+
+  const formatDisplayName = (user: User) => {
+    const namePart = user.LastName && user.LastName.trim() ? `${user.FirstName} ${user.LastName}` : user.FirstName;
+    if (user.Age && user.Age > 0) {
+      return `${namePart}, ${user.Age}`;
+    }
+    return namePart;
+  };
+
+  // Independent active filter chips (each filter can be dismissed on its own without affecting others)
+  const activeChips: { key: keyof UserPreferences; label: string }[] = [];
+  if (userPrefs.ageMin != null) {
+    activeChips.push({ key: 'ageMin', label: `Min Age: ${userPrefs.ageMin}+` });
+  }
+  if (userPrefs.ageMax != null) {
+    activeChips.push({ key: 'ageMax', label: `Max Age: ≤ ${userPrefs.ageMax}` });
+  }
+  if (userPrefs.distanceMiles != null && userPrefs.distanceMiles > 0) {
+    activeChips.push({
+      key: 'distanceMiles',
+      label: `Within ${userPrefs.distanceMiles} ${userPrefs.distanceMiles === 1 ? 'mi' : 'miles'}`,
+    });
+  }
+  if (userPrefs.hairColor && userPrefs.hairColor !== 'Any') {
+    activeChips.push({ key: 'hairColor', label: `Hair: ${userPrefs.hairColor}` });
+  }
+  if (userPrefs.eyeColor && userPrefs.eyeColor !== 'Any') {
+    activeChips.push({ key: 'eyeColor', label: `Eyes: ${userPrefs.eyeColor}` });
+  }
+  if (userPrefs.heightMinInches && userPrefs.heightMinInches > 0) {
+    activeChips.push({
+      key: 'heightMinInches',
+      label: `Min Height: ${formatHeightLabel(userPrefs.heightMinInches)}`,
+    });
+  }
+  if (userPrefs.heightMaxInches && userPrefs.heightMaxInches > 0) {
+    activeChips.push({
+      key: 'heightMaxInches',
+      label: `Max Height: ${formatHeightLabel(userPrefs.heightMaxInches)}`,
+    });
+  }
+  if (userPrefs.gender && userPrefs.gender !== 'Any') {
+    activeChips.push({ key: 'gender', label: `Gender: ${userPrefs.gender}` });
+  }
+  if (userPrefs.intent && userPrefs.intent !== 'Any') {
+    activeChips.push({ key: 'intent', label: `Intent: ${userPrefs.intent}` });
+  }
+  if (userPrefs.smoking && userPrefs.smoking !== 'Any') {
+    activeChips.push({ key: 'smoking', label: `Smoking: ${userPrefs.smoking}` });
+  }
+  if (userPrefs.drinking && userPrefs.drinking !== 'Any') {
+    activeChips.push({ key: 'drinking', label: `Drinking: ${userPrefs.drinking}` });
+  }
+  if (userPrefs.children && userPrefs.children !== 'Any') {
+    activeChips.push({ key: 'children', label: `Family: ${userPrefs.children}` });
+  }
+  if (userPrefs.interests && userPrefs.interests.length > 0) {
+    activeChips.push({ key: 'interests', label: `Interests (${userPrefs.interests.length})` });
+  }
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Header bar & Customizable Member Search Panel */}
+      <div className="p-5 sm:p-6 rounded-3xl bg-white border-2 border-rose-100 shadow-md space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-[#B91C1C] flex items-center gap-1.5 font-heading">
+              <Sparkles className="w-3.5 h-3.5 text-[#B45309] fill-amber-400" />
+              Discover &amp; Connect
+            </span>
+            <h1 className="text-2xl font-bold text-[#111827] font-heading mt-0.5">
+              Browse Dating Profiles
+            </h1>
+            <p className="text-xs font-medium text-[#111827] mt-0.5">
+              Customize any combination of optional filters below and search members anytime.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Toggle Search Panel */}
+            <button
+              type="button"
+              onClick={() => setIsSearchPanelOpen(prev => !prev)}
+              className="py-2.5 px-4 rounded-2xl bg-rose-50 hover:bg-rose-100 border-2 border-rose-200 font-bold text-xs text-[#9F1239] transition-all cursor-pointer flex items-center gap-1.5"
+              aria-expanded={isSearchPanelOpen}
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>{isSearchPanelOpen ? 'Hide Search' : 'Edit Search'}</span>
+              {isSearchPanelOpen ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+
+            {/* More Filters Modal CTA */}
+            <button
+              type="button"
+              onClick={() => setIsFilterModalOpen(true)}
+              className="btn-glossy-red-pink py-2.5 px-4 rounded-2xl font-bold text-xs text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2 ring-2 ring-rose-200"
+              title="Open full search and lifestyle filters"
+            >
+              <SlidersHorizontal className="w-4 h-4 text-white" />
+              <span>More Filters</span>
+              {activeChips.length > 0 && (
+                <span className="ml-0.5 w-5 h-5 rounded-full bg-white text-[#B91C1C] text-[10px] font-bold flex items-center justify-center shadow-xs">
+                  {activeChips.length}
+                </span>
+              )}
+            </button>
+
+            {/* Mode Switcher */}
+            <div className="flex items-center p-1 bg-rose-50 rounded-2xl border border-rose-200 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setCurrentView('home')}
+                className="px-3 py-1.5 rounded-xl font-bold transition-all text-[#111827] hover:text-[#B91C1C] cursor-pointer"
+              >
+                🌟 Home
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewStyle('card')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                  viewStyle === 'card'
+                    ? 'btn-glossy-red-pink text-white shadow-xs'
+                    : 'text-[#111827] hover:text-[#B91C1C]'
+                }`}
+              >
+                Swipe Card
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewStyle('grid')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                  viewStyle === 'grid'
+                    ? 'btn-glossy-red-pink text-white shadow-xs'
+                    : 'text-[#111827] hover:text-[#B91C1C]'
+                }`}
+              >
+                All Profiles ({candidates.length})
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Inline Customizable Member Search Form */}
+        {isSearchPanelOpen && (
+          <form
+            onSubmit={handleSearchMembersSubmit}
+            className="pt-4 border-t border-rose-100 space-y-3.5"
+            aria-label="Member search filters"
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Minimum Age (Optional) */}
+              <div>
+                <label
+                  htmlFor="browse-min-age"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Min Age <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <input
+                  id="browse-min-age"
+                  type="number"
+                  inputMode="numeric"
+                  min={18}
+                  max={120}
+                  value={ageMinInput}
+                  onChange={e => {
+                    setAgeMinInput(e.target.value);
+                    setSearchError(null);
+                  }}
+                  placeholder="All ages"
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] placeholder:text-slate-400 text-xs font-bold focus:outline-none focus:border-[#BE185D]"
+                />
+              </div>
+
+              {/* Maximum Age (Optional) */}
+              <div>
+                <label
+                  htmlFor="browse-max-age"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Max Age <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <input
+                  id="browse-max-age"
+                  type="number"
+                  inputMode="numeric"
+                  min={18}
+                  max={120}
+                  value={ageMaxInput}
+                  onChange={e => {
+                    setAgeMaxInput(e.target.value);
+                    setSearchError(null);
+                  }}
+                  placeholder="All ages"
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] placeholder:text-slate-400 text-xs font-bold focus:outline-none focus:border-[#BE185D]"
+                />
+              </div>
+
+              {/* Preferred Distance in Miles (Optional) */}
+              <div>
+                <label
+                  htmlFor="browse-distance-miles"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Distance (miles) <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <input
+                  id="browse-distance-miles"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={25000}
+                  value={distanceInput}
+                  onChange={e => {
+                    setDistanceInput(e.target.value);
+                    setSearchError(null);
+                  }}
+                  placeholder="Any distance"
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] placeholder:text-slate-400 text-xs font-bold focus:outline-none focus:border-[#BE185D]"
+                />
+              </div>
+
+              {/* Relationship Intentions (Default: Any) */}
+              <div>
+                <label
+                  htmlFor="browse-intent"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Relationship Intent
+                </label>
+                <select
+                  id="browse-intent"
+                  value={intentInput}
+                  onChange={e => setIntentInput(e.target.value as RelationshipIntentOption)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] text-xs font-bold focus:outline-none focus:border-[#BE185D] cursor-pointer"
+                >
+                  {RELATIONSHIP_INTENT_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Hair Color (Default: Any) */}
+              <div>
+                <label
+                  htmlFor="browse-hair-color"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Hair Color
+                </label>
+                <select
+                  id="browse-hair-color"
+                  value={hairColorInput}
+                  onChange={e => setHairColorInput(e.target.value as HairColorOption)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] text-xs font-bold focus:outline-none focus:border-[#BE185D] cursor-pointer"
+                >
+                  {HAIR_COLOR_OPTIONS.map(color => (
+                    <option key={color} value={color}>
+                      {color}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Eye Color (Default: Any) */}
+              <div>
+                <label
+                  htmlFor="browse-eye-color"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Eye Color
+                </label>
+                <select
+                  id="browse-eye-color"
+                  value={eyeColorInput}
+                  onChange={e => setEyeColorInput(e.target.value as EyeColorOption)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] text-xs font-bold focus:outline-none focus:border-[#BE185D] cursor-pointer"
+                >
+                  {EYE_COLOR_OPTIONS.map(color => (
+                    <option key={color} value={color}>
+                      {color}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Min Height (Default: Any) */}
+              <div>
+                <label
+                  htmlFor="browse-min-height"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Min Height
+                </label>
+                <select
+                  id="browse-min-height"
+                  value={heightMinInput}
+                  onChange={e => {
+                    setHeightMinInput(Number(e.target.value));
+                    setSearchError(null);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] text-xs font-bold focus:outline-none focus:border-[#BE185D] cursor-pointer"
+                >
+                  <option value={0}>Any</option>
+                  {HEIGHT_INCHES_OPTIONS.map(inches => (
+                    <option key={inches} value={inches}>
+                      {formatHeightLabel(inches)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Max Height (Default: Any) */}
+              <div>
+                <label
+                  htmlFor="browse-max-height"
+                  className="block text-[11px] font-bold text-[#111827] mb-1"
+                >
+                  Max Height
+                </label>
+                <select
+                  id="browse-max-height"
+                  value={heightMaxInput}
+                  onChange={e => {
+                    setHeightMaxInput(Number(e.target.value));
+                    setSearchError(null);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-[#FFF8FA] border border-rose-200 text-[#111827] text-xs font-bold focus:outline-none focus:border-[#BE185D] cursor-pointer"
+                >
+                  <option value={0}>Any</option>
+                  {HEIGHT_INCHES_OPTIONS.map(inches => (
+                    <option key={inches} value={inches}>
+                      {formatHeightLabel(inches)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {searchError && (
+              <div
+                role="alert"
+                className="p-2.5 rounded-xl bg-rose-50 border border-rose-300 text-[#9F1239] text-xs font-bold flex items-center gap-2"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{searchError}</span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+              <p className="text-[11px] text-slate-600 font-medium">
+                Leave age blank for all ages · Leave distance blank for any distance · Each filter works independently.
+              </p>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-[#111827] font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Clear Filters
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl btn-glossy-red-pink text-white font-extrabold text-xs shadow-md hover:scale-[1.02] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Search className="w-3.5 h-3.5 text-white" />
+                  Search Members
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {/* Quick Gender Row & Match Count Bar */}
+        <div className="pt-3 border-t border-rose-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Independent Gender Filter Buttons */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-bold text-[#111827] mr-1">Showing:</span>
+            {(
+              [
+                { label: 'All', value: 'Any' },
+                { label: 'Women', value: 'Women' },
+                { label: 'Men', value: 'Men' },
+                { label: 'Non-Binary', value: 'Non-Binary' },
+              ] as const
+            ).map(g => {
+              const active = (userPrefs.gender || 'Any') === g.value;
+              return (
+                <button
+                  key={g.value}
+                  type="button"
+                  onClick={() => handleQuickGenderChange(g.value)}
+                  className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                    active
+                      ? 'bg-red-600 text-white shadow-xs'
+                      : 'bg-rose-50/80 text-[#111827] hover:bg-rose-100 border border-rose-200'
+                  }`}
+                >
+                  {g.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Matches count */}
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-semibold text-[#111827]">
+              <span className="text-[#B91C1C] font-bold">{candidates.length}</span>{' '}
+              {candidates.length === 1 ? 'member matches' : 'members match'} your search
+            </span>
+          </div>
+        </div>
+
+        {/* Independent Active Filter Chips with Quick Dismiss (X) */}
+        {activeChips.length > 0 && (
+          <div className="pt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold text-[#111827] uppercase tracking-wider mr-1">
+              Active Filters:
+            </span>
+            {activeChips.map(chip => (
+              <span
+                key={chip.key + chip.label}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-300 text-[#9F1239] text-xs font-bold shadow-2xs"
+              >
+                {chip.label}
+                <button
+                  type="button"
+                  onClick={() => removeSingleFilter(chip.key)}
+                  className="w-4 h-4 rounded-full hover:bg-rose-200/80 text-[#BE123C] flex items-center justify-center transition-colors cursor-pointer"
+                  title={`Remove ${chip.label}`}
+                  aria-label={`Remove ${chip.label}`}
+                >
+                  <X className="w-2.5 h-2.5 stroke-[3]" />
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="text-xs font-bold text-[#111827] hover:underline ml-1 cursor-pointer"
+            >
+              Clear All
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Candidates Display: Empty State OR Swipe Card OR Grid */}
+      {candidates.length === 0 ? (
+        <div className="p-10 sm:p-14 rounded-3xl bg-white border-2 border-rose-200 shadow-md text-center space-y-4">
+          <div className="w-16 h-16 rounded-full bg-rose-50 mx-auto flex items-center justify-center text-[#BE123C] border border-rose-200 shadow-xs">
+            <Heart className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-xl font-bold text-[#111827] font-heading">
+              No members match your current search
+            </h3>
+            <p className="text-xs text-[#111827] font-medium max-w-md mx-auto leading-relaxed">
+              Try widening your age or distance, setting optional filters back to Any, or clearing all filters to view everyone.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSearchPanelOpen(true);
+                setIsFilterModalOpen(true);
+              }}
+              className="px-5 py-2.5 rounded-2xl btn-glossy-red-pink text-white font-bold text-xs shadow-md cursor-pointer flex items-center gap-1.5"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-white" />
+              Edit Search Filters
+            </button>
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="px-5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 font-bold text-xs transition-colors cursor-pointer"
+            >
+              Show All Members
+            </button>
+          </div>
+        </div>
+      ) : viewStyle === 'card' && activeProfile ? (
+        /* SINGLE PROFILE SWIPE CARD MODE WITH COMPLETE TRAITS */
+        <div className="rounded-3xl bg-white border-2 border-rose-100 shadow-xl overflow-hidden transition-all duration-200">
+          <div className="grid grid-cols-1 md:grid-cols-12">
+            
+            {/* Visual Portrait Column */}
+            <div className="md:col-span-5 bg-gradient-to-br from-[#FFF0F3] via-[#FFE4E8] to-[#FFF5F7] p-6 sm:p-8 flex flex-col items-center justify-between border-b md:border-b-0 md:border-r border-rose-100 min-h-[380px]">
+              <div className="w-full flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-white text-slate-800 shadow-xs border border-rose-200 font-bold">
+                    {activeProfile.SubscriptionTier}
+                  </span>
+                  {activeProfile.UserID === 'usr_kristy' && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 font-bold flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Founder Profile
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => handleBlock(activeProfile)}
+                    className="p-1.5 rounded-lg bg-white/90 hover:bg-rose-50 text-[#111827] hover:text-[#BE123C] transition-colors cursor-pointer"
+                    title="Block member"
+                  >
+                    <Ban className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleReport(activeProfile)}
+                    className="p-1.5 rounded-lg bg-white/90 hover:bg-rose-50 text-[#111827] hover:text-[#BE123C] transition-colors cursor-pointer"
+                    title="Report member"
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Large Portrait Picture or Initial Avatar */}
+              <div className="relative my-4">
+                {activeProfile.ProfilePhoto ? (
+                  <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-3xl overflow-hidden shadow-xl border-4 border-white bg-slate-100 flex items-center justify-center">
+                    <img
+                      src={activeProfile.ProfilePhoto}
+                      alt={activeProfile.FirstName}
+                      className="w-full h-full object-cover object-[center_30%]"
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="w-32 h-32 sm:w-40 sm:h-40 rounded-full flex items-center justify-center text-5xl font-black text-white shadow-xl border-4 border-white"
+                    style={{
+                      background: `linear-gradient(135deg, ${activeProfile.AvatarColor || '#FF2E93'}, #E11D48)`,
+                    }}
+                  >
+                    {activeProfile.FirstName[0]}
+                  </div>
+                )}
+
+                {activeProfile.SubscriptionTier === 'Premium Plus' && (
+                  <span className="absolute -bottom-2 inset-x-0 mx-auto w-fit bg-gradient-to-r from-[#B45309] to-[#BE185D] text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">
+                    VIP PLUS
+                  </span>
+                )}
+              </div>
+
+              <div className="text-center space-y-1 w-full">
+                <div className="text-xl font-bold text-[#111827] font-heading">
+                  {formatDisplayName(activeProfile)}
+                </div>
+                <div className="text-xs text-[#111827] flex items-center justify-center gap-1 font-semibold">
+                  <MapPin className="w-3.5 h-3.5 text-[#B91C1C]" />
+                  <span>{activeProfile.Location || 'Location not specified'}</span>
+                  {activeProfile.PrivacySettings?.shareLocation !== false && activeProfile.DistanceMiles && (
+                    <span className="text-[#B91C1C] font-bold ml-1">
+                      · {activeProfile.DistanceMiles} mi away
+                    </span>
+                  )}
+                </div>
+
+                {/* Candidate physical summary badge */}
+                <div className="pt-1 flex flex-wrap items-center justify-center gap-1">
+                  {activeProfile.PrivacySettings?.showHeight !== false && activeProfile.HeightInches && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-[#111827] border border-rose-200">
+                      📏 {formatHeightLabel(activeProfile.HeightInches)}
+                    </span>
+                  )}
+                  {activeProfile.HairColor && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-[#111827] border border-rose-200">
+                      {activeProfile.HairColor} hair
+                    </span>
+                  )}
+                  {activeProfile.EyeColor && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-[#111827] border border-rose-200">
+                      {activeProfile.EyeColor} eyes
+                    </span>
+                  )}
+                </div>
+
+                {canEditProfile(activeProfile) && (
+                  <button
+                    onClick={() => openEditModal(activeProfile)}
+                    className="mt-2 text-[11px] font-bold text-[#B91C1C] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>Edit Profile Information</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Profile Bio & Details Column */}
+            <div className="md:col-span-7 p-6 sm:p-8 flex flex-col justify-between space-y-6">
+              <div className="space-y-5">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#B91C1C]">
+                      About Me
+                    </span>
+                    {canEditProfile(activeProfile) && (
+                      <button
+                        onClick={() => openEditModal(activeProfile)}
+                        className="text-[11px] font-bold text-[#111827] hover:text-[#B91C1C] flex items-center gap-1 cursor-pointer"
+                      >
+                        <Edit3 className="w-3 h-3" /> Edit
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-sm text-[#111827] leading-relaxed mt-1 font-medium">
+                    {activeProfile.Bio || (
+                      <span className="text-[#111827] font-medium italic">
+                        {canEditProfile(activeProfile)
+                          ? 'Biography not provided yet. Tap "Edit Profile Information" to add details.'
+                          : 'Biography not provided yet.'}
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Characteristics & Lifestyle Traits Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+                  <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-200">
+                    <span className="text-[#111827] font-bold block mb-0.5 text-[10px] uppercase">Occupation</span>
+                    <span className="font-bold text-[#111827] flex items-center gap-1 truncate">
+                      <Briefcase className="w-3.5 h-3.5 text-[#B91C1C] shrink-0" />
+                      <span className="truncate">{activeProfile.Occupation || 'Not specified'}</span>
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-200">
+                    <span className="text-[#111827] font-bold block mb-0.5 text-[10px] uppercase">Intent</span>
+                    <span className="font-bold text-[#111827] flex items-center gap-1 truncate">
+                      <Flame className="w-3.5 h-3.5 text-[#BE123C] shrink-0" />
+                      <span className="truncate">{activeProfile.RelationshipIntent || activeProfile.Preferences?.intent || 'Dating'}</span>
+                    </span>
+                  </div>
+
+                  {activeProfile.PrivacySettings?.showSmoking !== false && activeProfile.Smoking && (
+                    <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-200">
+                      <span className="text-[#111827] font-bold block mb-0.5 text-[10px] uppercase">Smoking</span>
+                      <span className="font-bold text-[#111827] flex items-center gap-1 truncate">
+                        <Cigarette className="w-3.5 h-3.5 text-[#B45309] shrink-0" />
+                        <span className="truncate">{activeProfile.Smoking}</span>
+                      </span>
+                    </div>
+                  )}
+
+                  {activeProfile.PrivacySettings?.showDrinking !== false && activeProfile.Drinking && (
+                    <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-200">
+                      <span className="text-[#111827] font-bold block mb-0.5 text-[10px] uppercase">Drinking</span>
+                      <span className="font-bold text-[#111827] flex items-center gap-1 truncate">
+                        <Wine className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                        <span className="truncate">{activeProfile.Drinking}</span>
+                      </span>
+                    </div>
+                  )}
+
+                  {activeProfile.PrivacySettings?.showChildren !== false && activeProfile.Children && (
+                    <div className="p-2.5 rounded-2xl bg-[#FFF8FA] border border-rose-200">
+                      <span className="text-[#111827] font-bold block mb-0.5 text-[10px] uppercase">Family</span>
+                      <span className="font-bold text-[#111827] flex items-center gap-1 truncate">
+                        <Baby className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                        <span className="truncate">{activeProfile.Children}</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {activeProfile.IcebreakerAnswer && (
+                  <div className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 text-xs space-y-1">
+                    <span className="font-bold text-[#B91C1C] block">Signature Prompt:</span>
+                    <p className="text-[#111827] italic font-medium">
+                      "{activeProfile.IcebreakerAnswer}"
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#111827]">
+                      Interests & Passions
+                    </span>
+                    {canEditProfile(activeProfile) && activeProfile.Interests.length === 0 && (
+                      <button
+                        onClick={() => openEditModal(activeProfile)}
+                        className="text-[11px] text-[#B91C1C] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" /> Add Interests
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeProfile.Interests.length > 0 ? (
+                      activeProfile.Interests.map(item => (
+                        <span
+                          key={item}
+                          className="px-2.5 py-1 rounded-xl bg-rose-50/80 border border-rose-200 text-[#111827] text-xs font-semibold"
+                        >
+                          {item}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-[#111827] font-medium italic">
+                        No interests added yet.
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Privacy & Sandbox Notice for Kristy */}
+                {activeProfile.UserID === 'usr_kristy' && (
+                  <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-300 text-[#111827] font-medium text-xs flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#B45309] shrink-0" />
+                    <span>
+                      <strong>Demonstration Profile Protected:</strong> Photo and profile are kept strictly within your private preview session and never published publicly without explicit approval.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons: Pass and Like */}
+              <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-4">
+                <button
+                  onClick={() => handlePass(activeProfile)}
+                  className="flex-1 py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                >
+                  <X className="w-4 h-4 text-[#111827]" />
+                  <span>Pass</span>
+                </button>
+
+                <button
+                  onClick={() => handleLike(activeProfile)}
+                  className="flex-1 py-3 px-4 rounded-2xl btn-glossy-red-pink font-extrabold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md cursor-pointer"
+                >
+                  <Heart className="w-4 h-4 fill-white text-white" />
+                  <span>Like {activeProfile.FirstName} ❤️</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      ) : (
+        /* MULTI-PROFILE GRID MODE WITH TRAIT TAGS */
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+          {candidates.map(candidate => (
+            <div
+              key={candidate.UserID}
+              className="rounded-3xl bg-white border-2 border-rose-100 shadow-sm hover:shadow-md transition-all p-5 flex flex-col justify-between space-y-4"
+            >
+              <div className="space-y-3">
+                <div className="flex items-start justify-between">
+                  {candidate.ProfilePhoto ? (
+                    <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-md border-2 border-white shrink-0 bg-slate-100">
+                      <img
+                        src={candidate.ProfilePhoto}
+                        alt={candidate.FirstName}
+                        className="w-full h-full object-cover object-[center_30%]"
+                      />
+                    </div>
+                  ) : (
+                    <Avatar user={candidate} size="lg" showBadge />
+                  )}
+
+                  <div className="flex items-center gap-1">
+                    {canEditProfile(candidate) && (
+                      <button
+                        onClick={() => openEditModal(candidate)}
+                        className="p-1.5 rounded-lg text-[#111827] hover:text-[#B91C1C] hover:bg-pink-50 transition-colors cursor-pointer"
+                        title="Edit Profile Info"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleBlock(candidate)}
+                      className="p-1.5 rounded-lg text-[#111827] hover:text-[#BE123C] hover:bg-rose-50 transition-colors cursor-pointer"
+                      title="Block"
+                    >
+                      <Ban className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleReport(candidate)}
+                      className="p-1.5 rounded-lg text-[#111827] hover:text-[#BE123C] hover:bg-rose-50 transition-colors cursor-pointer"
+                      title="Report"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-[#111827] font-heading text-base">
+                      {formatDisplayName(candidate)}
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 font-mono">
+                      {candidate.SubscriptionTier}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#111827] mt-0.5 font-medium">
+                    {candidate.Occupation || 'Occupation not set'} · {candidate.Location || 'Location not set'}
+                  </p>
+
+                  {/* Physical & Lifestyle summary pills */}
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {candidate.PrivacySettings?.showHeight !== false && candidate.HeightInches && (
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-[#111827] text-[10px] font-bold">
+                        {formatHeightLabel(candidate.HeightInches)}
+                      </span>
+                    )}
+                    {candidate.HairColor && (
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-[#111827] text-[10px] font-bold">
+                        {candidate.HairColor}
+                      </span>
+                    )}
+                    {candidate.RelationshipIntent && (
+                      <span className="px-2 py-0.5 rounded-md bg-rose-50 text-[#991B1B] text-[10px] font-bold border border-rose-200">
+                        {candidate.RelationshipIntent}
+                      </span>
+                    )}
+                    {candidate.PrivacySettings?.shareLocation !== false && candidate.DistanceMiles && (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-50 text-[#78350F] text-[10px] font-bold border border-amber-200">
+                        {candidate.DistanceMiles} mi
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-[#111827] line-clamp-2 mt-2 leading-relaxed font-medium">
+                    {candidate.Bio || (
+                      <span className="text-[#111827] font-medium italic">
+                        Bio not set yet.
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-1">
+                  {candidate.Interests.length > 0 ? (
+                    candidate.Interests.slice(0, 3).map(i => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded-lg bg-rose-50/80 border border-rose-200 text-[10px] text-[#9F1239] font-semibold"
+                      >
+                        {i}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] text-[#111827] font-medium italic">
+                      No interests set
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
+                <button
+                  onClick={() => handlePass(candidate)}
+                  className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] border border-slate-300 text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5 text-[#111827]" />
+                  <span>Pass</span>
+                </button>
+                <button
+                  onClick={() => handleLike(candidate)}
+                  className="flex-1 py-2 rounded-xl btn-glossy-red-pink font-extrabold text-xs flex items-center justify-center gap-1 shadow-xs cursor-pointer text-white"
+                >
+                  <Heart className="w-3.5 h-3.5 fill-white text-white" />
+                  <span>Like</span>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* QUICK EDIT PROFILE MODAL (Strictly restricted to own profile) */}
+      {editingTargetUser && canEditProfile(editingTargetUser) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-lg rounded-3xl bg-white border border-rose-100 shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-rose-50 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-[#B91C1C]">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#111827] font-heading">
+                    Edit {editingTargetUser.FirstName}'s Profile
+                  </h3>
+                  <p className="text-[11px] text-[#111827] font-medium">
+                    Fields remain uninvented and editable until you choose to provide them.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingTargetUser(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-[#111827] font-bold flex items-center justify-center transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[#111827] font-semibold mb-1">
+                    Age (Optional)
+                  </label>
+                  <input
+                    type="number"
+                    min="18"
+                    max="99"
+                    value={editForm.Age}
+                    onChange={e => setEditForm({ ...editForm, Age: e.target.value })}
+                    placeholder="Leave blank or enter age"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[#111827] font-semibold mb-1">
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.Location}
+                    onChange={e => setEditForm({ ...editForm, Location: e.target.value })}
+                    placeholder="City, State"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[#111827] font-semibold mb-1">
+                    Occupation
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.Occupation}
+                    onChange={e => setEditForm({ ...editForm, Occupation: e.target.value })}
+                    placeholder="Occupation / Profession"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[#111827] font-semibold mb-1">
+                    Dating Intent
+                  </label>
+                  <select
+                    value={editForm.intent}
+                    onChange={e => setEditForm({ ...editForm, intent: e.target.value as any })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
+                  >
+                    <option value="Serious Relationship">Serious Relationship</option>
+                    <option value="Casual Dating">Casual Dating</option>
+                    <option value="Friendship First">Friendship First</option>
+                    <option value="Not Sure Yet">Not Sure Yet</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[#111827] font-semibold mb-1">
+                  Biography / About Me
+                </label>
+                <textarea
+                  rows={3}
+                  value={editForm.Bio}
+                  onChange={e => setEditForm({ ...editForm, Bio: e.target.value })}
+                  placeholder="Share a short bio..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#111827] font-semibold mb-1">
+                  Interests & Passions (Comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={editForm.Interests}
+                  onChange={e => setEditForm({ ...editForm, Interests: e.target.value })}
+                  placeholder="e.g. Travel, Coffee, Music, Hiking, Photography"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-[#111827] font-medium focus:outline-none focus:border-[#BE185D]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingTargetUser(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111827] font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl btn-pink-gradient font-bold text-white shadow-md cursor-pointer"
+                >
+                  Save Profile Details
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* FIND MY MATCH / MORE FILTERS MODAL */}
+      <FindMyMatchModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        currentPreferences={userPrefs}
+        onApply={handleApplyPreferences}
+        allCandidates={allEligibleCandidates}
+        onClearAll={handleClearAll}
+      />
+    </div>
+  );
+};

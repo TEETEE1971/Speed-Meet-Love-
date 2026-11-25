@@ -45,12 +45,20 @@ import {
   filterMembers,
 } from '../utils/memberSearch';
 import confetti from 'canvas-confetti';
+import { INITIAL_USERS } from '../data/initialData';
+
+// Demo profiles included in INITIAL_USERS are filtered out in production mode,
+// keeping only real registered members (and the founder profile usr_kristy).
+const DEMO_PROFILE_IDS = new Set(
+  INITIAL_USERS.map(u => u.UserID).filter(id => id !== 'usr_kristy')
+);
 
 export const BrowseProfiles: React.FC = () => {
   const {
     users,
     currentUser,
     blockedUserIds,
+    appMode,
     likeProfile,
     passProfile,
     blockUser,
@@ -112,15 +120,16 @@ export const BrowseProfiles: React.FC = () => {
     intent: 'Dating & chemistry' as User['Preferences']['intent'],
   });
 
-  // Base eligible candidates: all users except currentUser and blocked users
+  // Base eligible candidates: all users except currentUser, blocked users, and demo profiles in production
   const allEligibleCandidates = useMemo(() => {
     if (!currentUser) return [];
     return users.filter(u => {
       if (u.UserID === currentUser.UserID) return false;
       if (blockedUserIds.includes(u.UserID)) return false;
+      if (appMode === 'production' && DEMO_PROFILE_IDS.has(u.UserID)) return false;
       return true;
     });
-  }, [users, currentUser, blockedUserIds]);
+  }, [users, currentUser, blockedUserIds, appMode]);
 
   // Filter candidates using the shared independent filter engine
   const candidates = useMemo(

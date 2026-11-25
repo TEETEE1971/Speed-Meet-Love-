@@ -6808,6 +6808,24 @@ app.get('/api/members', async (req, res) => {
       const domain = (u.email || '').toLowerCase().split('@')[1] || '';
       return !domain.endsWith('.test') && domain !== 'testdomain.org';
     })
+    .filter(u => {
+      // Hide test/internal accounts from Browse. The accounts themselves are
+      // untouched — they can still sign in and be used for testing (including
+      // the Stripe reviewer account) — they simply never appear as members.
+      const HIDDEN_FROM_BROWSE_EMAILS = new Set([
+        'speedmeetlovetester@gmail.com', // Stripe Tester (reviewer account)
+        'creationsteetees@gmail.com', // Stripe Review
+        'kristysback411+testcasey@gmail.com', // Test Casey (internal test account)
+        'freepetsgoodhome@gmail.com', // Pet Good (internal)
+        'riseagain1dayatatime@gmail.com', // Rise Again (internal)
+        'kristylee19710@gmail.com', // Kristy Lee (founder alt)
+        'riseagain1daya@gmail.com', // founder alt
+        'teetee7100@gmail.com', // founder alt records
+        'kristyhatescory@gmail.com', // joke alt
+        'corysux71@gmail.com', // joke alt
+      ]);
+      return !HIDDEN_FROM_BROWSE_EMAILS.has((u.email || '').toLowerCase().trim());
+    })
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
     .map(u => sanitizeMemberProfile(u));
 
