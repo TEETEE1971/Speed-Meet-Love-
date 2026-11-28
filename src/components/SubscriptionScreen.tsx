@@ -174,7 +174,7 @@ export const SubscriptionScreen: React.FC = () => {
       return;
     }
     showNotification(
-      '💕 You already have full free access during launch! Browse, match, message, and join events with no card required.',
+      '💕 You already have full free access during launch! Browse, match, and message with no card required. Live speed-dating events launch soon — once we have enough members!',
       'success'
     );
     setCurrentView(destination);
@@ -335,14 +335,10 @@ export const SubscriptionScreen: React.FC = () => {
       feature: isWaitlistModeActive
         ? 'Live Speed Dating Schedule'
         : 'Speed Dating Schedule (3 Nights Weekly)',
-      free: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'emerald' }
-        : { text: 'No', tone: 'neutral' },
-      premium: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'emerald' }
-        : { text: 'No', tone: 'neutral' },
+      free: { text: 'No', tone: 'neutral' },
+      premium: { text: 'No', tone: 'neutral' },
       premiumPlus: isFreeDuringLaunch
-        ? { text: 'Free during launch (all members)', tone: 'amber' }
+        ? { text: 'Coming soon — launches with enough members', tone: 'amber' }
         : isWaitlistModeActive
         ? { text: 'First event date coming soon', tone: 'amber' }
         : { text: 'Fri, Sat & Sun at 7:00 PM EST', tone: 'amber' },
@@ -351,56 +347,40 @@ export const SubscriptionScreen: React.FC = () => {
       feature: isWaitlistModeActive
         ? 'Event Registration & Night Selection'
         : 'Choose Nights & Multi-Night Registration',
-      free: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'emerald' }
-        : { text: 'No', tone: 'neutral' },
-      premium: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'emerald' }
-        : { text: 'No', tone: 'neutral' },
+      free: { text: 'No', tone: 'neutral' },
+      premium: { text: 'No', tone: 'neutral' },
       premiumPlus: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'amber' }
+        ? { text: 'Coming soon', tone: 'amber' }
         : isWaitlistModeActive
         ? { text: 'First event date coming soon', tone: 'amber' }
         : { text: 'Included (Attend 1, 2, or all 3)', tone: 'amber' },
     },
     {
       feature: '5-Minute Video Rounds & Up to 2-Min Break',
-      free: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'emerald' }
-        : { text: 'No', tone: 'neutral' },
-      premium: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'emerald' }
-        : { text: 'No', tone: 'neutral' },
+      free: { text: 'No', tone: 'neutral' },
+      premium: { text: 'No', tone: 'neutral' },
       premiumPlus: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'amber' }
+        ? { text: 'Coming soon', tone: 'amber' }
         : isWaitlistModeActive
         ? { text: 'First event date coming soon', tone: 'amber' }
         : { text: 'Active', tone: 'amber' },
     },
     {
       feature: 'Consent-Based Next Date & Waiting Room',
-      free: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'emerald' }
-        : { text: 'No', tone: 'neutral' },
-      premium: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'emerald' }
-        : { text: 'No', tone: 'neutral' },
+      free: { text: 'No', tone: 'neutral' },
+      premium: { text: 'No', tone: 'neutral' },
       premiumPlus: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'amber' }
+        ? { text: 'Coming soon', tone: 'amber' }
         : isWaitlistModeActive
         ? { text: 'First event date coming soon', tone: 'amber' }
         : { text: 'Included (No auto-start)', tone: 'amber' },
     },
     {
       feature: 'Round Skip & Replay Perks',
-      free: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'emerald' }
-        : { text: 'No', tone: 'neutral' },
-      premium: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'emerald' }
-        : { text: 'No', tone: 'neutral' },
+      free: { text: 'No', tone: 'neutral' },
+      premium: { text: 'No', tone: 'neutral' },
       premiumPlus: isFreeDuringLaunch
-        ? { text: 'Free during launch', tone: 'amber' }
+        ? { text: 'Coming soon', tone: 'amber' }
         : isWaitlistModeActive
         ? { text: 'First event date coming soon', tone: 'amber' }
         : { text: 'Included', tone: 'amber' },
@@ -460,7 +440,7 @@ export const SubscriptionScreen: React.FC = () => {
             💕 Free During Launch!
           </h2>
           <p className="text-sm sm:text-base font-bold text-rose-50 max-w-2xl mx-auto leading-relaxed">
-            Browse singles, connect with mutual matches, and join our speed-dating events—all free while our community grows. No card required.
+            Browse singles and connect with mutual matches — all free while our community grows. No card required. Live speed-dating events launch as soon as we have enough members!
           </p>
           <div className="pt-1 flex flex-wrap items-center justify-center gap-3">
             <button
@@ -504,7 +484,7 @@ export const SubscriptionScreen: React.FC = () => {
 
         <p className="text-sm sm:text-base text-[#111827] font-medium max-w-2xl mx-auto">
           {isFreeDuringLaunch
-            ? 'Every new and existing member currently receives free access to browsing, mutual-match messaging, and live speed-dating events—with no credit card required. Our standard future rates ($9.99/mo Premium and $14.99/mo Premium Plus) are saved below for when paid memberships return.'
+            ? 'Every new and existing member currently receives free access to browsing and mutual-match messaging—with no credit card required. Live speed-dating events come with Premium Plus and launch as soon as we have enough members. Our standard future rates ($9.99/mo Premium and $14.99/mo Premium Plus) are saved below for when paid memberships return.'
             : 'Free allows browsing and seeing mutual matches. Upgrade to Premium ($9.99/mo) for private messaging after mutual matches, or Premium Plus ($14.99/mo) for live speed-dating events.'}
         </p>
 
@@ -630,8 +610,8 @@ export const SubscriptionScreen: React.FC = () => {
                     <span><strong>Private messaging unlocked</strong> after mutual matches during launch</span>
                   </div>
                   <div className="flex items-start gap-2.5">
-                    <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
-                    <span><strong>Live speed-dating events</strong> free during launch</span>
+                    <X className="w-4 h-4 text-[#111827] shrink-0 mt-0.5" />
+                    <span><strong>Live speed-dating events</strong> — coming soon with Premium Plus</span>
                   </div>
                 </>
               ) : (
@@ -748,7 +728,7 @@ export const SubscriptionScreen: React.FC = () => {
               {isFreeDuringLaunch ? (
                 <div className="flex items-start gap-2.5">
                   <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
-                  <span><strong>Bonus during launch:</strong> Live speed-dating events also free!</span>
+                  <span><strong>Coming soon:</strong> Live speed-dating events launch with Premium Plus — first 50 verified members get 30 days free!</span>
                 </div>
               ) : (
                 <div className="flex items-start gap-2.5 text-[#111827] font-medium pt-1">
@@ -812,7 +792,7 @@ export const SubscriptionScreen: React.FC = () => {
           {/* Ribbon */}
           <div className="absolute -top-3 right-6 bg-gradient-to-r from-[#B45309] to-[#BE185D] text-white font-bold text-[10px] px-3 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
             {isFreeDuringLaunch
-              ? '💕 Free During Launch'
+              ? '💕 Launching Soon'
               : currentTier === 'Premium Plus'
               ? 'Active Plan'
               : 'Live Speed Dating'}
@@ -842,13 +822,14 @@ export const SubscriptionScreen: React.FC = () => {
               {isFreeDuringLaunch ? (
                 <div className="space-y-1">
                   <div className="flex items-baseline gap-2 flex-wrap">
-                    <span className="text-4xl font-extrabold text-[#BE185D] font-heading">$0</span>
-                    <span className="text-xs font-bold text-[#047857] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                      Free During Launch
+                    <span className="text-4xl font-extrabold text-[#BE185D] font-heading">$14.99</span>
+                    <span className="text-xs font-bold text-[#111827]">/ month</span>
+                    <span className="text-xs font-bold text-[#92400E] bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                      Launching Soon
                     </span>
                   </div>
                   <p className="text-xs text-[#111827] font-semibold">
-                    Regular price saved for later: <span className="line-through text-slate-500">$14.99/mo</span> · No card required
+                    Events start when we have enough members. First 50 verified members get Premium Plus free for 30 days at launch · No card required
                   </p>
                 </div>
               ) : (
@@ -909,10 +890,10 @@ export const SubscriptionScreen: React.FC = () => {
                   className="w-full py-3.5 rounded-2xl btn-pink-gradient font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-white" />
-                  <span>Join Free</span>
+                  <span>Get Ready for Events</span>
                 </button>
                 <p className="text-[11px] text-center text-[#111827] font-semibold">
-                  All speed-dating events are free during launch. No card required.
+                  Speed-dating events launch when we have enough members. First 50 verified members get Premium Plus free for 30 days at launch.
                 </p>
               </>
             ) : currentTier === 'Premium Plus' ? (
@@ -969,7 +950,7 @@ export const SubscriptionScreen: React.FC = () => {
               title: 'Free',
               price: '$0/mo',
               subtitle: isFreeDuringLaunch
-                ? 'Full access free during launch'
+                ? 'Browsing & messaging free during launch'
                 : 'Browsing & mutual match viewing only',
               borderClass: 'border-slate-300 bg-white',
               headerBg: 'bg-slate-50 border-slate-200',
