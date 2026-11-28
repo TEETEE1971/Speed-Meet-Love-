@@ -257,7 +257,7 @@ export const AuthModal: React.FC = () => {
               ? 'Enter your account email to receive a secure password-reset link.'
               : authModalTab === 'signin'
               ? 'Real People. Real Connections. In Minutes.'
-              : 'Join weekend 5-minute video speed dating rounds every Fri, Sat & Sun at 7 PM EST.'}
+              : 'Weekend 5-minute video speed dating every Fri, Sat & Sun — launching soon. Join free during launch!'}
           </p>
         </div>
 

@@ -174,7 +174,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
                   💕 Free During Launch!
                 </h2>
                 <p className="text-sm sm:text-base font-bold text-[#111827] leading-relaxed">
-                  Browse singles, connect with mutual matches, and join our speed-dating events—all free while our community grows. No card required.
+                  Browse singles and connect with mutual matches — all free while our community grows. No card required. Live speed-dating events launch as soon as we have enough members!
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
@@ -255,30 +255,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
           <div className="pt-6 sm:pt-10 pb-10 sm:pb-14 flex flex-col items-center justify-center relative">
             <div className="flex items-center justify-center relative max-w-full px-2 sm:px-4">
               
-              {/* 1. Outer Left Rectangular Photo: Adult Man (Alex, 29) */}
+              {/* 1. Outer Left Rectangular Photo */}
               <div className="hidden md:block relative w-32 h-46 lg:w-40 lg:h-58 rounded-2xl lg:rounded-3xl shadow-xl border-3 border-white overflow-hidden -mr-8 lg:-mr-10 transform -rotate-12 z-0 hover:rotate-0 hover:z-25 transition-all group">
                 <img
                   src="/assets/man_alex.jpg"
-                  alt="Alex, 29"
+                  alt="Speed Meet Love"
                   className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform"
                 />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2.5 text-white text-left">
-                  <span className="text-[10px] sm:text-xs font-black font-heading block leading-tight">Alex, 29</span>
-                  <span className="text-[9px] text-rose-200 font-medium">Brooklyn, NY</span>
-                </div>
               </div>
 
-              {/* 2. Inner Left Overlapping Rectangular Photo: Adult Woman (Sarah, 28) */}
+              {/* 2. Inner Left Overlapping Rectangular Photo */}
               <div className="relative w-32 h-48 sm:w-44 sm:h-62 md:w-50 md:h-72 rounded-2xl sm:rounded-3xl shadow-2xl border-3 sm:border-4 border-white overflow-hidden -mr-6 sm:-mr-8 md:-mr-10 transform -rotate-6 z-10 hover:rotate-0 hover:z-25 transition-all group">
                 <img
                   src="/assets/woman_sarah.jpg"
-                  alt="Sarah, 28"
+                  alt="Speed Meet Love"
                   className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform"
                 />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3 text-white text-left">
-                  <span className="text-xs sm:text-sm font-black font-heading block leading-tight">Sarah, 28</span>
-                  <span className="text-[10px] text-rose-200 font-medium">Manhattan, NY</span>
-                </div>
               </div>
 
               {/* 3. PROMINENT CENTRAL KRISTY PHOTOGRAPH (Exact Uploaded Photo, Largest in Center) */}
@@ -323,30 +315,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
                 </div>
               </div>
 
-              {/* 4. Inner Right Overlapping Rectangular Photo: Adult Woman (Elena, 27) */}
+              {/* 4. Inner Right Overlapping Rectangular Photo */}
               <div className="relative w-32 h-48 sm:w-44 sm:h-62 md:w-50 md:h-72 rounded-2xl sm:rounded-3xl shadow-2xl border-3 sm:border-4 border-white overflow-hidden -ml-6 sm:-ml-8 md:-ml-10 transform rotate-6 z-10 hover:rotate-0 hover:z-25 transition-all group">
                 <img
                   src="/assets/woman_elena.jpg"
-                  alt="Elena, 27"
+                  alt="Speed Meet Love"
                   className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform"
                 />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3 text-white text-left">
-                  <span className="text-xs sm:text-sm font-black font-heading block leading-tight">Elena, 27</span>
-                  <span className="text-[10px] text-rose-200 font-medium">Williamsburg, NY</span>
-                </div>
               </div>
 
-              {/* 5. Outer Right Rectangular Photo: Adult Man (Marcus, 31) */}
+              {/* 5. Outer Right Rectangular Photo */}
               <div className="hidden md:block relative w-32 h-46 lg:w-40 lg:h-58 rounded-2xl lg:rounded-3xl shadow-xl border-3 border-white overflow-hidden -ml-8 lg:-ml-10 transform rotate-12 z-0 hover:rotate-0 hover:z-25 transition-all group">
                 <img
                   src="/assets/man_marcus.jpg"
-                  alt="Marcus, 31"
+                  alt="Speed Meet Love"
                   className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform"
                 />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2.5 text-white text-left">
-                  <span className="text-[10px] sm:text-xs font-black font-heading block leading-tight">Marcus, 31</span>
-                  <span className="text-[9px] text-rose-200 font-medium">SoHo, New York</span>
-                </div>
               </div>
 
             </div>
@@ -821,7 +805,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectView }) => {
 
             <p className="text-sm sm:text-base font-semibold text-rose-50 leading-relaxed">
               {isFreeDuringLaunch
-                ? 'Browse singles, connect with mutual matches, and join our speed-dating events—all free while our community grows. No card required.'
+                ? 'Browse singles and connect with mutual matches — all free while our community grows. No card required. Live speed-dating events launch as soon as we have enough members!'
                 : 'We’re welcoming our first members! Our first speed-dating event will be announced once enough compatible singles have joined. Save your free spot on the waiting list today.'}
             </p>
 

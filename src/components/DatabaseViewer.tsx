@@ -39,7 +39,7 @@ export const DatabaseViewer: React.FC = () => {
       tiers: {
         FREE: '$0/month: Profile, browse, like, see mutual matches. No messaging, no speed dating.',
         PREMIUM: '$9.99/month: Private messaging when both users mutually like each other and both hold paid membership. No Friday speed dating.',
-        PREMIUM_PLUS: '$14.99/month: Exclusive live online speed dating every Friday night (5-minute video rounds).',
+        PREMIUM_PLUS: '$14.99/month: Exclusive live online speed dating every Fri, Sat & Sun (5-minute video rounds) — launching once enough members join.',
       },
       exportedAt: new Date().toISOString(),
     };

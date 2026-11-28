@@ -512,6 +512,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if ((saved === 'tables' || saved === 'owner_reports' || saved === 'owner_users' || saved === 'owner_waitlist') && !ownerHint) {
       return 'home';
     }
+    if (!initialToken) {
+      // Logged-out visitors always start on the public home page (or a public
+      // info page). A member-area view saved from an earlier visit must not
+      // greet a signed-out visitor with a sign-in wall on arrival; the gate
+      // appears only when they tap into a member area.
+      const publicViews: AppView[] = ['home', ...(Object.keys(PUBLIC_VIEW_PATHS) as AppView[])];
+      if (saved && publicViews.includes(saved as AppView)) {
+        return saved as AppView;
+      }
+      return 'home';
+    }
     return (saved as AppView) || 'home';
   });
 
